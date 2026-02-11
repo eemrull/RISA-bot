@@ -234,7 +234,7 @@ class AutoDriver(Node):
         cmd = Twist()
 
         if not self.in_auto_mode:
-            self.cmd_vel_pub.publish(cmd)
+            # Manual mode — don't publish anything, let the controller handle /cmd_vel
             return
 
         # ---- State-specific behavior ----

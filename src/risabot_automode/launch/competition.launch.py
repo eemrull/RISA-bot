@@ -142,12 +142,17 @@ def generate_launch_description():
             ]
         ),
 
-        # M. Servo controller (for manual camera pan/tilt — optional)
-        # Uncomment below if you want joystick servo control during competition
-        # Node(
-        #     package='control_servo',
-        #     executable='servo_controller',
-        #     name='servo_controller',
-        #     output='screen'
-        # ),
+        # M. Joystick driver + Servo controller (mode toggle + manual driving)
+        Node(
+            package='joy',
+            executable='joy_node',
+            name='joy_node',
+            output='screen'
+        ),
+        Node(
+            package='control_servo',
+            executable='servo_controller',
+            name='servo_controller',
+            output='screen'
+        ),
     ])
