@@ -1,0 +1,153 @@
+"""
+Competition Launch File — RISA-bot
+Brings up ALL nodes for the autonomous vehicle competition in one command:
+  ros2 launch risabot_automode competition.launch.py
+
+Launches:
+  1. Astra Mini camera
+  2. YDLiDAR Tmini Plus
+  3. TF publisher (base_link → laser_frame)
+  4. All risabot_automode nodes (auto_driver + modules)
+  5. Obstacle avoidance nodes
+  6. Servo controller (optional, for manual camera control)
+"""
+
+import os
+from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription, TimerAction
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch_ros.actions import Node
+from ament_index_python.packages import get_package_share_directory
+
+
+def generate_launch_description():
+    # --- Package paths ---
+    ydlidar_pkg = get_package_share_directory('ydlidar_ros2_driver')
+    astra_pkg = get_package_share_directory('astra_camera')
+
+    # --- Serial port mapping ---
+    lidar_port = '/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0'
+    motor_port = '/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0'
+
+    return LaunchDescription([
+
+        # ==================== SENSORS ====================
+
+        # A. Astra Mini Camera
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(astra_pkg, 'launch', 'astra_mini.launch.py')
+            )
+        ),
+
+        # B. YDLiDAR Tmini Plus
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(ydlidar_pkg, 'launch', 'tmini_plus.launch.py')
+            ),
+            launch_arguments={
+                'port': lidar_port,
+                'frame_id': 'laser_frame',
+                'ignore_array': motor_port,
+                'support_motor_dtr': 'true'
+            }.items()
+        ),
+
+        # C. TF: base_link → laser_frame
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='base_to_laser',
+            arguments=['0', '0', '0.12', '0', '0', '0', 'base_link', 'laser_frame']
+        ),
+
+        # ==================== PERCEPTION ====================
+
+        # D. LiDAR obstacle detection (existing)
+        Node(
+            package='obstacle_avoidance',
+            executable='obstacle_avoidance',
+            name='obstacle_avoidance_node',
+            output='screen'
+        ),
+
+        # E. Camera obstacle detection (existing)
+        Node(
+            package='obstacle_avoidance_camera',
+            executable='obstacle_avoidance_camera',
+            name='obstacle_avoidance_camera',
+            output='screen'
+        ),
+
+        # F. Line follower camera (existing)
+        Node(
+            package='risabot_automode',
+            executable='line_follower_camera',
+            name='line_follower_camera',
+            output='screen'
+        ),
+
+        # G. Traffic light detector (NEW)
+        Node(
+            package='risabot_automode',
+            executable='traffic_light_detector',
+            name='traffic_light_detector',
+            output='screen'
+        ),
+
+        # H. Boom gate detector (NEW)
+        Node(
+            package='risabot_automode',
+            executable='boom_gate_detector',
+            name='boom_gate_detector',
+            output='screen'
+        ),
+
+        # I. Tunnel wall follower (NEW)
+        Node(
+            package='risabot_automode',
+            executable='tunnel_wall_follower',
+            name='tunnel_wall_follower',
+            output='screen'
+        ),
+
+        # J. Obstruction avoidance (NEW)
+        Node(
+            package='risabot_automode',
+            executable='obstruction_avoidance',
+            name='obstruction_avoidance',
+            output='screen'
+        ),
+
+        # K. Parking controller (NEW)
+        Node(
+            package='risabot_automode',
+            executable='parking_controller',
+            name='parking_controller',
+            output='screen'
+        ),
+
+        # ==================== CONTROL ====================
+
+        # L. Auto Driver (brain — delayed start to let sensors initialize)
+        TimerAction(
+            period=5.0,
+            actions=[
+                Node(
+                    package='risabot_automode',
+                    executable='auto_driver',
+                    name='auto_driver',
+                    output='screen'
+                )
+            ]
+        ),
+
+        # M. Servo controller (for manual camera pan/tilt — optional)
+        # Uncomment below if you want joystick servo control during competition
+        # Node(
+        #     package='control_servo',
+        #     executable='servo_controller',
+        #     name='servo_controller',
+        #     output='screen'
+        # ),
+    ])

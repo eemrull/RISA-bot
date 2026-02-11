@@ -27,6 +27,11 @@ setup(
             # The Entry Point: Name = Package.File:Function
             'auto_driver = risabot_automode.auto_driver:main',
             'line_follower_camera = risabot_automode.line_follower_camera:main',
+            'traffic_light_detector = risabot_automode.traffic_light_detector:main',
+            'boom_gate_detector = risabot_automode.boom_gate_detector:main',
+            'parking_controller = risabot_automode.parking_controller:main',
+            'tunnel_wall_follower = risabot_automode.tunnel_wall_follower:main',
+            'obstruction_avoidance = risabot_automode.obstruction_avoidance:main',
         ],
     },
 )
