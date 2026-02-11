@@ -68,6 +68,9 @@ class AutoDriver(Node):
         self.obstacle_active = False
         self.lane_error = 0.0
 
+        # Tunable steering gain (was hardcoded at 0.8 — too aggressive)
+        self.declare_parameter('steering_gain', 0.5)
+
         # Module inputs
         self.traffic_light_state = 'unknown'
         self.boom_gate_open = True
@@ -247,19 +250,19 @@ class AutoDriver(Node):
                 cmd = self.obstruction_cmd
             else:
                 # Normal lane following
-                cmd.angular.z = -0.8 * self.lane_error
+                cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
 
         elif self.state == ChallengeState.OBSTRUCTION:
             if self.obstruction_active:
                 cmd = self.obstruction_cmd
             else:
                 # Obstruction cleared, resume lane following
-                cmd.angular.z = -0.8 * self.lane_error
+                cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
 
         elif self.state == ChallengeState.ROUNDABOUT:
             # Lane following works in roundabout (curved lines)
             if not self.obstacle_active:
-                cmd.angular.z = -0.8 * self.lane_error
+                cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
 
         elif self.state == ChallengeState.TUNNEL:
             if self.tunnel_detected:
@@ -268,7 +271,7 @@ class AutoDriver(Node):
             else:
                 # Not in tunnel yet or exited — lane follow
                 if not self.obstacle_active:
-                    cmd.angular.z = -0.8 * self.lane_error
+                    cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
 
         elif self.state in (ChallengeState.BOOM_GATE_TUNNEL, ChallengeState.BOOM_GATE_MAIN):
             if not self.boom_gate_open:
@@ -276,18 +279,18 @@ class AutoDriver(Node):
                 pass
             else:
                 # Gate open — proceed with lane following
-                cmd.angular.z = -0.8 * self.lane_error
+                cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
 
         elif self.state in (ChallengeState.HILL, ChallengeState.BUMPER):
             # Normal lane following — the robot just drives through
             if not self.obstacle_active:
-                cmd.angular.z = -0.8 * self.lane_error
+                cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
 
         elif self.state == ChallengeState.TRAFFIC_LIGHT:
             if self.traffic_light_state in ('red', 'yellow'):
                 pass  # Stop
             elif self.traffic_light_state == 'green':
-                cmd.angular.z = -0.8 * self.lane_error
+                cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
 
         elif self.state in (ChallengeState.PARALLEL_PARK, ChallengeState.PERPENDICULAR_PARK):
             if not self.parking_complete:

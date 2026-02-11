@@ -15,7 +15,15 @@ class LineFollowerCamera(Node):
     def __init__(self):
         super().__init__('line_follower_camera')
         self.lane_error = 0.0
-        self.last_valid_error = 0.0  # ← critical: hold last command
+        self.filtered_error = 0.0     # smoothed output
+        self.last_valid_error = 0.0   # hold last command
+
+        # --- Tunable parameters ---
+        self.declare_parameter('smoothing_alpha', 0.3)   # EMA factor (0=very smooth, 1=no filter)
+        self.declare_parameter('dead_zone', 0.03)        # ignore errors below this
+        self.declare_parameter('white_threshold', 150)    # grayscale threshold for white lines
+        self.declare_parameter('crop_ratio', 0.4)         # bottom portion of image to use
+
         self.error_pub = self.create_publisher(Float32, '/lane_error', 10)
         self.bridge = CvBridge()
         self.color_sub = self.create_subscription(
@@ -24,7 +32,7 @@ class LineFollowerCamera(Node):
             self.color_callback,
             QoSPresetProfiles.SENSOR_DATA.value
         )
-        self.get_logger().info('Line Follower Camera: Ready (Two-Line Midpoint Mode)')
+        self.get_logger().info('Line Follower Camera: Ready (Smoothed Two-Line Midpoint Mode)')
 
     def color_callback(self, msg):
         try:
@@ -32,13 +40,16 @@ class LineFollowerCamera(Node):
             bgr = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
             h, w = bgr.shape[:2]
 
-            # Focus on bottom 60% (more road visibility for high mount)
-            crop_h = int(h * 0.4)
+            # Focus on bottom portion (more road visibility for high mount)
+            crop_ratio = self.get_parameter('crop_ratio').value
+            crop_h = int(h * crop_ratio)
             road = bgr[h - crop_h:, :]
 
-            # Threshold white lines (tune 150 if needed)
+            # Threshold white lines
+            white_thresh = self.get_parameter('white_threshold').value
             gray = cv2.cvtColor(road, cv2.COLOR_BGR2GRAY)
-            _, binary = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)  # reduce noise before threshold
+            _, binary = cv2.threshold(blurred, white_thresh, 255, cv2.THRESH_BINARY)
 
             # Sum white pixels per column → histogram
             hist = np.sum(binary, axis=0)
@@ -63,14 +74,24 @@ class LineFollowerCamera(Node):
             image_center = w / 2.0
             error = (image_center - lane_center_x) / (w / 2.0)  # NO negative sign!
 
-            # Clamp and update
-            self.lane_error = float(np.clip(error, -1.0, 1.0))
+            # Clamp raw error
+            raw_error = float(np.clip(error, -1.0, 1.0))
+
+            # Dead zone — ignore tiny errors to prevent jitter on straight roads
+            dead_zone = self.get_parameter('dead_zone').value
+            if abs(raw_error) < dead_zone:
+                raw_error = 0.0
+
+            # Low-pass filter (exponential moving average) to smooth output
+            alpha = self.get_parameter('smoothing_alpha').value
+            self.filtered_error = alpha * raw_error + (1 - alpha) * self.filtered_error
+            self.lane_error = self.filtered_error
 
             # Only update last_valid_error if we have real lines
             if np.max(left_region) > 10 and np.max(right_region) > 10:
                 self.last_valid_error = self.lane_error
 
-            # Publish
+            # Publish the smoothed error
             self.error_pub.publish(Float32(data=self.lane_error))
 
             # Debug (optional)
