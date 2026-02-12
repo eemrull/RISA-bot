@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu
-import math
+
 
 class ImuViewer(Node):
     def __init__(self):
