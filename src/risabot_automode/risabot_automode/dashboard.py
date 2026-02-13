@@ -110,7 +110,6 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     padding: 14px;
     max-width: 1400px;
     margin: 0 auto;
-    min-height: calc(100vh - 50px);
   }
   .col { display: flex; flex-direction: column; gap: 12px; }
 
