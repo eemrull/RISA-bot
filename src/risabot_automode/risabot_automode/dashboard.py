@@ -427,6 +427,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <span>L: <span id="joyL">0.0, 0.0</span></span>
       <span>R: <span id="joyR">0.0, 0.0</span></span>
     </div>
+    <div style="margin-top:8px;padding:6px 8px;background:#111;border-radius:6px;font-size:0.75em;font-family:monospace;color:#ff9800;min-height:24px;" id="btnDebug">
+      Press any button to see its index...
+    </div>
   </div>
 
   <!-- Camera Feed -->
@@ -541,10 +544,24 @@ function update() {
       document.getElementById('speedBar').style.width = d.speed_pct + '%';
       document.getElementById('ctrlState').textContent = d.ctrl_state_name;
 
-      // Controller buttons (A=0, B=1, X=3, Y=4, LB=6, RB=7, LT=8, RT=9, Start=11)
-      const btnMap = {0:'btnA', 1:'btnB', 3:'btnX', 4:'btnY', 6:'btnLB', 7:'btnRB', 8:'btnLT', 9:'btnRT', 11:'btnStart'};
+      // Controller buttons — standard Linux joy mapping:
+      //   A=0, B=1, X=2, Y=3, LB=4, RB=5, Back=6, Start=7, Guide=8, L3=9, R3=10
+      const btnMap = {0:'btnA', 1:'btnB', 2:'btnX', 3:'btnY', 4:'btnLB', 5:'btnRB', 7:'btnStart', 8:'btnLT', 9:'btnRT'};
       Object.values(btnMap).forEach(id => document.getElementById(id).classList.remove('active'));
-      if (d.buttons) d.buttons.forEach((v,i) => { if (v && btnMap[i]) document.getElementById(btnMap[i]).classList.add('active'); });
+      if (d.buttons) {
+        d.buttons.forEach((v,i) => { if (v && btnMap[i]) document.getElementById(btnMap[i]).classList.add('active'); });
+        // Raw button debug: show which indices are pressed
+        const pressed = [];
+        d.buttons.forEach((v,i) => { if (v) pressed.push('btn[' + i + ']'); });
+        const dbg = document.getElementById('btnDebug');
+        if (pressed.length > 0) {
+          dbg.textContent = 'Active: ' + pressed.join(', ');
+          dbg.style.color = '#4caf50';
+        } else {
+          dbg.textContent = 'No buttons pressed';
+          dbg.style.color = '#555';
+        }
+      }
 
       // D-pad from axes
       if (d.axes && d.axes.length > 7) {
