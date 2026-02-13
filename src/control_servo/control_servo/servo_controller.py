@@ -76,6 +76,13 @@ class ServoControllerV8(Node):
         self.prev_buttons = [0] * 15
         self.prev_axes = [0.0] * 8
 
+        # Safety: Joy watchdog — stop robot if controller disconnects
+        self.joy_alive = False          # True once first /joy received
+        self.last_joy_time = 0.0        # timestamp of last /joy message
+        self.joy_timeout = 0.5          # seconds before declaring controller lost
+        self.joy_lost_reported = False   # avoid spamming log
+        self.create_timer(0.3, self._joy_watchdog)
+
         self.get_logger().info("🎮 V8 Ready: Right Stick X = Steer | LB/RB = Challenges")
         self._update_dash()
 
@@ -90,7 +97,31 @@ class ServoControllerV8(Node):
         # Dashboard expects "Speed|Idx|State".
         self.dash_pub.publish(msg)
 
+    def _joy_watchdog(self):
+        """Stop robot if controller disconnects (no /joy for >0.5s)."""
+        if not self.joy_alive:
+            return  # Haven't received first joy yet, nothing to do
+        elapsed = time.time() - self.last_joy_time
+        if elapsed > self.joy_timeout:
+            if not self.joy_lost_reported:
+                self.get_logger().warn(
+                    f"⚠️ Controller lost (no /joy for {elapsed:.1f}s) — STOPPING ROBOT")
+                self.joy_lost_reported = True
+            if self.manual_mode:
+                self.stop_robot()
+                self.last_motor_val = 0
+                self.last_servo_val = SERVO_CENTER
+
     def joy_callback(self, msg):
+        # Mark controller as alive
+        self.last_joy_time = time.time()
+        if not self.joy_alive:
+            self.joy_alive = True
+            self.get_logger().info("🎮 Controller connected")
+        if self.joy_lost_reported:
+            self.get_logger().info("🎮 Controller reconnected")
+            self.joy_lost_reported = False
+
         # Helpers
         def btn(idx): return msg.buttons[idx] if idx < len(msg.buttons) else 0
         def axis(idx): return msg.axes[idx] if idx < len(msg.axes) else 0.0
@@ -133,7 +164,7 @@ class ServoControllerV8(Node):
             self._update_dash()
 
         # 4. MANUAL DRIVING
-        if self.manual_mode:
+        if self.manual_mode and self.joy_alive:
             # Throttle: Left Stick Y (Axis 1)
             throttle_raw = axis(1)
             
