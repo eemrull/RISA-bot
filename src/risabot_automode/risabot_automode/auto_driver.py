@@ -55,6 +55,7 @@ class AutoDriver(Node):
         self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
         self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self.parking_cmd_pub = self.create_publisher(String, '/parking_command', 10)
+        self.dash_state_pub = self.create_publisher(String, '/dashboard_state', 10)
 
         # Continuous cmd_vel publisher at 50 Hz
         self.cmd_vel_timer = self.create_timer(0.02, self.publish_cmd_vel)
@@ -261,6 +262,18 @@ class AutoDriver(Node):
         self.tunnel_was_active = False
         self.traffic_light_was_green = False
         self.obstruction_was_active = False
+        self._publish_dash_state()
+
+    def _publish_dash_state(self):
+        """Publish state info for the dashboard (~5 Hz throttle)."""
+        if not hasattr(self, '_dash_counter'):
+            self._dash_counter = 0
+        self._dash_counter += 1
+        if self._dash_counter % 10 != 0:  # 50Hz timer / 10 = 5Hz
+            return
+        msg = String()
+        msg.data = f'{self.state.name}|{self.current_lap}|{self._dist_in_state():.2f}'
+        self.dash_state_pub.publish(msg)
 
     def _time_in_state(self):
         return time.time() - self.state_entry_time
@@ -442,6 +455,7 @@ class AutoDriver(Node):
             pass  # Stop
 
         self.cmd_vel_pub.publish(cmd)
+        self._publish_dash_state()
 
         # Debug
         state_name = self.state.name

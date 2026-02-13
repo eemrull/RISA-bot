@@ -32,6 +32,7 @@ setup(
             'parking_controller = risabot_automode.parking_controller:main',
             'tunnel_wall_follower = risabot_automode.tunnel_wall_follower:main',
             'obstruction_avoidance = risabot_automode.obstruction_avoidance:main',
+            'dashboard = risabot_automode.dashboard:main',
         ],
     },
 )
