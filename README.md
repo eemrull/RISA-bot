@@ -6,7 +6,7 @@ ROS 2 Intelligent System Autonomy — Competition Robot
 | Branch | Purpose | Launch Command |
 |---|---|---|
 | `main` | Individual node testing & development | `run_risabot` |
-| `test` | Competition mode — all 9 challenges | `ros2 launch risabot_automode competition.launch.py` |
+| `test` | Competition mode — all 9 challenges + dashboard | `ros2 launch risabot_automode competition.launch.py` |
 
 ## Quick Start
 
@@ -16,7 +16,7 @@ git add . && git commit -m "message" && git push
 
 # On the robot — pull, build, run
 ssh risabot
-cd ~/risabotcar_ws/src/risabot_automode
+cd ~/risabotcar_ws/src/RISA-bot
 git checkout test && git pull   # or: main
 cd ~/risabotcar_ws && cb && sos
 
@@ -34,12 +34,27 @@ ros2 launch risabot_automode competition.launch.py   # test branch
 | `cbc` | Clean rebuild — use when stuff is broken |
 | `sos` | Re-source the workspace (after any build) |
 
-## 📖 Documentation
+## 📖 Guide
 
-| Folder | Description |
+Detailed documentation is in the [Guide/](Guide/) folder:
+
+| Guide | Description |
 |---|---|
-| [Guide/](Guide/) | Robot operating guides, tuning, architecture, commands |
-| [Workshop/](Workshop/) | ROS 2 teaching modules for workshops |
+| [Challenge Breakdown](Guide/challenges_breakdown.md) | Deep dive into each challenge's code, with course layout |
+| [Main Branch](Guide/main_branch.md) | How `main` works — individual nodes, original controller |
+| [Test Branch](Guide/test_branch.md) | How `test` works — state machine, dashboard, all challenges |
+| [Commands Reference](Guide/commands_reference.md) | All ROS topics, launch files, `ros2 param set` commands |
+| [Tuning Guide](Guide/tuning_guide.md) | Step-by-step parameter tuning on physical course |
+| [Architecture](Guide/architecture.md) | Node graphs, data flow, package structure |
+
+## Features (Test Branch)
+
+- **9 Competition Challenges** — Autonomous navigation through lane follow, obstruction, roundabout, tunnel, boom gate, hill, bumper, traffic light, parking
+- **Live Web Dashboard** — Real-time status at `http://<robot_ip>:8080` with camera feed, state machine view, sensor data, and parameter tuning
+- **Parameter Tuning via Dashboard** — Read/write ROS2 parameters directly from the browser, no terminal needed
+- **Joystick Safety Watchdog** — Robot auto-stops if controller disconnects or is turned off
+- **Lap Tracking** — Automatic lap 1 → lap 2 transition with different challenge routes
+- **Manual Override** — Start button toggles auto/manual, LB/RB cycles states
 
 ## Troubleshooting
 
