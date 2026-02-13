@@ -62,13 +62,15 @@ graph LR
 ```
 Joystick → servo_controller → /auto_mode → auto_driver
                                               ↓
-                                    State Machine selects:
-                                    ├─ LANE_FOLLOW → /lane_error → steering
-                                    ├─ TUNNEL → /tunnel_cmd_vel
+                                    State Machine (with lap tracking):
+                                    ├─ LANE_FOLLOW → /lane_error → forward + steering
                                     ├─ OBSTRUCTION → /obstruction_cmd_vel
+                                    ├─ TUNNEL → /tunnel_cmd_vel
                                     ├─ PARKING → /parking_cmd_vel
-                                    ├─ TRAFFIC_LIGHT → stop on red
-                                    └─ BOOM_GATE → stop if closed
+                                    ├─ DRIVE_TO_PERP → lane follow to perp area
+                                    ├─ TRAFFIC_LIGHT → stop on red/yellow
+                                    ├─ BOOM_GATE_1 → open lap 1, closed lap 2
+                                    └─ BOOM_GATE_2 → random, stop if closed
                                               ↓
                                           /cmd_vel → Motors
 ```

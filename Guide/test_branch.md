@@ -46,23 +46,45 @@ Everything in one command:
 
 ## State Machine
 
-The `auto_driver` uses a `ChallengeState` enum to manage the competition:
+The `auto_driver` uses a `ChallengeState` enum with **lap tracking** to manage the competition:
 
-```text
-LANE_FOLLOW → OBSTRUCTION → ROUNDABOUT → TUNNEL → BOOM_GATE_TUNNEL
-→ BOOM_GATE_MAIN → HILL → BUMPER → TRAFFIC_LIGHT
-→ PARALLEL_PARK → PERPENDICULAR_PARK → FINISHED
+```mermaid
+graph LR
+    subgraph "Lap 1"
+        S["START"] --> LF1["Lane Follow"]
+        LF1 -->|"obstruction detected"| OBS1["Obstruction"]
+        OBS1 -->|"cleared + dist"| RB1["Roundabout"]
+        RB1 -->|"exit 1"| BG1["Boom Gate 1 (open)"]
+        BG1 --> TUN["Tunnel"]
+        TUN -->|"exited"| BG2["Boom Gate 2 (random)"]
+        BG2 -->|"open"| HILL["Hill"]
+        HILL --> BUMP["Bumper"]
+        BUMP --> TL["Traffic Light"]
+        TL -->|"green + dist"| LF1
+    end
+    subgraph "Lap 2"
+        LF2["Lane Follow"] -->|"obstruction"| OBS2["Obstruction"]
+        OBS2 --> RB2["Roundabout"]
+        RB2 -->|"exit 2 (gate closed)"| PP["Parallel Park"]
+        PP -->|"complete"| DTP["Drive to Perp"]
+        DTP -->|"dist"| PERP["Perp Park"]
+        PERP --> FIN["FINISHED"]
+    end
+    TL -.->|"lap 2 starts"| LF2
 ```
 
 ### How State Transitions Work
 
-- States advance based on **distance traveled** and **sensor triggers**
+- **Automatic transitions** based on sensor triggers + distance traveled
+- `current_lap` tracks lap 1 vs lap 2
+- Roundabout exit logic: lap 1 → tunnel path, lap 2 → parking path
 - Each state selects the appropriate `/cmd_vel` source:
-  - Lane following states → uses `/lane_error` with steering gain
+  - Lane following states → uses `/lane_error` with `forward_speed` + `steering_gain`
   - Tunnel → uses `/tunnel_cmd_vel` from wall follower
   - Obstruction → uses `/obstruction_cmd_vel` from dodge module
   - Parking → uses `/parking_cmd_vel` from parking controller
   - Boom gate / traffic light → stops until condition clears
+  - DRIVE_TO_PERP → lane follow from parallel to perpendicular parking area
 
 ### Manual State Override
 
@@ -104,7 +126,35 @@ ros2 topic pub --once /parking_command std_msgs/String "data: perpendicular"
 | `/parking_cmd_vel` | Twist | parking_controller | Parking steering |
 | `/parking_signboard_detected` | Bool | parking_controller | Triangle sign seen? |
 | `/set_challenge` | String | servo_controller or CLI | State override |
-| `/parking_command` | String | CLI | Trigger parking type |
+| `/parking_command` | String | auto_driver or CLI | Trigger parking type |
+
+## Tunable Parameters
+
+All parameters can be changed at runtime without rebuilding:
+
+```bash
+ros2 param set /auto_driver forward_speed 0.2
+ros2 param set /auto_driver dist_roundabout 2.0
+```
+
+| Node | Parameter | Default | Purpose |
+|---|---|---|---|
+| auto_driver | `forward_speed` | 0.15 | Forward speed during lane follow (m/s) |
+| auto_driver | `steering_gain` | 0.5 | Lane error → angular velocity gain |
+| auto_driver | `stale_timeout` | 3.0 | Seconds before module data treated as stale |
+| auto_driver | `dist_obstruction_clear` | 0.3 | Distance after obstruction clears (m) |
+| auto_driver | `dist_roundabout` | 1.5 | Distance through roundabout (m) |
+| auto_driver | `dist_boom_gate_1_pass` | 0.5 | Distance after boom gate 1 (m) |
+| auto_driver | `dist_boom_gate_2_pass` | 0.5 | Distance after boom gate 2 (m) |
+| auto_driver | `dist_hill` | 1.0 | Distance over hill (m) |
+| auto_driver | `dist_bumper` | 0.8 | Distance over bumpers (m) |
+| auto_driver | `dist_traffic_light_pass` | 0.5 | Distance after green light (m) |
+| auto_driver | `dist_drive_to_perp` | 1.0 | Distance to perp parking area (m) |
+| line_follower_camera | `show_debug` | False | Show debug window (set True on desktop) |
+| obstacle_avoidance | `min_obstacle_distance` | 0.48 | Detection threshold (m) |
+| obstacle_avoidance_camera | `white_threshold` | 200 | White surface intensity threshold |
+| obstacle_avoidance_camera | `hysteresis_on` | 3 | Consecutive frames to trigger |
+| obstacle_avoidance_camera | `hysteresis_off` | 5 | Consecutive frames to clear |
 
 ## Differences from Main
 

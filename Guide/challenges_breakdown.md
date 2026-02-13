@@ -35,26 +35,48 @@ This guide explains how each competition challenge is implemented in the code (`
 
 **File:** [auto_driver.py](../src/risabot_automode/risabot_automode/auto_driver.py)
 
-The robot uses a **State Machine** to know which challenge it is currently facing. It does NOT try to detect everything at once — it only processes sensor data relevant to the current state.
+The robot uses a **State Machine** with **lap tracking** to sequence through challenges. It does NOT try to detect everything at once — it only processes sensor data relevant to the current state.
 
-### The Sequence
+### Competition Flow
 
-```text
-START → LANE_FOLLOW → OBSTRUCTION → ROUNDABOUT → TUNNEL
-→ BOOM_GATE_TUNNEL → LANE_FOLLOW (top loop) → BOOM_GATE_MAIN
-→ HILL → BUMPER → TRAFFIC_LIGHT → PARALLEL_PARK
-→ PERPENDICULAR_PARK → FINISHED
+```mermaid
+graph LR
+    subgraph "Lap 1"
+        S["START"] --> LF1["Lane Follow"]
+        LF1 -->|"obstruction detected"| OBS1["Obstruction"]
+        OBS1 -->|"cleared + dist"| RB1["Roundabout"]
+        RB1 -->|"exit 1"| BG1["Boom Gate 1 (open)"]
+        BG1 --> TUN["Tunnel"]
+        TUN -->|"exited"| BG2["Boom Gate 2 (random)"]
+        BG2 -->|"open"| HILL["Hill"]
+        HILL --> BUMP["Bumper"]
+        BUMP --> TL["Traffic Light"]
+        TL -->|"green + dist"| LF1
+    end
+    subgraph "Lap 2"
+        LF2["Lane Follow"] -->|"obstruction"| OBS2["Obstruction"]
+        OBS2 --> RB2["Roundabout"]
+        RB2 -->|"exit 2 (gate closed)"| PP["Parallel Park"]
+        PP -->|"complete"| DTP["Drive to Perp"]
+        DTP -->|"dist"| PERP["Perp Park"]
+        PERP --> FIN["FINISHED"]
+    end
+    TL -.->|"lap 2 starts"| LF2
 ```
 
 **How it works:**
 
 - `auto_driver` subscribes to **all** module topics
+- `_check_transitions()` auto-advances state based on sensor events + distance
+- `current_lap` tracks lap 1 vs lap 2 (increments after traffic light)
 - In `publish_cmd_vel()`, it checks `self.state` and selects the right velocity source:
   - `TUNNEL` → ignores camera, uses `/tunnel_cmd_vel`
   - `PARKING` → ignores everything, uses `/parking_cmd_vel`
-  - `LANE_FOLLOW` → uses camera `/lane_error` with steering gain
+  - `LANE_FOLLOW` → uses camera `/lane_error` with `forward_speed` + `steering_gain`
   - `TRAFFIC_LIGHT` → stops on red/yellow, goes on green
   - `BOOM_GATE` → stops if gate closed
+  - `DRIVE_TO_PERP` → lane follow from parallel to perpendicular parking area
+- Stale data timeout (3s) prevents stuck states if a module crashes
 
 ---
 
@@ -86,8 +108,9 @@ START → LANE_FOLLOW → OBSTRUCTION → ROUNDABOUT → TUNNEL
 
 - Uses the **camera line follower** — the roundabout has painted lane lines
 - The state machine enters `ROUNDABOUT` after passing Challenge 1
-- On the main branch, the original controller detects roundabouts by checking for consistent left turns (>1.5s) and locks full-left steering for 3.5s
-- On the test branch, the state machine simply keeps lane following through the curved section
+- On **Lap 1**, the roundabout exits to Boom Gate 1 (open) → tunnel path
+- On **Lap 2**, Boom Gate 1 is closed, so the roundabout exits to the parking path
+- The `dist_roundabout` parameter controls how far the robot travels before taking the exit
 
 ---
 
@@ -124,7 +147,11 @@ START → LANE_FOLLOW → OBSTRUCTION → ROUNDABOUT → TUNNEL
 3. **Detection:** If a **dense cluster** of points appears at similar distances (low variance = a horizontal bar), the gate is **CLOSED**
 4. **Hysteresis:** Must see "open" for N consecutive frames before publishing `True` — prevents flickering
 
-> There are **two boom gates** on the course. One after the tunnel (Challenge 4), one at the roundabout controlling access to the parking area on Lap 2.
+> There are **two boom gates** on the course:
+> - **Boom Gate 1** (`BOOM_GATE_1`): After roundabout exit 1. Always open on Lap 1, closed on Lap 2
+> - **Boom Gate 2** (`BOOM_GATE_2`): After the tunnel. Randomly open or closed — robot stops if closed, proceeds when open
+
+**Tunable:** `min_gate_points`, `max_gate_dist`, `gate_angle_window`, `gate_dist_var_max`
 
 ---
 
@@ -213,4 +240,6 @@ Similar to the hill — the bumper is a physical obstacle on the ground that the
    - **Dead zone** (<0.03) → drive straight on straights
    - **EMA filter** → removes camera noise jitter
 
-**Tunable:** `white_threshold`, `crop_ratio`, `smoothing_alpha`, `dead_zone`
+**Tunable:** `white_threshold`, `crop_ratio`, `smoothing_alpha`, `dead_zone`, `show_debug`
+
+> Set `show_debug:=True` to see the lane detection overlay on a desktop. Disabled by default for headless operation on the robot.
