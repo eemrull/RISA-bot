@@ -21,6 +21,7 @@ from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool, String, Float32
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
+from nav_msgs.msg import Odometry
 from rclpy.qos import QoSPresetProfiles
 import serial
 import struct
@@ -111,24 +112,8 @@ class AutoDriver(Node):
         self.obstruction_was_active = False  # tracks if obstruction was engaged
 
         # ===== Serial (motor board) =====
-        # DISABLED temporarily to test conflict with servo_controller
-        if False:
-            try:
-                self.ser = serial.Serial(
-                    '/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0',
-                    115200, timeout=1
-                )
-                self.get_logger().info('Serial port opened')
-            except Exception as e:
-                self.get_logger().error(f'Failed to open serial: {e}')
-                self.ser = None
-        else:
-            self.ser = None
-
-        if self.ser:
-            self.serial_thread = threading.Thread(target=self.serial_reader)
-            self.serial_thread.daemon = True
-            self.serial_thread.start()
+        # Serial access moved to servo_controller (Hardware Interface Node)
+        self.ser = None
 
         # ===== Subscribers — existing =====
         self.lidar_sub = self.create_subscription(
@@ -179,6 +164,12 @@ class AutoDriver(Node):
         self.create_subscription(
             Bool, '/parking_signboard_detected', self.signboard_callback, 10
         )
+        
+        # Subscribe to Odometry (from servo_controller)
+        self.odom_sub = self.create_subscription(
+            Odometry, '/odom', self.odom_callback, 10
+        )
+
 
         # Manual state override (for testing)
         self.create_subscription(
@@ -485,58 +476,35 @@ class AutoDriver(Node):
                 self.get_logger().info('✅ Obstacle cleared.')
 
     # ========== Serial / Odometry (unchanged from original) ==========
-    def parse(self, packet):
-        try:
-            v_mm_per_sec = struct.unpack('<h', packet[4:6])[0]
-            v_raw = v_mm_per_sec / 1000.0
-            if abs(v_raw) < 0.05:
-                v_raw = 0.0
+    # ========== Serial / Odometry (legacy removed) ==========
 
-            if not self.obstacle_active:
-                current_time = time.time()
-                dt = current_time - self.last_time
-                self.last_time = current_time
-                self.distance += v_raw * dt
+    def odom_callback(self, msg):
+        """Update internal state from ROS odometry."""
+        # Update current twist
+        self.current_twist = msg.twist.twist
+        
+        # Integrate distance (simple approximation)
+        # In a real system, we'd use position from Odom, but here we just need relative distance
+        # for state transitions. Odom message usually has pose.position too.
+        # But servo_controller might only be populating Twist for now?
+        # Let's assume Twist is valid.
+        
+        now = time.time()
+        dt = now - (self.last_odom_time if hasattr(self, 'last_odom_time') else now)
+        self.last_odom_time = now
+        
+        if dt > 0.1: dt = 0.1 # Cap dt prevents jumps
+        
+        v = msg.twist.twist.linear.x
+        self.distance += v * dt
+        
+        # Update dashboard state
+        # (Already handled by publishing to dashboard, but we need self.distance updated)
 
-            odom_msg = Odometry()
-            odom_msg.header.stamp = self.get_clock().now().to_msg()
-            odom_msg.header.frame_id = "odom"
-            odom_msg.child_frame_id = "base_link"
-            odom_msg.twist.twist.linear.x = v_raw if not self.obstacle_active else 0.0
-            self.odom_pub.publish(odom_msg)
-
-        except Exception as e:
-            self.get_logger().error(f'Parse error: {e}')
-
-    def serial_reader(self):
-        buffer = bytearray()
-        while rclpy.ok() and self.ser:
-            try:
-                if self.ser.in_waiting > 0:
-                    data = self.ser.read(self.ser.in_waiting)
-                    buffer.extend(data)
-                    while len(buffer) >= 4:
-                        if buffer[0] == 0xFF and buffer[1] == 0xFB:
-                            length = buffer[2]
-                            if len(buffer) >= length:
-                                packet = buffer[:length]
-                                buffer = buffer[length:]
-                                if len(packet) >= 4 and packet[3] == 0x0C:
-                                    self.parse(packet)
-                                continue
-                            else:
-                                break
-                        else:
-                            buffer = buffer[1:]
-                else:
-                    time.sleep(0.01)
-            except Exception as e:
-                self.get_logger().error(f'Serial read error: {e}')
-                time.sleep(0.1)
+    # Serial reader removed (moved to servo_controller)
 
     def on_shutdown(self):
-        if hasattr(self, 'ser') and self.ser and self.ser.is_open:
-            self.ser.close()
+        pass
 
 
 def main(args=None):

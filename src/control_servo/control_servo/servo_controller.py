@@ -17,6 +17,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Joy
 from std_msgs.msg import Bool, String
 from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
 
 # --- Import your Rosmaster library ---
 from Rosmaster_Lib import Rosmaster
@@ -58,6 +59,21 @@ class ServoControllerNode(Node):
         self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self.challenge_pub = self.create_publisher(String, '/set_challenge', 10)
         self.dash_ctrl_pub = self.create_publisher(String, '/dashboard_ctrl', 10)
+        self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
+
+        # Subscriber for Auto Mode commands
+        self.cmd_vel_sub = self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_callback, 10)
+
+        # Enable Bot Receive Threading (for Odometry)
+        try:
+            bot.create_receive_threading()
+            self.get_logger().info("Rosmaster receive thread started.")
+        except Exception as e:
+            self.get_logger().error(f"Failed to start receive thread: {e}")
+
+        # Timer for Odometry (10Hz)
+        self.create_timer(0.1, self.publish_odom)
+
 
         # State
         self.auto_mode = False
@@ -163,6 +179,13 @@ class ServoControllerNode(Node):
                 if len(msg.axes) > 0:
                     cmd.angular.z = msg.axes[0] * max_ang * scale
 
+                if len(msg.axes) > 0:
+                    cmd.angular.z = msg.axes[0] * max_ang * scale
+                
+                # Debug steering
+                if abs(cmd.angular.z) > 0.1:
+                    print(f"\r[MANUAL] Steer Config: Axis0={msg.axes[0]:.2f} Max={max_ang} Cmd={cmd.angular.z:.2f}    ", end='', flush=True)
+
                 self.cmd_vel_pub.publish(cmd)
                 
                 # Send to hardware
@@ -203,6 +226,55 @@ class ServoControllerNode(Node):
 
         except Exception as e:
             self.get_logger().error(f'Error in joy_callback: {e}')
+
+    def cmd_vel_callback(self, msg):
+        """Receive /cmd_vel from AutoDriver (or myself). Only act if in AUTO mode."""
+        if self.auto_mode:
+            try:
+                bot.set_car_motion(msg.linear.x, msg.linear.y, msg.angular.z)
+            except Exception as e:
+                self.get_logger().error(f"Auto HW Write Error: {e}")
+
+    def publish_odom(self):
+        """Read bot state and publish odometry."""
+        try:
+            # Assuming bot property names from dir() dump: _Rosmaster__vx, etc.
+            # But the library likely provides getters?
+            # logs showed 'get_motion_data'.
+            # Let's try get_motion_data().
+            # If that fails, we can fall back to direct access.
+            
+            # bot.get_motion_data() likely returns (vx, vy, az)????
+            # Let's try to infer from typical Yahboom API.
+            # Usually: ax, ay, az = bot.get_accelerometer_data()
+            # vx, vy, wz = bot.get_motion_data() ??
+            
+            # For now, let's look at available methods again:
+            # 'get_motion_data', '_Rosmaster__vx', '_Rosmaster__vy'
+            
+            # Direct access is safer than guessing return tuple size.
+            # Names are mangled: bot._Rosmaster__vx
+            
+            vx = getattr(bot, '_Rosmaster__vx', 0.0)
+            vy = getattr(bot, '_Rosmaster__vy', 0.0)
+            wz = getattr(bot, '_Rosmaster__vz', 0.0) # VZ is probably angular Z
+            
+            # Simple Odometry (Velocity only for now to satisfy dashboard)
+            odom = Odometry()
+            odom.header.stamp = self.get_clock().now().to_msg()
+            odom.header.frame_id = "odom"
+            odom.child_frame_id = "base_link"
+            
+            odom.twist.twist.linear.x = float(vx)
+            odom.twist.twist.linear.y = float(vy)
+            odom.twist.twist.angular.z = float(wz)
+            
+            self.odom_pub.publish(odom)
+            
+        except Exception as e:
+            # Don't spam errors
+            pass
+
 
 
 def main(args=None):
