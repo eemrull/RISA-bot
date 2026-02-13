@@ -47,8 +47,8 @@ ros2 launch control_servo robot_rc.launch.py
 
 ## Controller Node (`servo_controller`)
 
-The main branch uses the **original monolithic controller** at:
-`control_servo/servo_controller/servo_controller.py` (469 lines)
+The main branch uses the **original monolithic controller** (`second_servo.py`, 469 lines).
+On the **test branch**, this has been refactored into `servo_controller.py` (V9) with separated concerns.
 
 ### Controls
 
@@ -98,3 +98,15 @@ The controller opens `Rosmaster()` which uses the same serial port as `auto_driv
 | `/obstacle_front` | Bool | obstacle_avoidance |
 | `/obstacle_detected_fused` | Bool | auto_driver |
 | `/joy` | Joy | joy_node |
+
+---
+
+## Differences from Test Branch
+
+| Feature | Main | Test |
+|---|---|---|
+| Controller | `second_servo.py` (monolithic) | `servo_controller.py` V9 (separated) |
+| Joy Watchdog | ❌ | ✅ (auto-stops if controller disconnects) |
+| Dashboard | ❌ | ✅ (web UI at `:8080`) |
+| Challenge modules | ❌ | ✅ (9 challenges with state machine) |
+| Launch | Individual tabs/tmux | Single `competition.launch.py` |
