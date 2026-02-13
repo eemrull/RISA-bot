@@ -1,0 +1,7 @@
+cd ~/risabotcar_ws/src/ros2_astra_camera/astra_camera
+git clone https://github.com/orbbec/ros2_astra_camera.git /tmp/astra-temp
+cp -r /tmp/astra-temp/astra_camera/openni2_redist .
+rm -rf /tmp/astra-temp
+
+cd ~/risabotcar_ws
+colcon build --symlink-install --packages-select astra_camera
