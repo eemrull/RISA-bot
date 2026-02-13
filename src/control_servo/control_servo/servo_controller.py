@@ -82,7 +82,16 @@ class ServoControllerNode(Node):
         self.get_logger().info('  Right Stick → Camera servos (S1/S2)')
         self.get_logger().info('  Start       → Toggle AUTO/MANUAL mode')
         self.get_logger().info('  LB/RB       → Cycle challenge states')
-        self.get_logger().info(f'  Mode: MANUAL')
+        self.get_logger().info('  D-pad ▲/▼   → Speed ±10%')
+        self.get_logger().info(f'  Mode: MANUAL | Speed: {self.speed_pct}%')
+
+        # Publish initial state so dashboard starts correctly
+        mode_msg = Bool()
+        mode_msg.data = self.auto_mode
+        self.auto_mode_pub.publish(mode_msg)
+        ctrl_msg = String()
+        ctrl_msg.data = f'{self.speed_pct}|{self.challenge_index}|{CHALLENGE_STATES[self.challenge_index]}'
+        self.dash_ctrl_pub.publish(ctrl_msg)
 
     def _button_pressed(self, msg, button_idx):
         """Return True only on rising edge (button was just pressed)."""

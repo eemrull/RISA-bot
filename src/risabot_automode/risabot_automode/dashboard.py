@@ -22,6 +22,11 @@ import http.server
 import numpy as np
 import cv2
 
+try:
+    from cv_bridge import CvBridge
+except ImportError:
+    CvBridge = None
+
 # ======================== HTML Dashboard ========================
 
 DASHBOARD_HTML = """<!DOCTYPE html>
@@ -116,9 +121,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     border-radius: 6px;
     font-weight: 700;
     font-size: 1.1em;
+    transition: all 0.3s;
   }
-  .mode-AUTO { background: #4caf50; color: #fff; }
-  .mode-MANUAL { background: #ff9800; color: #fff; }
+  .mode-AUTO { background: #4caf50; color: #fff; box-shadow: 0 0 12px #4caf5088; }
+  .mode-MANUAL { background: #ff9800; color: #fff; box-shadow: 0 0 12px #ff980088; }
 
   .lap-badge {
     padding: 6px 14px;
@@ -221,6 +227,21 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     min-height: 180px;
     object-fit: contain;
   }
+  .cam-toggle {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid #0f3460;
+    background: #1a1a2e;
+    color: #42a5f5;
+    cursor: pointer;
+    font-size: 0.85em;
+    font-weight: 600;
+    transition: all 0.2s;
+    margin-bottom: 10px;
+  }
+  .cam-toggle:hover { background: #0f3460; color: #fff; }
+  .cam-toggle.on { background: #4caf50; color: #fff; border-color: #4caf50; }
 
   .odom-val {
     font-size: 1.8em;
@@ -231,6 +252,35 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     font-size: 0.7em;
     color: #888;
     margin-left: 4px;
+  }
+
+  /* Speed gauge */
+  .speed-gauge {
+    text-align: center;
+    padding: 6px 0;
+  }
+  .speed-gauge .value {
+    font-size: 2em;
+    font-weight: 700;
+    color: #42a5f5;
+  }
+  .speed-gauge .label {
+    font-size: 0.7em;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* Challenge selector highlight */
+  .ctrl-state {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.9em;
+    background: #4a148c;
+    color: #ce93d8;
+    letter-spacing: 0.5px;
   }
 
   @media (max-width: 768px) {
@@ -251,7 +301,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <h3>State Machine</h3>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <span class="state-badge" id="stateBadge">—</span>
-      <span class="mode-badge" id="modeBadge">—</span>
+      <span class="mode-badge" id="modeBadge">MANUAL</span>
       <span class="lap-badge" id="lapBadge">Lap —</span>
     </div>
     <div style="margin-top:10px;display:flex;gap:20px;font-size:0.85em;color:#888;">
@@ -336,21 +386,22 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     </div>
   </div>
 
-  <!-- Speed & State Cycle -->
+  <!-- Manual Control: Speed + State Cycle -->
   <div class="card">
     <h3>Manual Control</h3>
-    <div class="sensor-row">
-      <span class="sensor-label">Speed</span>
-      <span class="sensor-value" style="color:#42a5f5;font-size:1.4em;font-weight:700;" id="speedPct">50%</span>
+    <div class="speed-gauge">
+      <div class="value" id="speedPct">50%</div>
+      <div class="label">Drive Speed</div>
     </div>
     <div class="meter-bar"><div class="meter-fill orange" id="speedBar" style="width:50%"></div></div>
-    <div style="margin-top:10px;font-size:0.8em;color:#666;">D-pad ▲/▼ to adjust ±10%</div>
-    <div style="margin-top:12px;">
+    <div style="margin-top:6px;font-size:0.75em;color:#555;text-align:center;">D-pad ▲/▼ ±10%</div>
+
+    <div style="margin-top:14px;">
       <div class="sensor-row">
         <span class="sensor-label">Challenge Selector</span>
-        <span class="sensor-value" id="ctrlState" style="color:#ce93d8;">LANE_FOLLOW</span>
+        <span class="ctrl-state" id="ctrlState">LANE_FOLLOW</span>
       </div>
-      <div style="font-size:0.8em;color:#666;">LB/RB to cycle states</div>
+      <div style="font-size:0.75em;color:#555;">LB / RB to cycle</div>
     </div>
   </div>
 
@@ -377,9 +428,52 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <span>R: <span id="joyR">0.0, 0.0</span></span>
     </div>
   </div>
+
+  <!-- Camera Feed -->
+  <div class="card full">
+    <h3>Camera Feed</h3>
+    <button class="cam-toggle" id="camBtn" onclick="toggleCam()">📷 Enable Camera</button>
+    <div id="camContainer" style="display:none;">
+      <img class="camera-feed" id="camImg" src="" alt="Camera Feed">
+    </div>
+    <div id="camOff" style="text-align:center;padding:30px;color:#555;font-size:0.85em;">
+      Camera off — click button above to enable
+    </div>
+  </div>
 </div>
 
 <script>
+let camEnabled = false;
+let camInterval = null;
+
+function toggleCam() {
+  camEnabled = !camEnabled;
+  const btn = document.getElementById('camBtn');
+  const container = document.getElementById('camContainer');
+  const off = document.getElementById('camOff');
+  if (camEnabled) {
+    btn.textContent = '📷 Disable Camera';
+    btn.classList.add('on');
+    container.style.display = 'block';
+    off.style.display = 'none';
+    refreshCam();
+    camInterval = setInterval(refreshCam, 200);
+  } else {
+    btn.textContent = '📷 Enable Camera';
+    btn.classList.remove('on');
+    container.style.display = 'none';
+    off.style.display = 'block';
+    document.getElementById('camImg').src = '';
+    if (camInterval) clearInterval(camInterval);
+  }
+}
+
+function refreshCam() {
+  if (!camEnabled) return;
+  const img = document.getElementById('camImg');
+  img.src = '/camera_feed?' + Date.now();
+}
+
 function update() {
   fetch('/data')
     .then(r => r.json())
@@ -392,9 +486,11 @@ function update() {
       sb.textContent = d.state;
       sb.className = 'state-badge state-' + d.state;
 
+      // Mode — always show current auto_mode
       const mb = document.getElementById('modeBadge');
-      mb.textContent = d.auto_mode ? 'AUTO' : 'MANUAL';
-      mb.className = 'mode-badge mode-' + (d.auto_mode ? 'AUTO' : 'MANUAL');
+      const modeStr = d.auto_mode ? 'AUTO' : 'MANUAL';
+      mb.textContent = modeStr;
+      mb.className = 'mode-badge mode-' + modeStr;
 
       document.getElementById('lapBadge').textContent = 'Lap ' + d.lap;
       document.getElementById('stateTime').textContent = d.state_time;
@@ -440,12 +536,12 @@ function update() {
       document.getElementById('odomDist').textContent = d.distance.toFixed(2);
       document.getElementById('odomSpeed').textContent = d.speed.toFixed(3) + ' m/s';
 
-      // Speed & State Cycle
+      // Manual control — speed pct & challenge selector
       document.getElementById('speedPct').textContent = d.speed_pct + '%';
       document.getElementById('speedBar').style.width = d.speed_pct + '%';
       document.getElementById('ctrlState').textContent = d.ctrl_state_name;
 
-      // Controller buttons (correct mapping: A=0,B=1,X=3,Y=4,LB=6,RB=7,LT=8,RT=9,Start=11)
+      // Controller buttons (A=0, B=1, X=3, Y=4, LB=6, RB=7, LT=8, RT=9, Start=11)
       const btnMap = {0:'btnA', 1:'btnB', 3:'btnX', 4:'btnY', 6:'btnLB', 7:'btnRB', 8:'btnLT', 9:'btnRT', 11:'btnStart'};
       Object.values(btnMap).forEach(id => document.getElementById(id).classList.remove('active'));
       if (d.buttons) d.buttons.forEach((v,i) => { if (v && btnMap[i]) document.getElementById(btnMap[i]).classList.add('active'); });
@@ -481,6 +577,11 @@ class DashboardNode(Node):
     def __init__(self):
         super().__init__('dashboard')
         self.get_logger().info('Dashboard node starting on http://0.0.0.0:8080')
+
+        # CV Bridge for camera
+        self.bridge = CvBridge() if CvBridge else None
+        self.latest_jpeg = None
+        self.jpeg_lock = threading.Lock()
 
         # Shared state (read by HTTP handler)
         self.data = {
@@ -531,12 +632,24 @@ class DashboardNode(Node):
         self.create_subscription(Joy, '/joy', self._joy_cb, 10)
         self.create_subscription(String, '/dashboard_state', self._dash_state_cb, 10)
         self.create_subscription(String, '/dashboard_ctrl', self._dash_ctrl_cb, 10)
+        self.create_subscription(String, '/set_challenge', self._set_challenge_cb, 10)
+
+        # Camera subscription (SENSOR_DATA QoS to match camera publisher)
+        self.create_subscription(
+            Image, '/camera/color/image_raw', self._image_cb, qos
+        )
+
+        self.get_logger().info('Dashboard subscriptions ready')
 
     def _set(self, key, value):
         with self.data_lock:
             self.data[key] = value
 
-    def _auto_mode_cb(self, msg): self._set('auto_mode', msg.data)
+    def _auto_mode_cb(self, msg):
+        self._set('auto_mode', msg.data)
+        mode = "AUTO" if msg.data else "MANUAL"
+        self.get_logger().info(f'Mode changed: {mode}')
+
     def _lidar_cb(self, msg): self._set('lidar_obstacle', msg.data)
     def _cam_cb(self, msg): self._set('camera_obstacle', msg.data)
     def _fused_cb(self, msg): self._set('fused_obstacle', msg.data)
@@ -587,11 +700,37 @@ class DashboardNode(Node):
         except Exception:
             pass
 
+    def _set_challenge_cb(self, msg):
+        """Also listen to /set_challenge as fallback for state cycle display."""
+        name = msg.data.upper()
+        self._set('ctrl_state_name', name)
+
+    def _image_cb(self, msg):
+        """Convert ROS Image to JPEG for the web feed."""
+        if self.bridge is None:
+            return
+        try:
+            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            # Resize to save bandwidth
+            h, w = cv_image.shape[:2]
+            scale = min(640 / w, 480 / h)
+            if scale < 1.0:
+                cv_image = cv2.resize(cv_image, (int(w * scale), int(h * scale)))
+            _, jpeg = cv2.imencode('.jpg', cv_image, [cv2.IMWRITE_JPEG_QUALITY, 60])
+            with self.jpeg_lock:
+                self.latest_jpeg = jpeg.tobytes()
+        except Exception:
+            pass
+
     def get_json(self):
         with self.data_lock:
             d = dict(self.data)
         d['state_time'] = int(time.time() - self._state_entry_time)
         return json.dumps(d)
+
+    def get_jpeg(self):
+        with self.jpeg_lock:
+            return self.latest_jpeg
 
 
 # ======================== HTTP Server ========================
@@ -607,9 +746,23 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(data.encode())
+        elif self.path.startswith('/camera_feed'):
+            jpeg = _node_ref.get_jpeg() if _node_ref else None
+            if jpeg:
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/jpeg')
+                self.send_header('Content-Length', str(len(jpeg)))
+                self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                self.end_headers()
+                self.wfile.write(jpeg)
+            else:
+                # Return a 1x1 transparent pixel if no image available
+                self.send_response(204)
+                self.end_headers()
         else:
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
+            self.send_header('Cache-Control', 'no-cache')
             self.end_headers()
             self.wfile.write(DASHBOARD_HTML.encode())
 
