@@ -6,7 +6,7 @@ Quick reference documentation for operating and tuning the robot.
 
 | Guide | Description |
 |---|---|
-| [Main Branch](main_branch.md) | How `main` works — individual node testing, intern's controller |
+| [Main Branch](main_branch.md) | How `main` works — individual node testing, original controller |
 | [Test Branch](test_branch.md) | How `new-control-code` works — competition state machine, all 9 challenges |
 | [Commands Reference](commands_reference.md) | All ROS topics, launch files, useful commands |
 | [Tuning Guide](tuning_guide.md) | Step-by-step parameter tuning on the physical course |

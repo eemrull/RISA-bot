@@ -40,7 +40,7 @@ Detailed documentation is in the [Guide/](Guide/) folder:
 
 | Guide | Description |
 |---|---|
-| [Main Branch](Guide/main_branch.md) | How `main` works — individual nodes, intern's controller |
+| [Main Branch](Guide/main_branch.md) | How `main` works — individual nodes, original controller |
 | [Test Branch](Guide/test_branch.md) | How `new-control-code` works — state machine, all challenges |
 | [Commands Reference](Guide/commands_reference.md) | All ROS topics, launch files, `ros2 param set` commands |
 | [Tuning Guide](Guide/tuning_guide.md) | Step-by-step parameter tuning on physical course |

@@ -47,7 +47,7 @@ ros2 launch control_servo robot_rc.launch.py
 
 ## Controller Node (`servo_controller`)
 
-The main branch uses the intern's **monolithic controller** at:
+The main branch uses the **original monolithic controller** at:
 `control_servo/servo_controller/servo_controller.py` (469 lines)
 
 ### Controls
