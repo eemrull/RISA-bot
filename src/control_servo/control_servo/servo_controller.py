@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
 """
-Servo Controller + Mode Switch Node  (V4)
-=========================================
-Controls:
-  Left Stick Y  (axes[1])  → Throttle (forward/back)
-  Right Stick X (axes[3])  → Steering (left/right)
-  Right Stick Y (axes[4])  → Camera tilt servo (S2)
-  Start/Options (btn 11)   → Toggle AUTO / MANUAL
-  LB / RB       (btn 6/7)  → Cycle challenge state
-  D-pad ▲/▼     (axes[7])  → Speed level [25,50,75,100]%
+Servo Controller + Mode Switch Node  (V5 — matches main-branch axis mapping)
+=============================================================================
+Rosmaster_Lib.set_car_motion(vx, vy, vz):
+    vx: -1.0 .. 1.0  m/s   (forward/back)
+    vy: -1.0 .. 1.0  m/s   (lateral — unused for Ackermann)
+    vz: -5.0 .. 5.0  rad/s (rotation)
 
-Topic map:
-  Publishes:  /auto_mode, /cmd_vel, /set_challenge, /dashboard_ctrl, /odom
-  Subscribes: /joy, /cmd_vel_auto
+ROS2 joy_node (SDL2) axis mapping  (confirmed from main branch):
+    0 = Left Stick X        1 = Left Stick Y
+    2 = Left Trigger         3 = Right Stick X
+    4 = Right Stick Y        5 = Right Trigger
+    6 = D-pad X              7 = D-pad Y
+
+Controls:
+    Left Stick Y  (axes[1])  → Throttle   via set_car_motion vx
+    Left Stick X  (axes[0])  → Steering   via set_car_motion vz
+    Right Stick X (axes[3])  → Front Servo S1  (set_pwm_servo 1)
+    Right Stick Y (axes[4])  → Front Servo S2  (set_pwm_servo 2)
+    Start         (btn 11)   → AUTO / MANUAL toggle
+    LB / RB       (btn 6/7)  → Cycle challenge state
+    D-pad ▲/▼     (axes[7])  → Speed level [25,50,75,100]%
 """
 import rclpy
 from rclpy.node import Node
@@ -24,20 +32,19 @@ from Rosmaster_Lib import Rosmaster
 import time
 
 # ============================================================
-# Global bot — initialised before any ROS node starts
+# Global bot
 # ============================================================
 bot = None
 try:
     bot = Rosmaster()
     bot.set_car_type(1)
-    bot.set_car_motion(0, 0, 0)
+    bot.set_car_motion(0, 0, 0)        # stop motors immediately
     print("Rosmaster Serial Opened!")
 except Exception as e:
     print(f"Failed to initialize Rosmaster: {e}")
-    print("Exiting. Make sure the robot is powered on and connected.")
+    print("Exiting.")
     exit()
 
-# Challenge states (matches ChallengeState enum in auto_driver)
 CHALLENGE_STATES = [
     'LANE_FOLLOW', 'OBSTRUCTION', 'ROUNDABOUT',
     'BOOM_GATE_1', 'TUNNEL', 'BOOM_GATE_2',
@@ -45,8 +52,8 @@ CHALLENGE_STATES = [
     'PARALLEL_PARK', 'DRIVE_TO_PERP', 'PERPENDICULAR_PARK'
 ]
 
-# Joystick axis deadzone (applied in software on top of joy_node deadzone)
-STICK_DEADZONE = 0.15
+# Software deadzone — sticks below this magnitude are treated as 0
+DEADZONE = 0.12
 
 
 class ServoControllerNode(Node):
@@ -64,16 +71,22 @@ class ServoControllerNode(Node):
         self.create_subscription(Joy, 'joy', self.joy_callback, 10)
         self.create_subscription(Twist, '/cmd_vel_auto', self.cmd_vel_callback, 10)
 
-        # ---- Rosmaster receive thread (odometry) ----
+        # ---- Rosmaster receive thread ----
         try:
             bot.create_receive_threading()
             self.get_logger().info("Rosmaster receive thread started.")
         except Exception as e:
-            self.get_logger().error(f"Failed to start receive thread: {e}")
+            self.get_logger().error(f"Receive thread error: {e}")
+
+        # Send stop again AFTER threading is up (clears any residual velocity)
+        try:
+            bot.set_car_motion(0, 0, 0)
+        except Exception:
+            pass
 
         # ---- Timers ----
-        self.create_timer(0.1, self.publish_odom)        # 10 Hz odometry
-        self.create_timer(0.05, self.startup_stop_spam)   # 20 Hz stop-spam (first 2s)
+        self.create_timer(0.1, self.publish_odom)        # 10 Hz odom
+        self._stop_spam_timer = self.create_timer(0.05, self._startup_stop)  # 20 Hz stop spam
 
         # ---- State ----
         self.auto_mode = False
@@ -82,57 +95,49 @@ class ServoControllerNode(Node):
         self.challenge_index = 0
         self.prev_buttons = []
         self.prev_axes = []
-        self.got_first_joy = False  # Flag to stop the startup spam
-        self.start_time = time.time()
+        self._got_joy = False
+        self._start_t = time.time()
+        self._dbg_t = 0.0
 
-        # ---- Speed levels ----
+        # ---- Speed ----
         self.SPEED_LEVELS = [25, 50, 75, 100]
-        self.speed_idx = 1          # Start at 50%
+        self.speed_idx = 1          # start at 50%
         self.speed_pct = self.SPEED_LEVELS[self.speed_idx]
 
         # ---- Parameters ----
-        # Rosmaster set_car_motion expects values roughly in range -100..100
-        self.declare_parameter('max_linear_speed', 50.0)
-        self.declare_parameter('max_angular_speed', 80.0)
-        self.declare_parameter('toggle_button', 11)       # Start / Options
-        self.declare_parameter('prev_state_button', 6)    # LB
-        self.declare_parameter('next_state_button', 7)    # RB
+        # Rosmaster range: vx ±1.0 m/s, vz ±5.0 rad/s
+        self.declare_parameter('max_linear_speed', 1.0)   # full range of motor
+        self.declare_parameter('max_angular_speed', 5.0)   # full range of rotation
+        self.declare_parameter('toggle_button', 11)
+        self.declare_parameter('prev_state_button', 6)
+        self.declare_parameter('next_state_button', 7)
 
-        # ---- Startup banner ----
-        self.get_logger().info('*** SERVO CONTROLLER V4 ***')
+        self.get_logger().info('*** SERVO CONTROLLER V5 ***')
         self.get_logger().info('Controls:')
-        self.get_logger().info('  Left Stick Y  → Throttle (fwd/back)')
-        self.get_logger().info('  Right Stick X → Steering (left/right)')
+        self.get_logger().info('  Left Stick Y  → Throttle (set_car_motion vx)')
+        self.get_logger().info('  Left Stick X  → Steering (set_car_motion vz)')
+        self.get_logger().info('  Right Stick   → Servo S1/S2 (axes[3]/axes[4])')
         self.get_logger().info('  D-pad ▲/▼     → Speed [25,50,75,100]%')
-        self.get_logger().info('  Start         → Toggle AUTO/MANUAL')
-        self.get_logger().info('  LB/RB         → Cycle challenge state')
-        self.get_logger().info(f'  Mode: MANUAL | Speed: {self.speed_pct}%')
         self.get_logger().info(f'  max_lin={self.get_parameter("max_linear_speed").value}  max_ang={self.get_parameter("max_angular_speed").value}')
+        self.get_logger().info(f'  Mode: MANUAL | Speed: {self.speed_pct}%')
 
-        # Publish initial dashboard state
-        self.auto_mode_pub.publish(Bool(data=self.auto_mode))
+        # Publish initial
+        self.auto_mode_pub.publish(Bool(data=False))
         ctrl = String()
         ctrl.data = f'{self.speed_pct}|{self.challenge_index}|{CHALLENGE_STATES[self.challenge_index]}'
         self.dash_ctrl_pub.publish(ctrl)
 
-    # ----------------------------------------------------------------
-    # Startup stop-spam: repeatedly send stop until first joy arrives
-    # ----------------------------------------------------------------
-    def startup_stop_spam(self):
-        """Send stop commands for the first 2 seconds to clear residual board state."""
-        elapsed = time.time() - self.start_time
-        if self.got_first_joy or elapsed > 2.0:
-            return  # Stop spamming once joy arrives or 2s elapsed
+    # ---- Startup: spam stop commands until first joy msg or 2s ----
+    def _startup_stop(self):
+        if self._got_joy or (time.time() - self._start_t) > 2.0:
+            return
         try:
             bot.set_car_motion(0, 0, 0)
         except Exception:
             pass
 
-    # ----------------------------------------------------------------
-    # Helper
-    # ----------------------------------------------------------------
-    def _button_pressed(self, msg, idx):
-        """Rising-edge detection for a button."""
+    # ---- Helpers ----
+    def _btn_pressed(self, msg, idx):
         if idx >= len(msg.buttons):
             return False
         cur = msg.buttons[idx]
@@ -140,40 +145,43 @@ class ServoControllerNode(Node):
         return cur == 1 and prev == 0
 
     @staticmethod
-    def _deadzone(val, dz=STICK_DEADZONE):
-        """Zero out small stick values."""
+    def _dz(val, dz=DEADZONE):
         return 0.0 if abs(val) < dz else val
 
-    # ----------------------------------------------------------------
-    # Joy callback
-    # ----------------------------------------------------------------
+    # ================================================================
+    # JOY CALLBACK
+    # ================================================================
     def joy_callback(self, msg):
         toggle_btn = self.get_parameter('toggle_button').value
         prev_btn   = self.get_parameter('prev_state_button').value
         next_btn   = self.get_parameter('next_state_button').value
-        self.got_first_joy = True
+        self._got_joy = True
 
         try:
-            # ===== AUTO / MANUAL TOGGLE =====
-            if self._button_pressed(msg, toggle_btn):
+            # ===== AUTO / MANUAL =====
+            if self._btn_pressed(msg, toggle_btn):
                 self.auto_mode = not self.auto_mode
                 label = "🤖 AUTO" if self.auto_mode else "🎮 MANUAL"
                 self.get_logger().info(f'Mode: {label}')
                 self.auto_mode_pub.publish(Bool(data=self.auto_mode))
+                if not self.auto_mode:
+                    # Immediately stop motors when switching to manual
+                    try: bot.set_car_motion(0, 0, 0)
+                    except: pass
 
             # ===== CHALLENGE STATE CYCLING =====
-            if self._button_pressed(msg, next_btn):
+            if self._btn_pressed(msg, next_btn):
                 self.challenge_index = (self.challenge_index + 1) % len(CHALLENGE_STATES)
                 name = CHALLENGE_STATES[self.challenge_index]
                 self.get_logger().info(f'Challenge → {name}')
                 self.challenge_pub.publish(String(data=name))
-            if self._button_pressed(msg, prev_btn):
+            if self._btn_pressed(msg, prev_btn):
                 self.challenge_index = (self.challenge_index - 1) % len(CHALLENGE_STATES)
                 name = CHALLENGE_STATES[self.challenge_index]
                 self.get_logger().info(f'Challenge → {name}')
                 self.challenge_pub.publish(String(data=name))
 
-            # ===== D-PAD SPEED CONTROL =====
+            # ===== D-PAD SPEED =====
             if len(msg.axes) > 7:
                 dup   = msg.axes[7] > 0.5
                 ddown = msg.axes[7] < -0.5
@@ -188,50 +196,56 @@ class ServoControllerNode(Node):
                     self.speed_pct = self.SPEED_LEVELS[self.speed_idx]
                     self.get_logger().info(f'Speed: {self.speed_pct}%')
 
-            # ===== MANUAL DRIVING =====
+            # ===== MANUAL DRIVING (left stick) =====
             if not self.auto_mode:
-                max_lin = self.get_parameter('max_linear_speed').value   # ~50
-                max_ang = self.get_parameter('max_angular_speed').value  # ~80
+                max_lin = self.get_parameter('max_linear_speed').value   # 1.0
+                max_ang = self.get_parameter('max_angular_speed').value  # 5.0
                 scale   = self.speed_pct / 100.0
 
-                # ROS2 joy_node axis mapping (SDL2 backend):
-                #   0 = Left Stick X      1 = Left Stick Y
-                #   2 = Left Trigger       3 = Right Stick X
-                #   4 = Right Stick Y      5 = Right Trigger
-                #   6 = D-pad X            7 = D-pad Y
-                throttle = 0.0
-                steering = 0.0
+                # axes[1] = Left Stick Y (forward/back)
+                # axes[0] = Left Stick X (steering left/right)
+                raw_y = self._dz(msg.axes[1]) if len(msg.axes) > 1 else 0.0
+                raw_x = self._dz(msg.axes[0]) if len(msg.axes) > 0 else 0.0
 
-                if len(msg.axes) > 1:
-                    throttle = self._deadzone(msg.axes[1]) * max_lin * scale
-                if len(msg.axes) > 3:
-                    steering = self._deadzone(msg.axes[3]) * max_ang * scale
+                vx = raw_y * max_lin * scale     # forward/back   [-1.0,1.0]
+                vz = raw_x * max_ang * scale     # steering        [-5.0,5.0]
 
-                # Publish cmd_vel for dashboard / other nodes
+                # Clamp to Rosmaster safe range
+                vx = max(-1.0, min(1.0, vx))
+                vz = max(-5.0, min(5.0, vz))
+
                 cmd = Twist()
-                cmd.linear.x = throttle
-                cmd.angular.z = steering
+                cmd.linear.x = vx
+                cmd.angular.z = vz
                 self.cmd_vel_pub.publish(cmd)
 
-                # Drive hardware
                 try:
                     now = self.get_clock().now().nanoseconds / 1e9
-                    if not hasattr(self, '_dbg_t'):
-                        self._dbg_t = 0
                     if now - self._dbg_t > 0.5:
                         self.get_logger().info(
-                            f"HW: thr={throttle:.1f} steer={steering:.1f} "
-                            f"(axes1={msg.axes[1]:.2f} axes3={msg.axes[3]:.2f} "
-                            f"scale={scale:.2f})")
+                            f"HW: vx={vx:.3f} vz={vz:.3f} | "
+                            f"raw_y={raw_y:.2f} raw_x={raw_x:.2f} | "
+                            f"scale={scale:.2f}")
                         self._dbg_t = now
-                    bot.set_car_motion(throttle, 0, steering)
+                    bot.set_car_motion(vx, 0.0, vz)
                 except Exception as e:
-                    self.get_logger().error(f"HW write fail: {e}")
+                    self.get_logger().error(f"HW error: {e}")
 
-            # ===== CAMERA TILT SERVO (Right Stick Y → S2) =====
+            # ===== FRONT SERVOS (right stick — matches main branch) =====
+            #   axes[3] = Right Stick X → S1 (Left/Right)
+            #   axes[4] = Right Stick Y → S2 (Up/Down)
             if len(msg.axes) > 4:
-                ry = self._deadzone(msg.axes[4])
+                rx = msg.axes[3]
+                ry = msg.axes[4]
+                s1_val = int((rx * -1.0 + 1.0) * 90.0)   # [-1,1] → [180,0]
                 s2_val = int((ry * -1.0 + 1.0) * 90.0)
+
+                s1_val = max(0, min(180, s1_val))
+                s2_val = max(0, min(180, s2_val))
+
+                if s1_val != self.last_s1:
+                    bot.set_pwm_servo(1, s1_val)
+                    self.last_s1 = s1_val
                 if s2_val != self.last_s2:
                     bot.set_pwm_servo(2, s2_val)
                     self.last_s2 = s2_val
@@ -241,24 +255,22 @@ class ServoControllerNode(Node):
             ctrl.data = f'{self.speed_pct}|{self.challenge_index}|{CHALLENGE_STATES[self.challenge_index]}'
             self.dash_ctrl_pub.publish(ctrl)
 
-            # Save states for debouncing
+            # Save for debouncing
             self.prev_buttons = list(msg.buttons)
             self.prev_axes = list(msg.axes)
 
-            # Console debug
+            # Console — show ALL raw axes for debugging
             mode_s = "AUTO" if self.auto_mode else "MAN"
             st_s   = CHALLENGE_STATES[self.challenge_index]
-            pressed = [i for i, b in enumerate(msg.buttons) if b == 1]
-            btn_s   = f' Btns:{pressed}' if pressed else ''
-            axes_s  = ' '.join(f'{a:.2f}' for a in msg.axes[:6]) if len(msg.axes) >= 6 else ''
-            print(f"\r[V4] {mode_s} {st_s} Spd:{self.speed_pct}% S2:{self.last_s2} Axes:[{axes_s}]{btn_s}    ", end='', flush=True)
+            axes_s = ' '.join(f'{a:+.2f}' for a in msg.axes[:8]) if len(msg.axes) >= 6 else ''
+            print(f"\r[V5] {mode_s} {st_s} Spd:{self.speed_pct}% S1:{self.last_s1} S2:{self.last_s2} [{axes_s}]   ", end='', flush=True)
 
         except Exception as e:
             self.get_logger().error(f'joy_callback error: {e}')
 
-    # ----------------------------------------------------------------
-    # Auto-mode cmd_vel
-    # ----------------------------------------------------------------
+    # ================================================================
+    # AUTO-MODE cmd_vel (from auto_driver)
+    # ================================================================
     def cmd_vel_callback(self, msg):
         if self.auto_mode:
             try:
@@ -266,9 +278,9 @@ class ServoControllerNode(Node):
             except Exception as e:
                 self.get_logger().error(f"Auto HW error: {e}")
 
-    # ----------------------------------------------------------------
-    # Odometry publisher
-    # ----------------------------------------------------------------
+    # ================================================================
+    # ODOMETRY
+    # ================================================================
     def publish_odom(self):
         try:
             vx, vy, wz = 0.0, 0.0, 0.0
@@ -281,7 +293,6 @@ class ServoControllerNode(Node):
                         vx, wz = float(data[0]), float(data[1])
                 except Exception:
                     pass
-            # Reject garbage
             if abs(vx) > 10.0 or abs(vy) > 10.0 or abs(wz) > 20.0:
                 vx, vy, wz = 0.0, 0.0, 0.0
 
@@ -297,11 +308,8 @@ class ServoControllerNode(Node):
             pass
 
 
-# ================================================================
-# main
-# ================================================================
 def main(args=None):
-    global bot                        # ← prevents UnboundLocalError
+    global bot
     rclpy.init(args=args)
     node = ServoControllerNode()
     try:
@@ -310,8 +318,8 @@ def main(args=None):
         pass
     finally:
         try:
-            bot.set_car_motion(0, 0, 0)   # Stop motors
-            bot.set_pwm_servo(1, 90)       # Centre servos
+            bot.set_car_motion(0, 0, 0)
+            bot.set_pwm_servo(1, 90)
             bot.set_pwm_servo(2, 90)
             time.sleep(0.3)
         except Exception:
