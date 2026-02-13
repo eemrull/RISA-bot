@@ -44,16 +44,18 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     --accent: #e94560;
     --accent2: #0f3460;
     --text: #e0e0e0;
-    --muted: #666;
-    --radius: 14px;
+    --muted: #555;
+    --radius: 16px;
+    --glow: rgba(233,69,96,0.15);
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
     font-family: 'Inter', sans-serif;
     background: var(--bg);
     background-image:
-      radial-gradient(ellipse at 20% 50%, rgba(15,52,96,0.15) 0%, transparent 50%),
-      radial-gradient(ellipse at 80% 20%, rgba(233,69,96,0.08) 0%, transparent 50%);
+      radial-gradient(ellipse at 20% 50%, rgba(15,52,96,0.2) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(233,69,96,0.12) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 100%, rgba(66,165,245,0.06) 0%, transparent 40%);
     color: var(--text);
     min-height: 100vh;
     overflow-x: hidden;
@@ -61,25 +63,29 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
   /* ===== HEADER ===== */
   .header {
-    background: rgba(15,15,30,0.9);
-    backdrop-filter: blur(20px);
-    padding: 12px 24px;
-    border-bottom: 1px solid var(--card-border);
+    background: rgba(10,10,25,0.95);
+    backdrop-filter: blur(24px);
+    padding: 14px 28px;
+    border-bottom: 1px solid rgba(233,69,96,0.15);
     display: flex;
     align-items: center;
     justify-content: space-between;
     position: sticky;
     top: 0;
     z-index: 100;
+    box-shadow: 0 4px 30px rgba(0,0,0,0.4);
   }
   .header h1 {
-    font-size: 1.3em;
+    font-size: 1.4em;
     font-weight: 800;
-    background: linear-gradient(135deg, var(--accent), #42a5f5);
+    background: linear-gradient(135deg, var(--accent), #ff6b81, #42a5f5);
+    background-size: 200% 200%;
+    animation: gradShift 4s ease infinite;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     letter-spacing: -0.5px;
   }
+  @keyframes gradShift { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
   .conn-badge {
     display: flex;
     align-items: center;
@@ -110,20 +116,36 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   /* ===== CARDS ===== */
   .card {
     background: var(--card);
-    backdrop-filter: blur(12px);
+    backdrop-filter: blur(16px);
     border: 1px solid var(--card-border);
     border-radius: var(--radius);
-    padding: 16px;
-    transition: border-color 0.3s;
+    padding: 18px;
+    transition: all 0.35s cubic-bezier(0.4,0,0.2,1);
+    position: relative;
+    overflow: hidden;
   }
-  .card:hover { border-color: rgba(255,255,255,0.1); }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .card:hover {
+    border-color: rgba(233,69,96,0.2);
+    box-shadow: 0 4px 20px rgba(233,69,96,0.08);
+    transform: translateY(-1px);
+  }
+  .card:hover::before { opacity: 1; }
   .card h3 {
     font-size: 0.65em;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 2.5px;
     color: var(--muted);
-    margin-bottom: 10px;
-    font-weight: 600;
+    margin-bottom: 12px;
+    font-weight: 700;
   }
 
   /* ===== STATE BADGE ===== */
@@ -222,29 +244,46 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .dot-gray { background: #333; }
 
   /* ===== METER BARS ===== */
-  .meter { height: 6px; background: #1a1a2e; border-radius: 3px; overflow: hidden; margin-top: 4px; }
-  .meter-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .meter { height: 8px; background: rgba(26,26,46,0.8); border-radius: 4px; overflow: hidden; margin-top: 6px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); }
+  .meter-fill { height: 100%; border-radius: 4px; transition: width 0.4s cubic-bezier(0.4,0,0.2,1), background 0.4s; position: relative; }
+  .meter-fill::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 50%; background: linear-gradient(180deg, rgba(255,255,255,0.15), transparent); border-radius: 4px 4px 0 0; }
   .meter-blue { background: linear-gradient(90deg, #1565c0, #42a5f5); }
-  .meter-orange { background: linear-gradient(90deg, #e65100, #ff9800); }
+  .meter-orange { background: linear-gradient(90deg, #e65100, #ff9800, #ffb74d); }
 
   /* ===== SPEED GAUGE ===== */
   .speed-display {
     text-align: center;
-    padding: 8px 0;
+    padding: 12px 0;
   }
   .speed-display .num {
-    font-size: 2.2em;
+    font-size: 2.8em;
     font-weight: 800;
-    background: linear-gradient(135deg, #42a5f5, #1565c0);
+    background: linear-gradient(135deg, #42a5f5, #1e88e5, #e94560);
+    background-size: 200% 200%;
+    animation: gradShift 3s ease infinite;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     line-height: 1;
+    transition: all 0.3s;
   }
   .speed-display .unit {
     font-size: 0.6em;
     color: var(--muted);
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 3px;
+    margin-top: 4px;
+  }
+  .gear-dots {
+    display: flex; justify-content: center; gap: 6px; margin-top: 8px;
+  }
+  .gear-dot {
+    width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.1);
+    transition: all 0.3s;
+  }
+  .gear-dot.active {
+    background: var(--accent); border-color: var(--accent);
+    box-shadow: 0 0 8px rgba(233,69,96,0.5);
   }
 
   /* ===== CHALLENGE SELECTOR ===== */
@@ -410,11 +449,17 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <div class="card">
       <h3>Manual Control</h3>
       <div class="speed-display">
-        <div class="num" id="speedPct">50%</div>
+        <div class="num" id="speedPct">40%</div>
         <div class="unit">Drive Speed</div>
+        <div class="gear-dots">
+          <div class="gear-dot" id="gear0"></div>
+          <div class="gear-dot active" id="gear1"></div>
+          <div class="gear-dot" id="gear2"></div>
+          <div class="gear-dot" id="gear3"></div>
+        </div>
       </div>
-      <div class="meter"><div class="meter-fill meter-orange" id="speedBar" style="width:50%"></div></div>
-      <div style="margin-top:4px;font-size:0.65em;color:#444;text-align:center;">D-pad ▲/▼ ±10%</div>
+      <div class="meter"><div class="meter-fill meter-orange" id="speedBar" style="width:40%"></div></div>
+      <div style="margin-top:6px;font-size:0.65em;color:#444;text-align:center;">D-pad ▲/▼ to shift</div>
       <div style="margin-top:12px;">
         <div class="s-row">
           <span class="s-label">Selector</span>
@@ -599,6 +644,13 @@ function update() {
 
       // Speed & Selector
       document.getElementById('speedPct').textContent = d.speed_pct+'%';
+      document.getElementById('speedBar').style.width = d.speed_pct+'%';
+      // Update gear dots
+      const gears = [25,40,60,100];
+      gears.forEach((g,i) => {
+        const dot = document.getElementById('gear'+i);
+        if(dot) dot.classList.toggle('active', d.speed_pct >= g);
+      });
       document.getElementById('ctrlState').textContent = d.ctrl_state_name;
 
       // Controller buttons — Updated to match user's specific mapping:

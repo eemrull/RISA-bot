@@ -97,22 +97,22 @@ class ServoControllerV8(Node):
         def rose(idx): # Rising edge
             return btn(idx) == 1 and (idx >= len(self.prev_buttons) or self.prev_buttons[idx] == 0)
 
-        # 1. Toggle Mode (Start=11, Y=3)
-        if rose(11) or rose(3): 
+        # 1. Toggle Mode (Start=11, Y=4)
+        if rose(11) or rose(4): 
             self.manual_mode = not self.manual_mode
             self.auto_mode_pub.publish(Bool(data=not self.manual_mode))
             self.get_logger().info(f"Mode: {'MANUAL' if self.manual_mode else 'AUTO'}")
             if self.manual_mode: self.stop_robot()
             self._update_dash()
 
-        # 2. Challenge Cycling (LB=4, RB=5)
-        if rose(5): # RB -> Next
+        # 2. Challenge Cycling (LB=6, RB=7)
+        if rose(7): # RB -> Next
             self.challenge_index = (self.challenge_index + 1) % len(CHALLENGE_STATES)
             self.challenge_pub.publish(String(data=CHALLENGE_STATES[self.challenge_index]))
             self.get_logger().info(f"RB Pressed -> Challenge: {CHALLENGE_STATES[self.challenge_index]}")
             self._update_dash()
         
-        if rose(4): # LB -> Prev
+        if rose(6): # LB -> Prev
             self.challenge_index = (self.challenge_index - 1) % len(CHALLENGE_STATES)
             self.challenge_pub.publish(String(data=CHALLENGE_STATES[self.challenge_index]))
             self.get_logger().info(f"LB Pressed -> Challenge: {CHALLENGE_STATES[self.challenge_index]}")
