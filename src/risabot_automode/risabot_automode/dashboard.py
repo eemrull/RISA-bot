@@ -19,6 +19,7 @@ import threading
 import json
 import time
 import http.server
+import subprocess
 import numpy as np
 import cv2
 
@@ -328,7 +329,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     align-items: center;
     justify-content: center;
     aspect-ratio: 16/9;
-    max-height: 35vh;
+    height: 280px;
+    max-height: 280px;
     background: #050508;
     border-radius: 12px;
     overflow: hidden;
@@ -629,6 +631,137 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .log-time { color: #42a5f5; margin-right: 8px; }
   .log-event { color: #aaa; }
   .log-val { color: var(--accent); font-weight: 600; }
+
+  /* ===== PARAMETER PANEL ===== */
+  .param-section {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 14px 14px;
+  }
+  .param-card {
+    background: var(--card);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 18px;
+  }
+  .param-card h3 {
+    font-size: 0.65em;
+    text-transform: uppercase;
+    letter-spacing: 2.5px;
+    color: var(--muted);
+    margin-bottom: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .param-toolbar {
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 12px;
+  }
+  .param-refresh-btn, .param-load-btn {
+    padding: 5px 14px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.05);
+    color: #42a5f5;
+    cursor: pointer;
+    font-size: 0.75em;
+    font-weight: 600;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .param-refresh-btn:hover, .param-load-btn:hover {
+    background: rgba(66,165,245,0.15); border-color: #42a5f5;
+  }
+  .param-node-block {
+    margin-bottom: 12px;
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .param-node-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.03);
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .param-node-header:hover { background: rgba(255,255,255,0.06); }
+  .param-node-name {
+    font-size: 0.8em;
+    font-weight: 700;
+    color: #42a5f5;
+  }
+  .param-node-count {
+    font-size: 0.65em;
+    color: #444;
+  }
+  .param-node-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.35s ease;
+  }
+  .param-node-body.open {
+    max-height: 2000px;
+  }
+  .param-row {
+    display: flex;
+    align-items: center;
+    padding: 6px 14px;
+    border-top: 1px solid rgba(255,255,255,0.03);
+    gap: 8px;
+  }
+  .param-name {
+    flex: 1;
+    font-size: 0.72em;
+    color: #888;
+    font-family: 'Courier New', monospace;
+    word-break: break-all;
+  }
+  .param-val {
+    width: 120px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.3);
+    color: #e0e0e0;
+    font-size: 0.72em;
+    font-family: 'Courier New', monospace;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .param-val:focus { border-color: var(--accent); }
+  .param-set-btn {
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(76,175,80,0.3);
+    background: rgba(76,175,80,0.1);
+    color: #81c784;
+    cursor: pointer;
+    font-size: 0.65em;
+    font-weight: 600;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .param-set-btn:hover { background: rgba(76,175,80,0.25); border-color: #4caf50; }
+  .param-status {
+    font-size: 0.65em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    animation: logFade 0.3s ease;
+  }
+  .param-status.ok { color: #4caf50; }
+  .param-status.err { color: #f44336; }
+  .param-empty {
+    text-align: center;
+    padding: 20px;
+    color: #333;
+    font-size: 0.8em;
+  }
 </style>
 </head>
 <body>
@@ -831,6 +964,21 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   </div>
 </div>
 
+<!-- ===== PARAMETER TUNING ===== -->
+<div class="param-section">
+  <div class="param-card">
+    <h3><span>⚙️ Live Parameters</span></h3>
+    <div class="param-toolbar">
+      <button class="param-load-btn" onclick="loadAllParams()">Load Nodes</button>
+      <button class="param-refresh-btn" onclick="refreshAllParams()">Refresh Values</button>
+      <span style="font-size:0.65em;color:#333;margin-left:auto;" id="paramPoll"></span>
+    </div>
+    <div id="paramContainer">
+      <div class="param-empty">Click "Load Nodes" to discover ROS2 parameters</div>
+    </div>
+  </div>
+</div>
+
 <!-- ===== CONTROLLER POPOUT ===== -->
 <div class="ctrl-popout-tab" onclick="toggleCtrlDrawer()">🎮 Controls</div>
 <div class="ctrl-drawer" id="ctrlDrawer">
@@ -1023,6 +1171,88 @@ function update() {
       document.getElementById('connText').textContent='Disconnected';
     });
 }
+// ===== PARAMETER TUNING =====
+let paramData = {};  // {node: [{name, value, type}]}
+let paramAutoRefresh = null;
+
+async function loadAllParams() {
+  document.getElementById('paramContainer').innerHTML = '<div class="param-empty">Loading nodes...</div>';
+  try {
+    const r = await fetch('/api/params');
+    paramData = await r.json();
+    renderParams();
+  } catch(e) {
+    document.getElementById('paramContainer').innerHTML = '<div class="param-empty" style="color:#f44336">Failed to load</div>';
+  }
+}
+
+async function refreshAllParams() {
+  try {
+    const r = await fetch('/api/params');
+    paramData = await r.json();
+    renderParams();
+    document.getElementById('paramPoll').textContent = 'Refreshed ' + new Date().toLocaleTimeString('en-GB');
+  } catch(e) {}
+}
+
+function renderParams() {
+  const c = document.getElementById('paramContainer');
+  const nodes = Object.keys(paramData);
+  if (!nodes.length) {
+    c.innerHTML = '<div class="param-empty">No nodes found</div>';
+    return;
+  }
+  c.innerHTML = nodes.map(node => {
+    const params = paramData[node] || [];
+    const rows = params.map(p =>
+      `<div class="param-row" id="pr_${node}_${p.name.replace(/\./g,'_')}">
+        <span class="param-name">${p.name}</span>
+        <input class="param-val" id="pv_${node}_${p.name.replace(/\./g,'_')}" value="${p.value}" />
+        <button class="param-set-btn" onclick="setParam('${node}','${p.name}',this)">Set</button>
+        <span class="param-status" id="ps_${node}_${p.name.replace(/\./g,'_')}"></span>
+      </div>`
+    ).join('');
+    return `<div class="param-node-block">
+      <div class="param-node-header" onclick="this.nextElementSibling.classList.toggle('open')">
+        <span class="param-node-name">${node}</span>
+        <span class="param-node-count">${params.length} params</span>
+      </div>
+      <div class="param-node-body">${rows}</div>
+    </div>`;
+  }).join('');
+}
+
+async function setParam(node, paramName, btn) {
+  const inputId = 'pv_' + node + '_' + paramName.replace(/\./g, '_');
+  const statusId = 'ps_' + node + '_' + paramName.replace(/\./g, '_');
+  const input = document.getElementById(inputId);
+  const status = document.getElementById(statusId);
+  if (!input) return;
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const r = await fetch('/api/set_param', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({node: node, param: paramName, value: input.value})
+    });
+    const result = await r.json();
+    if (result.ok) {
+      status.className = 'param-status ok';
+      status.textContent = '\u2713 Set';
+    } else {
+      status.className = 'param-status err';
+      status.textContent = result.error || 'Failed';
+    }
+  } catch(e) {
+    status.className = 'param-status err';
+    status.textContent = 'Error';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Set';
+  setTimeout(() => { if(status) status.textContent = ''; }, 3000);
+}
+
 setInterval(update, 200);
 update();
 </script>
@@ -1225,15 +1455,90 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(jpeg)
             else:
-                # Return a 1x1 transparent pixel if no image available
                 self.send_response(204)
                 self.end_headers()
+        elif self.path == '/api/params':
+            # Discover nodes and their parameters via ros2 CLI
+            result = {}
+            try:
+                nodes_out = subprocess.run(
+                    ['ros2', 'node', 'list'],
+                    capture_output=True, text=True, timeout=5
+                )
+                nodes = [n.strip() for n in nodes_out.stdout.strip().split('\n') if n.strip()]
+                for node in nodes:
+                    try:
+                        params_out = subprocess.run(
+                            ['ros2', 'param', 'list', node],
+                            capture_output=True, text=True, timeout=5
+                        )
+                        param_names = [p.strip() for p in params_out.stdout.strip().split('\n')
+                                       if p.strip() and not p.strip().startswith('Warning')]
+                        params = []
+                        for pname in param_names:
+                            try:
+                                val_out = subprocess.run(
+                                    ['ros2', 'param', 'get', node, pname],
+                                    capture_output=True, text=True, timeout=3
+                                )
+                                raw = val_out.stdout.strip()
+                                # Parse "Type: xxx\nValue: yyy" format
+                                value = raw
+                                for line in raw.split('\n'):
+                                    if line.strip().startswith('Value:'):
+                                        value = line.split(':', 1)[1].strip()
+                                        break
+                                params.append({'name': pname, 'value': value})
+                            except Exception:
+                                params.append({'name': pname, 'value': '?'})
+                        short_name = node.lstrip('/')
+                        result[short_name] = params
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(result).encode())
         else:
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.send_header('Cache-Control', 'no-cache')
             self.end_headers()
             self.wfile.write(DASHBOARD_HTML.encode())
+
+    def do_POST(self):
+        if self.path == '/api/set_param':
+            content_len = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_len)
+            try:
+                data = json.loads(body)
+                node = data['node']
+                param = data['param']
+                value = str(data['value'])
+                # Ensure node has leading /
+                if not node.startswith('/'):
+                    node = '/' + node
+                out = subprocess.run(
+                    ['ros2', 'param', 'set', node, param, value],
+                    capture_output=True, text=True, timeout=5
+                )
+                if out.returncode == 0:
+                    resp = {'ok': True, 'msg': out.stdout.strip()}
+                else:
+                    resp = {'ok': False, 'error': out.stderr.strip() or out.stdout.strip()}
+            except Exception as e:
+                resp = {'ok': False, 'error': str(e)}
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(resp).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
 
     def log_message(self, format, *args):
         pass  # Suppress HTTP logs
