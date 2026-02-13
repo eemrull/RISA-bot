@@ -1,3 +1,10 @@
+"""
+Bringup Launch File — RISA-bot (Main Branch)
+Minimal launch for individual node testing. Starts LiDAR + TF + auto_driver.
+Camera, joystick, and line follower must be launched separately.
+  Usage: ros2 launch risabot_automode bringup.launch.py
+"""
+
 from launch import LaunchDescription
 from launch.actions import TimerAction
 from launch_ros.actions import Node
@@ -49,5 +56,8 @@ def generate_launch_description():
                     output='screen'
                 )
             ]
-        )
+        ),
+
+        # Note: Camera (astra_camera), joystick (joy_node), and line_follower_camera
+        # are launched separately via CLI aliases (see main_branch.md).
     ])

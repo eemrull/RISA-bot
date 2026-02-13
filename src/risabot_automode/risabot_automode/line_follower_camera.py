@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+"""
+Line Follower Camera Node
+Detects white lane lines using grayscale thresholding and computes a steering
+error from the midpoint between the left and right lane peaks.
+
+Algorithm:
+  1. Crop bottom portion of camera image (road surface)
+  2. Threshold for white pixels (lane markings)
+  3. Build column histogram to find left/right lane peaks
+  4. Error = offset of lane midpoint from image center
+  5. Smoothed via dead zone + exponential moving average (EMA)
+
+Publishes Float32 on /lane_error (range -1.0 to +1.0).
+"""
 
 import rclpy
 from rclpy.node import Node

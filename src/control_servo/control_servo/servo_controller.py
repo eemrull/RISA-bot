@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """
-Servo Controller V8 — Refined Main Branch Port
+Servo Controller V9 — Competition Ready
 =============================================================================
-Based on V7 (Main Branch Logic) + User Feedback:
-1. Steering Axis Fix: REMOVED fallback to Axis 2 (which caused Right Stick Y/Trigger interference).
-   - STRICTLY uses Axis 3 (Right Stick X) for steering.
-2. Restored LB/RB Challenge Cycling.
-   - LB (Btn 4) -> Previous Challenge
-   - RB (Btn 5) -> Next Challenge
-3. Driving uses set_motor(pwm) and set_pwm_servo(4) (Confirmed working).
+Hardware interface between joystick, auto_driver, and Rosmaster motor board.
+Handles mode toggling, manual driving, challenge cycling, and safety watchdog.
+
+Features:
+  - Joy watchdog: auto-stops robot if controller disconnects (no /joy for >0.5s)
+  - Manual driving via set_motor(PWM) + set_pwm_servo(4, angle)
+  - Auto mode: forwards /cmd_vel and /cmd_vel_auto to hardware
+  - LB/RB challenge cycling via /set_challenge topic
+  - D-Pad gear shifting with 4 speed levels
 
 Controls:
-- Left Stick Y (Axis 1):   Throttle (PWM -255 to 255)
-- Right Stick X (Axis 3):  Steering (Servo 4 Angle 40-140)
-- D-Pad UP/DOWN:           Speed Limiter [25, 40, 60, 100]%
-- Start (Btn 11) / Y (3):  Toggle Auto/Manual
-- LB (Btn 4) / RB (Btn 5): Cycle Challenge State
+  Left Stick Y (Axis 1):     Throttle (PWM ±255)
+  Right Stick X (Axis 2):    Steering (Servo 4 Angle 40–140)
+  D-Pad UP/DOWN (Axis 7):    Speed Limiter [25, 40, 60, 100]%
+  Start (Btn 11) / Y (Btn 4): Toggle Auto/Manual
+  LB (Btn 6):                Previous Challenge State
+  RB (Btn 7):                Next Challenge State
 """
 
 import rclpy
@@ -38,7 +41,7 @@ CHALLENGE_STATES = [
     'PARALLEL_PARK', 'DRIVE_TO_PERP', 'PERPENDICULAR_PARK'
 ]
 
-class ServoControllerV8(Node):
+class ServoControllerV9(Node):
     def __init__(self):
         super().__init__('servo_controller')
 
@@ -87,14 +90,10 @@ class ServoControllerV8(Node):
         self._update_dash()
 
     def _update_dash(self):
-        mode_str = "MANUAL" if self.manual_mode else "AUTO"
+        """Publish controller state to dashboard (speed|index|state)."""
         state_str = CHALLENGE_STATES[self.challenge_index]
-        # Format: SpeedLimit | ChallengeIndex | StateName | Mode
-        # Dashboard expects specific format so we send a composite string
         msg = String()
-        msg.data = f"{self.current_speed_limit}|{self.challenge_index}|{state_str}" 
-        # Note: In V6 we sent "Speed|Idx|State". V7 sent "Speed|0|Mode". 
-        # Dashboard expects "Speed|Idx|State".
+        msg.data = f"{self.current_speed_limit}|{self.challenge_index}|{state_str}"
         self.dash_pub.publish(msg)
 
     def _joy_watchdog(self):
@@ -205,6 +204,7 @@ class ServoControllerV8(Node):
         if not self.manual_mode: self.process_twist(msg)
 
     def process_twist(self, msg):
+        """Convert Twist message to hardware PWM + servo angle."""
         # Auto Mode Driving
         pwm_val = int(msg.linear.x * 255.0)
         
@@ -222,6 +222,7 @@ class ServoControllerV8(Node):
         self.apply_hardware(pwm_val, steer_angle)
 
     def apply_hardware(self, motor_pwm, steer_angle):
+        """Send motor PWM and steering angle to Rosmaster, with change thresholds."""
         try:
             if abs(motor_pwm - self.last_motor_val) > 2:
                 self.bot.set_motor(motor_pwm, 0, 0, 0)
@@ -237,19 +238,23 @@ class ServoControllerV8(Node):
         try:
             self.bot.set_motor(0, 0, 0, 0)
             self.bot.set_pwm_servo(SERVO_STEER_ID, SERVO_CENTER)
-        except: pass
+        except Exception:
+            pass
 
 def main(args=None):
     rclpy.init(args=args)
-    node = ServoControllerV8()
+    node = ServoControllerV9()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
         node.stop_robot()
-        try: del node.bot; print("Rosmaster closed")
-        except: pass
+        try:
+            del node.bot
+            print("Rosmaster closed")
+        except Exception:
+            pass
         node.destroy_node()
         rclpy.shutdown()
 

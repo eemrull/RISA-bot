@@ -43,6 +43,7 @@ class ObstructionAvoidance(Node):
         self.declare_parameter('pass_speed', 0.15)           # m/s while passing alongside
         self.declare_parameter('pass_duration', 2.0)         # seconds to drive alongside
         self.declare_parameter('steer_back_duration', 1.5)   # seconds to return to center
+        self.declare_parameter('steer_away_duration', 1.0)   # seconds to steer away from obstacle
         self.declare_parameter('lidar_angle_offset', 1.5708) # 90° mount correction
 
         # Publishers
@@ -132,7 +133,7 @@ class ObstructionAvoidance(Node):
             # Steer away from obstruction
             cmd.linear.x = self.get_parameter('steer_speed').value
             cmd.angular.z = self.avoid_direction * self.get_parameter('steer_angular').value
-            if self._time_in_phase() >= 1.0:  # steer for ~1 second
+            if self._time_in_phase() >= self.get_parameter('steer_away_duration').value:
                 self._start_phase(AvoidPhase.PASS_ALONGSIDE)
 
         elif self.phase == AvoidPhase.PASS_ALONGSIDE:

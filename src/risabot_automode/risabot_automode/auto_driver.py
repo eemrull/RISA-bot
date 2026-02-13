@@ -105,9 +105,8 @@ class AutoDriver(Node):
         self.traffic_light_was_green = False # tracks if green was detected
         self.obstruction_was_active = False  # tracks if obstruction was engaged
 
-        # ===== Serial (motor board) =====
-        # Serial access moved to servo_controller (Hardware Interface Node)
-        self.ser = None
+        # Odometry integration
+        self.last_odom_time = time.time()
 
         # ===== Subscribers — existing =====
         self.lidar_sub = self.create_subscription(
@@ -466,27 +465,13 @@ class AutoDriver(Node):
     # ========== Odometry (from servo_controller) ==========
 
     def odom_callback(self, msg):
-        """Update internal state from ROS odometry."""
-        # Update current twist
-        self.current_twist = msg.twist.twist
-        
-        # Integrate distance (simple approximation)
-        # In a real system, we'd use position from Odom, but here we just need relative distance
-        # for state transitions. Odom message usually has pose.position too.
-        # But servo_controller might only be populating Twist for now?
-        # Let's assume Twist is valid.
-        
+        """Integrate distance from odometry for state transition thresholds."""
         now = time.time()
-        dt = now - (self.last_odom_time if hasattr(self, 'last_odom_time') else now)
+        dt = min(now - self.last_odom_time, 0.1)  # Cap dt to prevent jumps
         self.last_odom_time = now
-        
-        if dt > 0.1: dt = 0.1 # Cap dt prevents jumps
-        
+
         v = msg.twist.twist.linear.x
         self.distance += v * dt
-        
-        # Update dashboard state
-        # (Already handled by publishing to dashboard, but we need self.distance updated)
 
     # Serial reader removed (moved to servo_controller)
 

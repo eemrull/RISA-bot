@@ -50,7 +50,7 @@ class TrafficLightDetector(Node):
         # State
         self.current_state = 'unknown'
         self.confidence_count = 0
-        self.required_confidence = 3  # need N consecutive same detections
+        self.declare_parameter('required_confidence', 3)  # N consecutive same detections
 
         self.get_logger().info('Traffic Light Detector started (R/Y/G circle detection)')
 
@@ -133,7 +133,8 @@ class TrafficLightDetector(Node):
                 self.current_state = best_color
 
             # Only publish when confident
-            if self.confidence_count >= self.required_confidence:
+            required_confidence = self.get_parameter('required_confidence').value
+            if self.confidence_count >= required_confidence:
                 state_msg = String()
                 state_msg.data = self.current_state
                 self.state_pub.publish(state_msg)

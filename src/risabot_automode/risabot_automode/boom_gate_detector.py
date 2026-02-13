@@ -44,12 +44,13 @@ class BoomGateDetector(Node):
             self.scan_callback,
             QoSPresetProfiles.SENSOR_DATA.value
         )
+        # Hysteresis (require N consecutive readings to change state)
+        self.declare_parameter('hysteresis', 3)
 
         # State
         self.gate_blocked = False
         self.blocked_count = 0
         self.clear_count = 0
-        self.hysteresis = 3  # require N consecutive readings to change state
 
         self.get_logger().info('Boom Gate Detector started')
 
@@ -102,10 +103,11 @@ class BoomGateDetector(Node):
             self.clear_count += 1
             self.blocked_count = 0
 
-        if self.blocked_count >= self.hysteresis and not self.gate_blocked:
+        hysteresis = self.get_parameter('hysteresis').value
+        if self.blocked_count >= hysteresis and not self.gate_blocked:
             self.gate_blocked = True
             self.get_logger().warn('🚧 Boom gate CLOSED — barrier detected!')
-        elif self.clear_count >= self.hysteresis and self.gate_blocked:
+        elif self.clear_count >= hysteresis and self.gate_blocked:
             self.gate_blocked = False
             self.get_logger().info('✅ Boom gate OPEN — path clear.')
 
