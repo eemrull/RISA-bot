@@ -34,34 +34,32 @@ ros2 launch risabot_automode competition.launch.py   # test branch
 | `cbc` | Clean rebuild — use when stuff is broken |
 | `sos` | Re-source the workspace (after any build) |
 
-## 📖 Guide
+## 📖 Documentation
 
-Detailed documentation is in the [Guide/](Guide/) folder:
-
-| Guide | Description |
+| Folder | Description |
 |---|---|
-| [Challenge Breakdown](Guide/challenges_breakdown.md) | Deep dive into each challenge's code, with course layout |
-| [Main Branch](Guide/main_branch.md) | How `main` works — individual nodes, original controller |
-| [Test Branch](Guide/test_branch.md) | How `test` works — state machine, all challenges |
-| [Commands Reference](Guide/commands_reference.md) | All ROS topics, launch files, `ros2 param set` commands |
-| [Tuning Guide](Guide/tuning_guide.md) | Step-by-step parameter tuning on physical course |
-| [Architecture](Guide/architecture.md) | Node graphs, data flow, package structure |
+| [Guide/](Guide/) | Robot operating guides, tuning, architecture, commands |
+| [Workshop/](Workshop/) | ROS 2 teaching modules for workshops |
 
 ## Troubleshooting
 
 ### astra_camera fails with `openni2_redist` missing
+
 ```bash
 cp -r ~/backups/openni2_redist ~/risabotcar_ws/src/ros2_astra_camera/astra_camera/
 colcon build --symlink-install --packages-select astra_camera
 ```
 
 ### AMENT_PREFIX_PATH warnings after cbc
+
 ```bash
 unset AMENT_PREFIX_PATH && unset CMAKE_PREFIX_PATH && source /opt/ros/humble/setup.bash
 ```
 
 ### Third-party packages disappear
+
 These are gitignored and don't change with branch switching. If lost:
+
 ```bash
 # ros2_astra_camera — use ~/backups
 # YDLidar-SDK — git clone https://github.com/YDLIDAR/YDLidar-SDK.git
@@ -69,7 +67,6 @@ These are gitignored and don't change with branch switching. If lost:
 ```
 
 ## Key Rules
+
 1. Only `git checkout/pull` inside your package dir — never from workspace root
 2. Third-party packages (astra, YDLiDAR) are gitignored and separate
-
-
