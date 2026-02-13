@@ -111,14 +111,18 @@ class AutoDriver(Node):
         self.obstruction_was_active = False  # tracks if obstruction was engaged
 
         # ===== Serial (motor board) =====
-        try:
-            self.ser = serial.Serial(
-                '/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0',
-                115200, timeout=1
-            )
-            self.get_logger().info('Serial port opened')
-        except Exception as e:
-            self.get_logger().error(f'Failed to open serial: {e}')
+        # DISABLED temporarily to test conflict with servo_controller
+        if False:
+            try:
+                self.ser = serial.Serial(
+                    '/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0',
+                    115200, timeout=1
+                )
+                self.get_logger().info('Serial port opened')
+            except Exception as e:
+                self.get_logger().error(f'Failed to open serial: {e}')
+                self.ser = None
+        else:
             self.ser = None
 
         if self.ser:

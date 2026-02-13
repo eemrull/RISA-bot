@@ -27,6 +27,9 @@ try:
     bot = Rosmaster()
     bot.set_car_type(1)  # Set to Rosmaster X3
     print("Rosmaster Serial Opened!")
+    print(f"DEBUG: Bot attributes: {dir(bot)}")
+    if hasattr(bot, 'ser'):
+        print(f"DEBUG: bot.ser exists: {bot.ser}")
 except Exception as e:
     print(f"Failed to initialize Rosmaster: {e}")
     print("Exiting. Make sure the robot is powered on and connected.")
