@@ -336,6 +336,24 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- Speed & State Cycle -->
+  <div class="card">
+    <h3>Manual Control</h3>
+    <div class="sensor-row">
+      <span class="sensor-label">Speed</span>
+      <span class="sensor-value" style="color:#42a5f5;font-size:1.4em;font-weight:700;" id="speedPct">50%</span>
+    </div>
+    <div class="meter-bar"><div class="meter-fill orange" id="speedBar" style="width:50%"></div></div>
+    <div style="margin-top:10px;font-size:0.8em;color:#666;">D-pad ▲/▼ to adjust ±10%</div>
+    <div style="margin-top:12px;">
+      <div class="sensor-row">
+        <span class="sensor-label">Challenge Selector</span>
+        <span class="sensor-value" id="ctrlState" style="color:#ce93d8;">LANE_FOLLOW</span>
+      </div>
+      <div style="font-size:0.8em;color:#666;">LB/RB to cycle states</div>
+    </div>
+  </div>
+
   <!-- Controller -->
   <div class="card">
     <h3>Controller</h3>
@@ -346,9 +364,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <div class="ctrl-btn" id="btnLeft">◀</div>
       <div class="ctrl-btn" id="btnStart">START</div>
       <div class="ctrl-btn" id="btnRight">▶</div>
-      <div class="ctrl-btn" id="btnA">A</div>
+      <div class="ctrl-btn" id="btnX">X</div>
       <div class="ctrl-btn" id="btnDown">▼</div>
+      <div class="ctrl-btn" id="btnY">Y</div>
+      <div class="ctrl-btn" id="btnA">A</div>
+      <div class="ctrl-btn" id="btnLT">LT</div>
       <div class="ctrl-btn" id="btnB">B</div>
+      <div class="ctrl-btn" id="btnRT" style="grid-column:3;">RT</div>
     </div>
     <div style="margin-top:8px;font-size:0.8em;color:#666;display:flex;gap:10px;">
       <span>L: <span id="joyL">0.0, 0.0</span></span>
@@ -418,8 +440,13 @@ function update() {
       document.getElementById('odomDist').textContent = d.distance.toFixed(2);
       document.getElementById('odomSpeed').textContent = d.speed.toFixed(3) + ' m/s';
 
-      // Controller
-      const btnMap = {0:'btnA', 1:'btnB', 4:'btnLB', 5:'btnRB', 7:'btnStart'};
+      // Speed & State Cycle
+      document.getElementById('speedPct').textContent = d.speed_pct + '%';
+      document.getElementById('speedBar').style.width = d.speed_pct + '%';
+      document.getElementById('ctrlState').textContent = d.ctrl_state_name;
+
+      // Controller buttons (correct mapping: A=0,B=1,X=3,Y=4,LB=6,RB=7,LT=8,RT=9,Start=11)
+      const btnMap = {0:'btnA', 1:'btnB', 3:'btnX', 4:'btnY', 6:'btnLB', 7:'btnRB', 8:'btnLT', 9:'btnRT', 11:'btnStart'};
       Object.values(btnMap).forEach(id => document.getElementById(id).classList.remove('active'));
       if (d.buttons) d.buttons.forEach((v,i) => { if (v && btnMap[i]) document.getElementById(btnMap[i]).classList.add('active'); });
 
@@ -477,6 +504,9 @@ class DashboardNode(Node):
             'speed': 0.0,
             'buttons': [],
             'axes': [],
+            'speed_pct': 50,
+            'ctrl_state_index': 0,
+            'ctrl_state_name': 'LANE_FOLLOW',
         }
         self.data_lock = threading.Lock()
 
@@ -500,9 +530,7 @@ class DashboardNode(Node):
         self.create_subscription(Odometry, '/odom', self._odom_cb, 10)
         self.create_subscription(Joy, '/joy', self._joy_cb, 10)
         self.create_subscription(String, '/dashboard_state', self._dash_state_cb, 10)
-
-        # Try to subscribe to auto_driver's internal state topic
-        # (We'll parse the debug print via a custom topic if available)
+        self.create_subscription(String, '/dashboard_ctrl', self._dash_ctrl_cb, 10)
 
     def _set(self, key, value):
         with self.data_lock:
@@ -545,6 +573,19 @@ class DashboardNode(Node):
                     self.data['state_dist'] = parts[2]
         except Exception:
             self._set('state', msg.data)
+
+    def _dash_ctrl_cb(self, msg):
+        """Parse SPD_PCT|STATE_INDEX|STATE_NAME format from servo_controller."""
+        try:
+            parts = msg.data.split('|')
+            with self.data_lock:
+                self.data['speed_pct'] = int(parts[0])
+                if len(parts) > 1:
+                    self.data['ctrl_state_index'] = int(parts[1])
+                if len(parts) > 2:
+                    self.data['ctrl_state_name'] = parts[2]
+        except Exception:
+            pass
 
     def get_json(self):
         with self.data_lock:

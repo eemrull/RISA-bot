@@ -376,7 +376,10 @@ class AutoDriver(Node):
         """Main control loop — selects cmd_vel based on current challenge state."""
         cmd = Twist()
 
+        # In manual mode: skip autonomous cmd_vel entirely,
+        # let servo_controller own /cmd_vel. Still publish dash state.
         if not self.in_auto_mode:
+            self._publish_dash_state()
             return
 
         # Reset stale module data to safe defaults

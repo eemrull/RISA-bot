@@ -32,11 +32,12 @@ except Exception as e:
     print("Exiting. Make sure the robot is powered on and connected.")
     exit()
 
-# Challenge states for cycling with bumper buttons
+# Challenge states for cycling with bumper buttons (matches ChallengeState enum)
 CHALLENGE_STATES = [
-    'LANE_FOLLOW', 'OBSTRUCTION', 'ROUNDABOUT', 'TUNNEL',
-    'BOOM_GATE_TUNNEL', 'BOOM_GATE_MAIN', 'HILL', 'BUMPER',
-    'TRAFFIC_LIGHT', 'PARALLEL_PARK', 'PERPENDICULAR_PARK'
+    'LANE_FOLLOW', 'OBSTRUCTION', 'ROUNDABOUT',
+    'BOOM_GATE_1', 'TUNNEL', 'BOOM_GATE_2',
+    'HILL', 'BUMPER', 'TRAFFIC_LIGHT',
+    'PARALLEL_PARK', 'DRIVE_TO_PERP', 'PERPENDICULAR_PARK'
 ]
 
 
@@ -53,6 +54,7 @@ class ServoControllerNode(Node):
         self.auto_mode_pub = self.create_publisher(Bool, '/auto_mode', 10)
         self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self.challenge_pub = self.create_publisher(String, '/set_challenge', 10)
+        self.dash_ctrl_pub = self.create_publisher(String, '/dashboard_ctrl', 10)
 
         # State
         self.auto_mode = False
@@ -60,15 +62,19 @@ class ServoControllerNode(Node):
         self.last_s2 = 90
         self.challenge_index = 0
 
-        # Button debouncing — track previous button states
+        # Button debouncing — track previous states
         self.prev_buttons = []
+        self.prev_axes = []
+
+        # Speed level (0-100%) — adjust with D-pad up/down
+        self.speed_pct = 50  # default 50%
 
         # Parameters for manual driving
         self.declare_parameter('max_linear_speed', 0.20)   # m/s
         self.declare_parameter('max_angular_speed', 0.80)   # rad/s
-        self.declare_parameter('toggle_button', 7)          # Start/Options button
-        self.declare_parameter('prev_state_button', 4)      # LB
-        self.declare_parameter('next_state_button', 5)      # RB
+        self.declare_parameter('toggle_button', 11)         # Start button
+        self.declare_parameter('prev_state_button', 6)      # LB
+        self.declare_parameter('next_state_button', 7)      # RB
 
         self.get_logger().info('Servo Controller + Mode Switch started')
         self.get_logger().info('Controls:')
@@ -117,17 +123,32 @@ class ServoControllerNode(Node):
                 self.get_logger().info(f'Challenge → {state_name}')
                 self.challenge_pub.publish(String(data=state_name))
 
+            # ===== D-PAD SPEED CONTROL =====
+            if len(msg.axes) > 7:
+                dpad_up = msg.axes[7] > 0.5
+                dpad_down = msg.axes[7] < -0.5
+                prev_dpad_up = (self.prev_axes[7] > 0.5) if len(self.prev_axes) > 7 else False
+                prev_dpad_down = (self.prev_axes[7] < -0.5) if len(self.prev_axes) > 7 else False
+
+                if dpad_up and not prev_dpad_up:
+                    self.speed_pct = min(100, self.speed_pct + 10)
+                    self.get_logger().info(f'Speed: {self.speed_pct}%')
+                if dpad_down and not prev_dpad_down:
+                    self.speed_pct = max(10, self.speed_pct - 10)
+                    self.get_logger().info(f'Speed: {self.speed_pct}%')
+
             # ===== MANUAL DRIVING (only when NOT in auto mode) =====
             if not self.auto_mode:
                 cmd = Twist()
                 max_lin = self.get_parameter('max_linear_speed').value
                 max_ang = self.get_parameter('max_angular_speed').value
+                scale = self.speed_pct / 100.0
 
                 # Left Stick: axes[1] = forward/back, axes[0] = left/right
                 if len(msg.axes) > 1:
-                    cmd.linear.x = msg.axes[1] * max_lin   # forward/back
+                    cmd.linear.x = msg.axes[1] * max_lin * scale
                 if len(msg.axes) > 0:
-                    cmd.angular.z = msg.axes[0] * max_ang   # turn left/right
+                    cmd.angular.z = msg.axes[0] * max_ang * scale
 
                 self.cmd_vel_pub.publish(cmd)
 
@@ -144,13 +165,19 @@ class ServoControllerNode(Node):
                     bot.set_pwm_servo(2, s2_val)
                     self.last_s2 = s2_val
 
-            # Save button states for debouncing
+            # ===== PUBLISH DASHBOARD CONTROLLER INFO =====
+            ctrl_msg = String()
+            ctrl_msg.data = f'{self.speed_pct}|{self.challenge_index}|{CHALLENGE_STATES[self.challenge_index]}'
+            self.dash_ctrl_pub.publish(ctrl_msg)
+
+            # Save button + axis states for debouncing
             self.prev_buttons = list(msg.buttons)
+            self.prev_axes = list(msg.axes)
 
             # Debug output
             mode_str = "AUTO" if self.auto_mode else "MANUAL"
             state_str = CHALLENGE_STATES[self.challenge_index]
-            print(f"\r[JOY] {mode_str} | State: {state_str} | S1: {self.last_s1} S2: {self.last_s2}", end='', flush=True)
+            print(f"\r[JOY] {mode_str} | State: {state_str} | Spd: {self.speed_pct}% | S1: {self.last_s1} S2: {self.last_s2}", end='', flush=True)
 
         except Exception as e:
             self.get_logger().error(f'Error in joy_callback: {e}')
