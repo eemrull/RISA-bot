@@ -77,15 +77,6 @@ git checkout new-control-code && git pull     # or: main
 cd ~/risabotcar_ws && cb && sos
 ```
 
-### Build Aliases
-
-| Alias | Command | When |
-|---|---|---|
-| `cb` | `colcon build --symlink-install` | Normal rebuild |
-| `cbp <pkg>` | `colcon build --packages-select <pkg>` | One package only |
-| `cbc` | Clean build | When builds are broken |
-| `sos` | `source install/setup.bash` | After every build |
-
 ---
 
 ## Launch
