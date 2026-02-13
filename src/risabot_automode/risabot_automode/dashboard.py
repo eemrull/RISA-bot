@@ -35,446 +35,510 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RISA-Bot Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0a0a14;
+    --card: rgba(18,18,35,0.85);
+    --card-border: rgba(255,255,255,0.06);
+    --accent: #e94560;
+    --accent2: #0f3460;
+    --text: #e0e0e0;
+    --muted: #666;
+    --radius: 14px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
   body {
     font-family: 'Inter', sans-serif;
-    background: #0f0f1a;
-    color: #e0e0e0;
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(15,52,96,0.15) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(233,69,96,0.08) 0%, transparent 50%);
+    color: var(--text);
     min-height: 100vh;
+    overflow-x: hidden;
   }
+
+  /* ===== HEADER ===== */
   .header {
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    padding: 16px 24px;
-    border-bottom: 2px solid #0f3460;
+    background: rgba(15,15,30,0.9);
+    backdrop-filter: blur(20px);
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--card-border);
     display: flex;
     align-items: center;
     justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
   }
   .header h1 {
-    font-size: 1.4em;
-    font-weight: 700;
-    background: linear-gradient(135deg, #e94560, #0f3460);
+    font-size: 1.3em;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), #42a5f5);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
   }
-  .header .status-dot {
-    width: 10px; height: 10px;
+  .conn-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8em;
+    color: var(--muted);
+  }
+  .conn-dot {
+    width: 8px; height: 8px;
     border-radius: 50%;
     background: #4caf50;
-    display: inline-block;
     animation: pulse 2s infinite;
-    margin-right: 8px;
   }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 12px;
-    padding: 16px;
-    max-width: 1200px;
-    margin: 0 auto;
-  }
-  .card {
-    background: linear-gradient(145deg, #1a1a2e, #16213e);
-    border: 1px solid #0f346060;
-    border-radius: 12px;
-    padding: 16px;
-  }
-  .card h3 {
-    font-size: 0.75em;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: #888;
-    margin-bottom: 10px;
-  }
-  .card.wide { grid-column: span 2; }
-  .card.full { grid-column: span 3; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
-  /* State badge */
+  /* ===== LAYOUT ===== */
+  .layout {
+    display: grid;
+    grid-template-columns: 280px 1fr 280px;
+    gap: 14px;
+    padding: 14px;
+    max-width: 1400px;
+    margin: 0 auto;
+    min-height: calc(100vh - 50px);
+  }
+  .col { display: flex; flex-direction: column; gap: 12px; }
+
+  /* ===== CARDS ===== */
+  .card {
+    background: var(--card);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 16px;
+    transition: border-color 0.3s;
+  }
+  .card:hover { border-color: rgba(255,255,255,0.1); }
+  .card h3 {
+    font-size: 0.65em;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    font-weight: 600;
+  }
+
+  /* ===== STATE BADGE ===== */
   .state-badge {
     display: inline-block;
-    padding: 8px 18px;
+    padding: 6px 14px;
     border-radius: 8px;
-    font-size: 1.3em;
+    font-size: 1em;
     font-weight: 700;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
+    transition: all 0.3s;
   }
   .state-LANE_FOLLOW { background: #1b5e20; color: #a5d6a7; }
   .state-OBSTRUCTION { background: #e65100; color: #ffcc80; }
   .state-ROUNDABOUT { background: #4a148c; color: #ce93d8; }
-  .state-BOOM_GATE_1, .state-BOOM_GATE_2 { background: #b71c1c; color: #ef9a9a; }
+  .state-BOOM_GATE_1,.state-BOOM_GATE_2 { background: #b71c1c; color: #ef9a9a; }
   .state-TUNNEL { background: #263238; color: #90a4ae; }
   .state-HILL { background: #33691e; color: #aed581; }
   .state-BUMPER { background: #795548; color: #d7ccc8; }
   .state-TRAFFIC_LIGHT { background: #f57f17; color: #fff9c4; }
-  .state-PARALLEL_PARK, .state-PERPENDICULAR_PARK { background: #0d47a1; color: #90caf9; }
+  .state-PARALLEL_PARK,.state-PERPENDICULAR_PARK { background: #0d47a1; color: #90caf9; }
   .state-DRIVE_TO_PERP { background: #1565c0; color: #90caf9; }
   .state-FINISHED { background: #ffd600; color: #333; }
 
   .mode-badge {
-    padding: 6px 16px;
+    padding: 4px 12px;
     border-radius: 6px;
     font-weight: 700;
-    font-size: 1.1em;
+    font-size: 0.85em;
     transition: all 0.3s;
   }
-  .mode-AUTO { background: #4caf50; color: #fff; box-shadow: 0 0 12px #4caf5088; }
-  .mode-MANUAL { background: #ff9800; color: #fff; box-shadow: 0 0 12px #ff980088; }
+  .mode-AUTO { background: #4caf50; color: #fff; box-shadow: 0 0 12px rgba(76,175,80,0.4); }
+  .mode-MANUAL { background: #ff9800; color: #fff; box-shadow: 0 0 12px rgba(255,152,0,0.4); }
 
   .lap-badge {
-    padding: 6px 14px;
+    padding: 4px 10px;
     border-radius: 6px;
     font-weight: 600;
-    font-size: 1em;
-    background: #0f3460;
-    color: #e94560;
-    margin-left: 10px;
+    font-size: 0.8em;
+    background: var(--accent2);
+    color: var(--accent);
   }
-
-  /* Sensor indicators */
-  .sensor-row {
+  .info-row {
     display: flex;
-    align-items: center;
-    padding: 6px 0;
-    border-bottom: 1px solid #ffffff08;
+    gap: 16px;
+    margin-top: 8px;
+    font-size: 0.75em;
+    color: var(--muted);
   }
-  .sensor-row:last-child { border: none; }
-  .sensor-label { flex: 1; font-size: 0.9em; color: #aaa; }
-  .sensor-value { font-weight: 600; font-size: 0.95em; }
-  .dot {
-    width: 12px; height: 12px;
-    border-radius: 50%;
-    display: inline-block;
-    margin-right: 6px;
-  }
-  .dot-green { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
-  .dot-red { background: #f44336; box-shadow: 0 0 6px #f44336; }
-  .dot-yellow { background: #ffeb3b; box-shadow: 0 0 6px #ffeb3b; }
-  .dot-gray { background: #555; }
 
-  /* Traffic light */
+  /* ===== TRAFFIC LIGHT ===== */
   .traffic-light {
     display: flex;
-    flex-direction: column;
+    gap: 8px;
     align-items: center;
-    gap: 6px;
-    background: #111;
-    padding: 10px 14px;
-    border-radius: 10px;
+    justify-content: center;
+    background: #0a0a0a;
+    padding: 10px 20px;
+    border-radius: 25px;
     width: fit-content;
     margin: 0 auto;
   }
   .tl-circle {
-    width: 32px; height: 32px;
+    width: 28px; height: 28px;
     border-radius: 50%;
-    border: 2px solid #333;
+    border: 2px solid #222;
     transition: all 0.3s;
   }
-  .tl-red    { background: #331111; }
-  .tl-yellow { background: #332b11; }
-  .tl-green  { background: #113311; }
-  .tl-red.active    { background: #f44336; box-shadow: 0 0 16px #f44336; border-color: #f44336; }
-  .tl-yellow.active { background: #ffeb3b; box-shadow: 0 0 16px #ffeb3b; border-color: #ffeb3b; }
-  .tl-green.active  { background: #4caf50; box-shadow: 0 0 16px #4caf50; border-color: #4caf50; }
+  .tl-red    { background: #221111; }
+  .tl-yellow { background: #222011; }
+  .tl-green  { background: #112211; }
+  .tl-red.active    { background: #f44336; box-shadow: 0 0 20px #f44336; border-color: #f44336; }
+  .tl-yellow.active { background: #ffeb3b; box-shadow: 0 0 20px #ffeb3b; border-color: #ffeb3b; }
+  .tl-green.active  { background: #4caf50; box-shadow: 0 0 20px #4caf50; border-color: #4caf50; }
+  .tl-label { text-align: center; margin-top: 6px; font-size: 0.75em; color: var(--muted); }
 
-  /* Controller */
-  .controller {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 6px;
+  /* ===== SENSOR ROWS ===== */
+  .s-row {
+    display: flex;
+    align-items: center;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .s-row:last-child { border: none; }
+  .s-label { flex: 1; font-size: 0.78em; color: #999; }
+  .s-val { font-weight: 600; font-size: 0.82em; }
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+    transition: all 0.3s;
+  }
+  .dot-green { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+  .dot-red { background: #f44336; box-shadow: 0 0 6px #f44336; }
+  .dot-gray { background: #333; }
+
+  /* ===== METER BARS ===== */
+  .meter { height: 6px; background: #1a1a2e; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+  .meter-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .meter-blue { background: linear-gradient(90deg, #1565c0, #42a5f5); }
+  .meter-orange { background: linear-gradient(90deg, #e65100, #ff9800); }
+
+  /* ===== SPEED GAUGE ===== */
+  .speed-display {
     text-align: center;
+    padding: 8px 0;
   }
-  .ctrl-btn {
-    padding: 8px;
+  .speed-display .num {
+    font-size: 2.2em;
+    font-weight: 800;
+    background: linear-gradient(135deg, #42a5f5, #1565c0);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    line-height: 1;
+  }
+  .speed-display .unit {
+    font-size: 0.6em;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  /* ===== CHALLENGE SELECTOR ===== */
+  .ctrl-state-badge {
+    display: inline-block;
+    padding: 4px 10px;
     border-radius: 6px;
-    background: #222;
-    font-size: 0.8em;
-    color: #666;
-    transition: all 0.2s;
-  }
-  .ctrl-btn.active {
-    background: #e94560;
-    color: #fff;
-    box-shadow: 0 0 8px #e94560;
+    font-weight: 600;
+    font-size: 0.78em;
+    background: rgba(74,20,140,0.4);
+    color: #ce93d8;
+    border: 1px solid rgba(206,147,216,0.2);
   }
 
-  /* Meters */
-  .meter-bar {
-    height: 8px;
-    background: #222;
-    border-radius: 4px;
-    overflow: hidden;
-    margin-top: 4px;
-  }
-  .meter-fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.3s;
-  }
-  .meter-fill.blue { background: linear-gradient(90deg, #1565c0, #42a5f5); }
-  .meter-fill.orange { background: linear-gradient(90deg, #e65100, #ff9800); }
-
-  /* Camera */
-  .camera-feed {
-    width: 100%;
-    border-radius: 8px;
-    background: #111;
-    min-height: 180px;
-    object-fit: contain;
+  /* ===== CAMERA ===== */
+  .cam-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
   }
   .cam-toggle {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 8px 16px;
-    border-radius: 6px;
-    border: 1px solid #0f3460;
-    background: #1a1a2e;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.05);
     color: #42a5f5;
     cursor: pointer;
-    font-size: 0.85em;
+    font-size: 0.8em;
     font-weight: 600;
     transition: all 0.2s;
     margin-bottom: 10px;
+    font-family: inherit;
   }
-  .cam-toggle:hover { background: #0f3460; color: #fff; }
-  .cam-toggle.on { background: #4caf50; color: #fff; border-color: #4caf50; }
-
-  .odom-val {
-    font-size: 1.8em;
-    font-weight: 700;
-    color: #42a5f5;
+  .cam-toggle:hover { background: rgba(66,165,245,0.15); border-color: #42a5f5; }
+  .cam-toggle.on { background: rgba(76,175,80,0.2); color: #4caf50; border-color: #4caf50; }
+  .cam-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    background: #050508;
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
   }
-  .odom-unit {
-    font-size: 0.7em;
-    color: #888;
-    margin-left: 4px;
+  .cam-container img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
   }
-
-  /* Speed gauge */
-  .speed-gauge {
+  .cam-off {
+    color: #333;
+    font-size: 0.85em;
     text-align: center;
-    padding: 6px 0;
   }
-  .speed-gauge .value {
-    font-size: 2em;
+  .cam-off .icon { font-size: 3em; margin-bottom: 8px; opacity: 0.3; }
+
+  /* ===== CONTROLLER ===== */
+  .ctrl-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    text-align: center;
+  }
+  .ctrl-btn {
+    padding: 6px 2px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.04);
+    font-size: 0.7em;
+    color: #444;
+    transition: all 0.15s;
+    font-weight: 500;
+  }
+  .ctrl-btn.active {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 10px rgba(233,69,96,0.4);
+  }
+  .joy-info {
+    margin-top: 6px;
+    font-size: 0.7em;
+    color: #444;
+    display: flex;
+    gap: 8px;
+  }
+  .btn-debug {
+    margin-top: 6px;
+    padding: 4px 6px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 4px;
+    font-size: 0.65em;
+    font-family: 'Courier New', monospace;
+    color: #ff9800;
+    min-height: 18px;
+  }
+
+  /* ===== ODOM ===== */
+  .odom-big {
+    font-size: 1.6em;
     font-weight: 700;
     color: #42a5f5;
   }
-  .speed-gauge .label {
-    font-size: 0.7em;
-    color: #666;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
+  .odom-unit { font-size: 0.5em; color: var(--muted); margin-left: 3px; }
 
-  /* Challenge selector highlight */
-  .ctrl-state {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 0.9em;
-    background: #4a148c;
-    color: #ce93d8;
-    letter-spacing: 0.5px;
-  }
-
-  @media (max-width: 768px) {
-    .grid { grid-template-columns: 1fr; }
-    .card.wide, .card.full { grid-column: span 1; }
+  /* ===== RESPONSIVE ===== */
+  @media (max-width: 960px) {
+    .layout { grid-template-columns: 1fr; }
+    .cam-container { min-height: 200px; }
   }
 </style>
 </head>
 <body>
+
+<!-- HEADER -->
 <div class="header">
-  <h1>🤖 RISA-Bot Dashboard</h1>
-  <div><span class="status-dot" id="connDot"></span><span id="connText" style="font-size:0.85em;color:#888;">Connecting...</span></div>
+  <h1>🤖 RISA-Bot</h1>
+  <div class="conn-badge">
+    <span class="conn-dot" id="connDot"></span>
+    <span id="connText">Connecting...</span>
+  </div>
 </div>
 
-<div class="grid">
-  <!-- State & Mode -->
-  <div class="card wide">
-    <h3>State Machine</h3>
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <span class="state-badge" id="stateBadge">—</span>
-      <span class="mode-badge" id="modeBadge">MANUAL</span>
-      <span class="lap-badge" id="lapBadge">Lap —</span>
-    </div>
-    <div style="margin-top:10px;display:flex;gap:20px;font-size:0.85em;color:#888;">
-      <span>⏱ <span id="stateTime">0</span>s in state</span>
-      <span>📏 <span id="stateDist">0.00</span>m in state</span>
-    </div>
-  </div>
+<!-- MAIN LAYOUT -->
+<div class="layout">
 
-  <!-- Traffic Light -->
-  <div class="card">
-    <h3>Traffic Light</h3>
-    <div class="traffic-light">
-      <div class="tl-circle tl-red" id="tlRed"></div>
-      <div class="tl-circle tl-yellow" id="tlYellow"></div>
-      <div class="tl-circle tl-green" id="tlGreen"></div>
-    </div>
-    <div style="text-align:center;margin-top:8px;font-size:0.85em;color:#888;" id="tlText">unknown</div>
-  </div>
+  <!-- ===== LEFT COLUMN ===== -->
+  <div class="col">
 
-  <!-- Sensors -->
-  <div class="card">
-    <h3>Sensors</h3>
-    <div class="sensor-row">
-      <span class="sensor-label">LiDAR Obstacle</span>
-      <span class="sensor-value"><span class="dot dot-gray" id="dotLidar"></span><span id="valLidar">—</span></span>
-    </div>
-    <div class="sensor-row">
-      <span class="sensor-label">Camera Obstacle</span>
-      <span class="sensor-value"><span class="dot dot-gray" id="dotCam"></span><span id="valCam">—</span></span>
-    </div>
-    <div class="sensor-row">
-      <span class="sensor-label">Fused Obstacle</span>
-      <span class="sensor-value"><span class="dot dot-gray" id="dotFused"></span><span id="valFused">—</span></span>
-    </div>
-    <div class="sensor-row">
-      <span class="sensor-label">Boom Gate</span>
-      <span class="sensor-value"><span class="dot dot-gray" id="dotGate"></span><span id="valGate">—</span></span>
-    </div>
-    <div class="sensor-row">
-      <span class="sensor-label">Tunnel</span>
-      <span class="sensor-value"><span class="dot dot-gray" id="dotTunnel"></span><span id="valTunnel">—</span></span>
-    </div>
-    <div class="sensor-row">
-      <span class="sensor-label">Obstruction</span>
-      <span class="sensor-value"><span class="dot dot-gray" id="dotObst"></span><span id="valObst">—</span></span>
-    </div>
-    <div class="sensor-row">
-      <span class="sensor-label">Parking Done</span>
-      <span class="sensor-value"><span class="dot dot-gray" id="dotPark"></span><span id="valPark">—</span></span>
-    </div>
-  </div>
-
-  <!-- Lane Error + Steering -->
-  <div class="card">
-    <h3>Lane Following</h3>
-    <div class="sensor-row">
-      <span class="sensor-label">Lane Error</span>
-      <span class="sensor-value" id="laneErr">0.00</span>
-    </div>
-    <div class="meter-bar"><div class="meter-fill blue" id="laneBar" style="width:50%"></div></div>
-    <div style="margin-top:10px;">
-      <div class="sensor-row">
-        <span class="sensor-label">Cmd Linear X</span>
-        <span class="sensor-value" id="cmdLinX">0.00</span>
+    <!-- State Machine -->
+    <div class="card">
+      <h3>State Machine</h3>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span class="state-badge" id="stateBadge">—</span>
+        <span class="mode-badge" id="modeBadge">MANUAL</span>
       </div>
-      <div class="sensor-row">
-        <span class="sensor-label">Cmd Angular Z</span>
-        <span class="sensor-value" id="cmdAngZ">0.00</span>
+      <div style="margin-top:8px;">
+        <span class="lap-badge" id="lapBadge">Lap —</span>
+      </div>
+      <div class="info-row">
+        <span>⏱ <span id="stateTime">0</span>s</span>
+        <span>📏 <span id="stateDist">0.00</span>m</span>
       </div>
     </div>
+
+    <!-- Traffic Light -->
+    <div class="card">
+      <h3>Traffic Light</h3>
+      <div class="traffic-light">
+        <div class="tl-circle tl-red" id="tlRed"></div>
+        <div class="tl-circle tl-yellow" id="tlYellow"></div>
+        <div class="tl-circle tl-green" id="tlGreen"></div>
+      </div>
+      <div class="tl-label" id="tlText">unknown</div>
+    </div>
+
+    <!-- Manual Control -->
+    <div class="card">
+      <h3>Manual Control</h3>
+      <div class="speed-display">
+        <div class="num" id="speedPct">50%</div>
+        <div class="unit">Drive Speed</div>
+      </div>
+      <div class="meter"><div class="meter-fill meter-orange" id="speedBar" style="width:50%"></div></div>
+      <div style="margin-top:4px;font-size:0.65em;color:#444;text-align:center;">D-pad ▲/▼ ±10%</div>
+      <div style="margin-top:12px;">
+        <div class="s-row">
+          <span class="s-label">Selector</span>
+          <span class="ctrl-state-badge" id="ctrlState">LANE_FOLLOW</span>
+        </div>
+        <div style="font-size:0.65em;color:#444;">LB / RB to cycle</div>
+      </div>
+    </div>
+
+    <!-- Lane Following -->
+    <div class="card">
+      <h3>Lane Following</h3>
+      <div class="s-row">
+        <span class="s-label">Error</span>
+        <span class="s-val" id="laneErr">0.000</span>
+      </div>
+      <div class="meter"><div class="meter-fill meter-blue" id="laneBar" style="width:50%"></div></div>
+      <div class="s-row" style="margin-top:6px;">
+        <span class="s-label">Linear X</span>
+        <span class="s-val" id="cmdLinX">0.000</span>
+      </div>
+      <div class="s-row">
+        <span class="s-label">Angular Z</span>
+        <span class="s-val" id="cmdAngZ">0.000</span>
+      </div>
+    </div>
+
   </div>
 
-  <!-- Odometry -->
-  <div class="card">
-    <h3>Odometry</h3>
-    <div class="odom-val"><span id="odomDist">0.00</span><span class="odom-unit">m</span></div>
-    <div style="margin-top:6px;">
-      <div class="sensor-row">
-        <span class="sensor-label">Speed</span>
-        <span class="sensor-value" id="odomSpeed">0.00 m/s</span>
+  <!-- ===== CENTER COLUMN — CAMERA ===== -->
+  <div class="col">
+    <div class="card cam-card">
+      <h3>Camera Feed</h3>
+      <button class="cam-toggle" id="camBtn" onclick="toggleCam()">📷 Enable Camera</button>
+      <div class="cam-container" id="camContainer">
+        <div class="cam-off" id="camOff">
+          <div class="icon">📷</div>
+          Click above to enable
+        </div>
+        <img id="camImg" src="" alt="Camera" style="display:none;">
       </div>
     </div>
   </div>
 
-  <!-- Manual Control: Speed + State Cycle -->
-  <div class="card">
-    <h3>Manual Control</h3>
-    <div class="speed-gauge">
-      <div class="value" id="speedPct">50%</div>
-      <div class="label">Drive Speed</div>
-    </div>
-    <div class="meter-bar"><div class="meter-fill orange" id="speedBar" style="width:50%"></div></div>
-    <div style="margin-top:6px;font-size:0.75em;color:#555;text-align:center;">D-pad ▲/▼ ±10%</div>
+  <!-- ===== RIGHT COLUMN ===== -->
+  <div class="col">
 
-    <div style="margin-top:14px;">
-      <div class="sensor-row">
-        <span class="sensor-label">Challenge Selector</span>
-        <span class="ctrl-state" id="ctrlState">LANE_FOLLOW</span>
+    <!-- Sensors -->
+    <div class="card">
+      <h3>Sensors</h3>
+      <div class="s-row"><span class="s-label">LiDAR</span><span class="s-val"><span class="dot dot-gray" id="dotLidar"></span><span id="valLidar">—</span></span></div>
+      <div class="s-row"><span class="s-label">Camera</span><span class="s-val"><span class="dot dot-gray" id="dotCam"></span><span id="valCam">—</span></span></div>
+      <div class="s-row"><span class="s-label">Fused</span><span class="s-val"><span class="dot dot-gray" id="dotFused"></span><span id="valFused">—</span></span></div>
+      <div class="s-row"><span class="s-label">Boom Gate</span><span class="s-val"><span class="dot dot-gray" id="dotGate"></span><span id="valGate">—</span></span></div>
+      <div class="s-row"><span class="s-label">Tunnel</span><span class="s-val"><span class="dot dot-gray" id="dotTunnel"></span><span id="valTunnel">—</span></span></div>
+      <div class="s-row"><span class="s-label">Obstruction</span><span class="s-val"><span class="dot dot-gray" id="dotObst"></span><span id="valObst">—</span></span></div>
+      <div class="s-row"><span class="s-label">Parking</span><span class="s-val"><span class="dot dot-gray" id="dotPark"></span><span id="valPark">—</span></span></div>
+    </div>
+
+    <!-- Odometry -->
+    <div class="card">
+      <h3>Odometry</h3>
+      <div class="odom-big"><span id="odomDist">0.00</span><span class="odom-unit">m</span></div>
+      <div class="s-row" style="margin-top:6px;">
+        <span class="s-label">Speed</span>
+        <span class="s-val" id="odomSpeed">0.000 m/s</span>
       </div>
-      <div style="font-size:0.75em;color:#555;">LB / RB to cycle</div>
     </div>
-  </div>
 
-  <!-- Controller -->
-  <div class="card">
-    <h3>Controller</h3>
-    <div class="controller">
-      <div class="ctrl-btn" id="btnLB">LB</div>
-      <div class="ctrl-btn" id="btnUp">▲</div>
-      <div class="ctrl-btn" id="btnRB">RB</div>
-      <div class="ctrl-btn" id="btnLeft">◀</div>
-      <div class="ctrl-btn" id="btnStart">START</div>
-      <div class="ctrl-btn" id="btnRight">▶</div>
-      <div class="ctrl-btn" id="btnX">X</div>
-      <div class="ctrl-btn" id="btnDown">▼</div>
-      <div class="ctrl-btn" id="btnY">Y</div>
-      <div class="ctrl-btn" id="btnA">A</div>
-      <div class="ctrl-btn" id="btnLT">LT</div>
-      <div class="ctrl-btn" id="btnB">B</div>
-      <div class="ctrl-btn" id="btnRT" style="grid-column:3;">RT</div>
+    <!-- Controller -->
+    <div class="card">
+      <h3>Controller</h3>
+      <div class="ctrl-grid">
+        <div class="ctrl-btn" id="btnLB">LB</div>
+        <div class="ctrl-btn" id="btnUp">▲</div>
+        <div class="ctrl-btn" id="btnRB">RB</div>
+        <div class="ctrl-btn" id="btnLeft">◀</div>
+        <div class="ctrl-btn" id="btnStart">STA</div>
+        <div class="ctrl-btn" id="btnRight">▶</div>
+        <div class="ctrl-btn" id="btnX">X</div>
+        <div class="ctrl-btn" id="btnDown">▼</div>
+        <div class="ctrl-btn" id="btnY">Y</div>
+        <div class="ctrl-btn" id="btnA">A</div>
+        <div class="ctrl-btn" id="btnLT">LT</div>
+        <div class="ctrl-btn" id="btnB">B</div>
+        <div class="ctrl-btn" id="btnRT" style="grid-column:3;">RT</div>
+      </div>
+      <div class="joy-info">
+        <span>L: <span id="joyL">0.0, 0.0</span></span>
+        <span>R: <span id="joyR">0.0, 0.0</span></span>
+      </div>
+      <div class="btn-debug" id="btnDebug">Press a button to see index…</div>
     </div>
-    <div style="margin-top:8px;font-size:0.8em;color:#666;display:flex;gap:10px;">
-      <span>L: <span id="joyL">0.0, 0.0</span></span>
-      <span>R: <span id="joyR">0.0, 0.0</span></span>
-    </div>
-    <div style="margin-top:8px;padding:6px 8px;background:#111;border-radius:6px;font-size:0.75em;font-family:monospace;color:#ff9800;min-height:24px;" id="btnDebug">
-      Press any button to see its index...
-    </div>
-  </div>
 
-  <!-- Camera Feed -->
-  <div class="card full">
-    <h3>Camera Feed</h3>
-    <button class="cam-toggle" id="camBtn" onclick="toggleCam()">📷 Enable Camera</button>
-    <div id="camContainer" style="display:none;">
-      <img class="camera-feed" id="camImg" src="" alt="Camera Feed">
-    </div>
-    <div id="camOff" style="text-align:center;padding:30px;color:#555;font-size:0.85em;">
-      Camera off — click button above to enable
-    </div>
   </div>
 </div>
 
 <script>
-let camEnabled = false;
-let camInterval = null;
+let camOn = false, camTimer = null;
 
 function toggleCam() {
-  camEnabled = !camEnabled;
+  camOn = !camOn;
   const btn = document.getElementById('camBtn');
-  const container = document.getElementById('camContainer');
+  const img = document.getElementById('camImg');
   const off = document.getElementById('camOff');
-  if (camEnabled) {
+  if (camOn) {
     btn.textContent = '📷 Disable Camera';
     btn.classList.add('on');
-    container.style.display = 'block';
+    img.style.display = 'block';
     off.style.display = 'none';
     refreshCam();
-    camInterval = setInterval(refreshCam, 200);
+    camTimer = setInterval(refreshCam, 200);
   } else {
     btn.textContent = '📷 Enable Camera';
     btn.classList.remove('on');
-    container.style.display = 'none';
-    off.style.display = 'block';
-    document.getElementById('camImg').src = '';
-    if (camInterval) clearInterval(camInterval);
+    img.style.display = 'none';
+    img.src = '';
+    off.style.display = '';
+    if (camTimer) clearInterval(camTimer);
   }
 }
 
 function refreshCam() {
-  if (!camEnabled) return;
-  const img = document.getElementById('camImg');
-  img.src = '/camera_feed?' + Date.now();
+  if (!camOn) return;
+  document.getElementById('camImg').src = '/camera_feed?' + Date.now();
 }
 
 function update() {
@@ -489,11 +553,10 @@ function update() {
       sb.textContent = d.state;
       sb.className = 'state-badge state-' + d.state;
 
-      // Mode — always show current auto_mode
       const mb = document.getElementById('modeBadge');
-      const modeStr = d.auto_mode ? 'AUTO' : 'MANUAL';
-      mb.textContent = modeStr;
-      mb.className = 'mode-badge mode-' + modeStr;
+      const ms = d.auto_mode ? 'AUTO' : 'MANUAL';
+      mb.textContent = ms;
+      mb.className = 'mode-badge mode-' + ms;
 
       document.getElementById('lapBadge').textContent = 'Lap ' + d.lap;
       document.getElementById('stateTime').textContent = d.state_time;
@@ -501,84 +564,69 @@ function update() {
 
       // Traffic light
       ['Red','Yellow','Green'].forEach(c => {
-        const el = document.getElementById('tl' + c);
-        el.classList.toggle('active', d.traffic_light === c.toLowerCase());
+        document.getElementById('tl'+c).classList.toggle('active', d.traffic_light === c.toLowerCase());
       });
       document.getElementById('tlText').textContent = d.traffic_light;
 
       // Sensors
-      function setSensor(dotId, valId, val, trueLabel, falseLabel) {
-        const dot = document.getElementById(dotId);
-        const v = document.getElementById(valId);
-        if (val === null || val === undefined) { dot.className = 'dot dot-gray'; v.textContent = '—'; return; }
-        dot.className = val ? 'dot dot-red' : 'dot dot-green';
-        v.textContent = val ? (trueLabel||'YES') : (falseLabel||'NO');
+      function ss(dId, vId, v, tl, fl) {
+        const dot = document.getElementById(dId), val = document.getElementById(vId);
+        if (v===null||v===undefined){dot.className='dot dot-gray';val.textContent='—';return;}
+        dot.className = v ? 'dot dot-red' : 'dot dot-green';
+        val.textContent = v ? (tl||'YES') : (fl||'NO');
       }
-      setSensor('dotLidar','valLidar', d.lidar_obstacle, 'BLOCKED','CLEAR');
-      setSensor('dotCam','valCam', d.camera_obstacle, 'BLOCKED','CLEAR');
-      setSensor('dotFused','valFused', d.fused_obstacle, 'BLOCKED','CLEAR');
-      setSensor('dotTunnel','valTunnel', d.tunnel_detected, 'IN TUNNEL','NO');
-      setSensor('dotObst','valObst', d.obstruction_active, 'DODGING','NO');
-      setSensor('dotPark','valPark', d.parking_complete, 'DONE','NO');
+      ss('dotLidar','valLidar',d.lidar_obstacle,'BLOCKED','CLEAR');
+      ss('dotCam','valCam',d.camera_obstacle,'BLOCKED','CLEAR');
+      ss('dotFused','valFused',d.fused_obstacle,'BLOCKED','CLEAR');
+      ss('dotTunnel','valTunnel',d.tunnel_detected,'IN TUNNEL','NO');
+      ss('dotObst','valObst',d.obstruction_active,'DODGING','NO');
+      ss('dotPark','valPark',d.parking_complete,'DONE','NO');
 
-      const gDot = document.getElementById('dotGate');
-      const gVal = document.getElementById('valGate');
-      if (d.boom_gate === null) { gDot.className='dot dot-gray'; gVal.textContent='—'; }
-      else { gDot.className = d.boom_gate ? 'dot dot-green' : 'dot dot-red'; gVal.textContent = d.boom_gate ? 'OPEN' : 'CLOSED'; }
+      const gD=document.getElementById('dotGate'),gV=document.getElementById('valGate');
+      if(d.boom_gate===null){gD.className='dot dot-gray';gV.textContent='—';}
+      else{gD.className=d.boom_gate?'dot dot-green':'dot dot-red';gV.textContent=d.boom_gate?'OPEN':'CLOSED';}
 
       // Lane
       document.getElementById('laneErr').textContent = d.lane_error.toFixed(3);
-      const pct = Math.min(Math.max((d.lane_error + 0.5) / 1.0 * 100, 0), 100);
-      document.getElementById('laneBar').style.width = pct + '%';
-
-      // Cmd vel
+      document.getElementById('laneBar').style.width = Math.min(Math.max((d.lane_error+0.5)/1.0*100,0),100)+'%';
       document.getElementById('cmdLinX').textContent = d.cmd_lin_x.toFixed(3);
       document.getElementById('cmdAngZ').textContent = d.cmd_ang_z.toFixed(3);
 
       // Odom
       document.getElementById('odomDist').textContent = d.distance.toFixed(2);
-      document.getElementById('odomSpeed').textContent = d.speed.toFixed(3) + ' m/s';
+      document.getElementById('odomSpeed').textContent = d.speed.toFixed(3)+' m/s';
 
-      // Manual control — speed pct & challenge selector
-      document.getElementById('speedPct').textContent = d.speed_pct + '%';
-      document.getElementById('speedBar').style.width = d.speed_pct + '%';
+      // Speed & Selector
+      document.getElementById('speedPct').textContent = d.speed_pct+'%';
+      document.getElementById('speedBar').style.width = d.speed_pct+'%';
       document.getElementById('ctrlState').textContent = d.ctrl_state_name;
 
-      // Controller buttons — standard Linux joy mapping:
-      //   A=0, B=1, X=2, Y=3, LB=4, RB=5, Back=6, Start=7, Guide=8, L3=9, R3=10
-      const btnMap = {0:'btnA', 1:'btnB', 2:'btnX', 3:'btnY', 4:'btnLB', 5:'btnRB', 7:'btnStart', 8:'btnLT', 9:'btnRT'};
-      Object.values(btnMap).forEach(id => document.getElementById(id).classList.remove('active'));
-      if (d.buttons) {
-        d.buttons.forEach((v,i) => { if (v && btnMap[i]) document.getElementById(btnMap[i]).classList.add('active'); });
-        // Raw button debug: show which indices are pressed
-        const pressed = [];
-        d.buttons.forEach((v,i) => { if (v) pressed.push('btn[' + i + ']'); });
-        const dbg = document.getElementById('btnDebug');
-        if (pressed.length > 0) {
-          dbg.textContent = 'Active: ' + pressed.join(', ');
-          dbg.style.color = '#4caf50';
-        } else {
-          dbg.textContent = 'No buttons pressed';
-          dbg.style.color = '#555';
-        }
+      // Buttons — standard Linux: A=0,B=1,X=2,Y=3,LB=4,RB=5,Back=6,Start=7,Guide=8,L3=9,R3=10
+      const bm={0:'btnA',1:'btnB',2:'btnX',3:'btnY',4:'btnLB',5:'btnRB',7:'btnStart',8:'btnLT',9:'btnRT'};
+      Object.values(bm).forEach(id=>document.getElementById(id).classList.remove('active'));
+      if(d.buttons){
+        d.buttons.forEach((v,i)=>{if(v&&bm[i])document.getElementById(bm[i]).classList.add('active');});
+        const p=[];d.buttons.forEach((v,i)=>{if(v)p.push('btn['+i+']');});
+        const db=document.getElementById('btnDebug');
+        if(p.length){db.textContent='Active: '+p.join(', ');db.style.color='#4caf50';}
+        else{db.textContent='No buttons pressed';db.style.color='#333';}
       }
 
-      // D-pad from axes
-      if (d.axes && d.axes.length > 7) {
-        document.getElementById('btnLeft').classList.toggle('active', d.axes[6] > 0.5);
-        document.getElementById('btnRight').classList.toggle('active', d.axes[6] < -0.5);
-        document.getElementById('btnUp').classList.toggle('active', d.axes[7] > 0.5);
-        document.getElementById('btnDown').classList.toggle('active', d.axes[7] < -0.5);
+      // D-pad (axes 6,7)
+      if(d.axes&&d.axes.length>7){
+        document.getElementById('btnLeft').classList.toggle('active',d.axes[6]>0.5);
+        document.getElementById('btnRight').classList.toggle('active',d.axes[6]<-0.5);
+        document.getElementById('btnUp').classList.toggle('active',d.axes[7]>0.5);
+        document.getElementById('btnDown').classList.toggle('active',d.axes[7]<-0.5);
       }
-
-      if (d.axes && d.axes.length > 3) {
-        document.getElementById('joyL').textContent = d.axes[0].toFixed(1)+', '+d.axes[1].toFixed(1);
-        document.getElementById('joyR').textContent = d.axes[2].toFixed(1)+', '+d.axes[3].toFixed(1);
+      if(d.axes&&d.axes.length>3){
+        document.getElementById('joyL').textContent=d.axes[0].toFixed(1)+', '+d.axes[1].toFixed(1);
+        document.getElementById('joyR').textContent=d.axes[2].toFixed(1)+', '+d.axes[3].toFixed(1);
       }
     })
-    .catch(() => {
-      document.getElementById('connDot').style.background = '#f44336';
-      document.getElementById('connText').textContent = 'Disconnected';
+    .catch(()=>{
+      document.getElementById('connDot').style.background='#f44336';
+      document.getElementById('connText').textContent='Disconnected';
     });
 }
 setInterval(update, 200);
