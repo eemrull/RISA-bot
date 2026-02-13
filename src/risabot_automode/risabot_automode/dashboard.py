@@ -366,7 +366,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
 <!-- HEADER -->
 <div class="header">
-  <h1>🤖 RISA-Bot</h1>
+  <h1>🤖 RISA-Bot <span style="font-size:0.6em;color:rgba(255,255,255,0.4);vertical-align:middle;">v1.0</span></h1>
   <div class="conn-badge">
     <span class="conn-dot" id="connDot"></span>
     <span id="connText">Connecting...</span>

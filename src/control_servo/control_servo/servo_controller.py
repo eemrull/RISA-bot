@@ -109,13 +109,13 @@ class ServoControllerV8(Node):
         if rose(5): # RB -> Next
             self.challenge_index = (self.challenge_index + 1) % len(CHALLENGE_STATES)
             self.challenge_pub.publish(String(data=CHALLENGE_STATES[self.challenge_index]))
-            self.get_logger().info(f"Challenge -> {CHALLENGE_STATES[self.challenge_index]}")
+            self.get_logger().info(f"RB Pressed -> Challenge: {CHALLENGE_STATES[self.challenge_index]}")
             self._update_dash()
         
         if rose(4): # LB -> Prev
             self.challenge_index = (self.challenge_index - 1) % len(CHALLENGE_STATES)
             self.challenge_pub.publish(String(data=CHALLENGE_STATES[self.challenge_index]))
-            self.get_logger().info(f"Challenge -> {CHALLENGE_STATES[self.challenge_index]}")
+            self.get_logger().info(f"LB Pressed -> Challenge: {CHALLENGE_STATES[self.challenge_index]}")
             self._update_dash()
 
         # 3. Speed Control (D-Pad UP/DOWN - axis 7)
@@ -124,10 +124,12 @@ class ServoControllerV8(Node):
         if dpad > 0.5 and prev_dpad <= 0.5:
             self.speed_idx = min(len(self.speed_levels)-1, self.speed_idx + 1)
             self.current_speed_limit = self.speed_levels[self.speed_idx]
+            self.get_logger().info(f"Speed Limit: {self.current_speed_limit}")
             self._update_dash()
         elif dpad < -0.5 and prev_dpad >= -0.5:
             self.speed_idx = max(0, self.speed_idx - 1)
             self.current_speed_limit = self.speed_levels[self.speed_idx]
+            self.get_logger().info(f"Speed Limit: {self.current_speed_limit}")
             self._update_dash()
 
         # 4. MANUAL DRIVING
@@ -135,9 +137,10 @@ class ServoControllerV8(Node):
             # Throttle: Left Stick Y (Axis 1)
             throttle_raw = axis(1)
             
-            # Steering: Right Stick X (Axis 3) - STRICT
-            # REMOVED fallback to Axis 2 to prevent interference
-            steer_raw = axis(3)
+            # Steering: Right Stick X
+            # User Feedback V9: "Forward/Back steers" (Axis 3 on this controller).
+            # "Switch axis 3 to 2" -> So we use Axis 2.
+            steer_raw = axis(2)
             
             # Deadzone
             if abs(throttle_raw) < 0.1: throttle_raw = 0.0
