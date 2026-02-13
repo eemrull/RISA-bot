@@ -72,8 +72,6 @@ class ServoControllerV8(Node):
 
         self.last_servo_val = SERVO_CENTER
         self.last_motor_val = 0
-        self.
-        
         # Debounce
         self.prev_buttons = [0] * 15
         self.prev_axes = [0.0] * 8
