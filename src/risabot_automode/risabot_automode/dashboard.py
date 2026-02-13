@@ -19,6 +19,7 @@ import threading
 import json
 import time
 import http.server
+import socketserver
 import subprocess
 import numpy as np
 import cv2
@@ -171,14 +172,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .state-FINISHED { background: #ffd600; color: #333; }
 
   .mode-badge {
-    padding: 4px 12px;
-    border-radius: 6px;
+    padding: 2px 8px;
+    border-radius: 4px;
     font-weight: 700;
-    font-size: 0.85em;
+    font-size: 0.6em;
+    letter-spacing: 1px;
     transition: all 0.3s;
+    vertical-align: middle;
   }
-  .mode-AUTO { background: #4caf50; color: #fff; box-shadow: 0 0 12px rgba(76,175,80,0.4); }
-  .mode-MANUAL { background: #ff9800; color: #fff; box-shadow: 0 0 12px rgba(255,152,0,0.4); }
+  .mode-AUTO { background: #4caf50; color: #fff; box-shadow: 0 0 8px rgba(76,175,80,0.3); }
+  .mode-MANUAL { background: #ff9800; color: #fff; box-shadow: 0 0 8px rgba(255,152,0,0.3); }
 
   .lap-badge {
     padding: 4px 10px;
@@ -778,10 +781,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
     <!-- State Machine -->
     <div class="card">
-      <h3>State Machine</h3>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span class="state-badge" id="stateBadge" style="min-width:150px;text-align:center;">—</span>
-        <span class="mode-badge" id="modeBadge">MANUAL</span>
+      <h3 style="display:flex;align-items:center;justify-content:space-between;">State Machine <span class="mode-badge" id="modeBadge">MANUAL</span></h3>
+      <div style="margin-top:4px;">
+        <span class="state-badge" id="stateBadge">—</span>
       </div>
       <div style="margin-top:8px;">
         <span class="lap-badge" id="lapBadge">Lap —</span>
@@ -1545,7 +1547,9 @@ def main(args=None):
     _node_ref = node
 
     # Start HTTP server in background thread
-    server = http.server.HTTPServer(('0.0.0.0', 8080), DashboardHandler)
+    class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+        daemon_threads = True
+    server = ThreadedHTTPServer(('0.0.0.0', 8080), DashboardHandler)
     http_thread = threading.Thread(target=server.serve_forever, daemon=True)
     http_thread.start()
     node.get_logger().info('Dashboard live at http://0.0.0.0:8080')
