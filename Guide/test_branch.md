@@ -1,4 +1,4 @@
-# Test Branch Guide (`new-control-code`)
+# Test Branch Guide (`test`)
 
 The test branch is for **competition-ready code** with all 9 challenges integrated.
 
@@ -6,7 +6,7 @@ The test branch is for **competition-ready code** with all 9 challenges integrat
 
 ```bash
 ssh risabot
-cd ~/risabotcar_ws/src/risabot_automode && git checkout new-control-code && git pull
+cd ~/risabotcar_ws/src/risabot_automode && git checkout test && git pull
 cd ~/risabotcar_ws && cb && sos
 ros2 launch risabot_automode competition.launch.py
 ```
@@ -48,7 +48,7 @@ Everything in one command:
 
 The `auto_driver` uses a `ChallengeState` enum to manage the competition:
 
-```
+```text
 LANE_FOLLOW → OBSTRUCTION → ROUNDABOUT → TUNNEL → BOOM_GATE_TUNNEL
 → BOOM_GATE_MAIN → HILL → BUMPER → TRAFFIC_LIGHT
 → PARALLEL_PARK → PERPENDICULAR_PARK → FINISHED

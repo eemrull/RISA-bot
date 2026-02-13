@@ -2,136 +2,215 @@
 
 This guide explains how each competition challenge is implemented in the code (`src/risabot_automode/risabot_automode`).
 
+## Competition Layout
+
+![Competition Course Layout](competition_layout.jpeg)
+
+**Course dimensions:** 6.4m × 4m. The robot starts at the bottom-right and follows the lane counter-clockwise.
+
+### Challenge Order (Lap 1)
+
+| # | Challenge | Location | Sensor Used |
+|---|---|---|---|
+| 1 | Obstruction | Bottom-center lane (0.8m × 0.4m block) | LiDAR |
+| 2 | Roundabout | Bottom-left circle | Camera (lane follow) |
+| 3 | Tunnel | Far-left corridor | LiDAR (wall follow) |
+| 4 | Boom Gate | Top-left, after tunnel exit | LiDAR |
+| 5 | Hill | Top-center ramp | Camera (lane follow) |
+| 6 | Bumper | Top-right section | Camera (lane follow) |
+| 7 | Traffic Light | Right side, before start | Camera (HSV) |
+
+### Challenge Order (Lap 2 — Parking Path)
+
+| # | Challenge | Location | Sensor Used |
+|---|---|---|---|
+| 8 | Parallel Parking | Inner top-left (0.75m slot) | Odometry + LiDAR |
+| 9 | Perpendicular Parking | Inner top-center (0.4m slot) | Odometry + LiDAR |
+
+> On Lap 2, the boom gate at the roundabout closes, forcing the robot into the inner parking area.
+
 ---
 
-## 1. Challenge State Machine (`auto_driver.py`)
+## 1. State Machine (`auto_driver.py`)
 
-**File:** [`auto_driver.py`](../src/risabot_automode/risabot_automode/auto_driver.py)
+**File:** [auto_driver.py](../src/risabot_automode/risabot_automode/auto_driver.py)
 
-The robot uses a **State Machine** to know which challenge it is currently facing. It does NOT try to detect everything at once. It only looks for the specific sensor data relevant to the current challenge.
+The robot uses a **State Machine** to know which challenge it is currently facing. It does NOT try to detect everything at once — it only processes sensor data relevant to the current state.
 
 ### The Sequence
-```mermaid
-graph TD
-    start[START] --> lane1[LANE_FOLLOW]
-    lane1 -->|Dist > 1.0m && Obstacle| obs[OBSTRUCTION]
-    obs -->|Dodge Complete| lane2[LANE_FOLLOW]
-    lane2 -->|Dist > 3.0m| round[ROUNDABOUT]
-    round -->|Exit Roundabout| tunnel[TUNNEL]
-    tunnel -->|Tunnel Exit| gate[BOOM_GATE_TUNNEL]
-    gate -->|Gate Open| loops[LANE_FOLLOW (Loops)]
-    loops -->|Lap 2| light[TRAFFIC_LIGHT]
-    light -->|Green| park[PARKING]
-    park -->|Complete| finish[FINISHED]
+
+```text
+START → LANE_FOLLOW → OBSTRUCTION → ROUNDABOUT → TUNNEL
+→ BOOM_GATE_TUNNEL → LANE_FOLLOW (top loop) → BOOM_GATE_MAIN
+→ HILL → BUMPER → TRAFFIC_LIGHT → PARALLEL_PARK
+→ PERPENDICULAR_PARK → FINISHED
 ```
 
 **How it works:**
-- `auto_driver` subscribes to **all** module topics.
-- In `publish_cmd_vel()`, it checks `self.state`.
-- **If State = TUNNEL**: It ignores the line follower and listens to `/tunnel_cmd_vel`.
-- **If State = PARKING**: It ignores everything and listens to `/parking_cmd_vel`.
-- **If State = LANE_FOLLOW**: It uses the camera line follower + standard obstacle stop.
+
+- `auto_driver` subscribes to **all** module topics
+- In `publish_cmd_vel()`, it checks `self.state` and selects the right velocity source:
+  - `TUNNEL` → ignores camera, uses `/tunnel_cmd_vel`
+  - `PARKING` → ignores everything, uses `/parking_cmd_vel`
+  - `LANE_FOLLOW` → uses camera `/lane_error` with steering gain
+  - `TRAFFIC_LIGHT` → stops on red/yellow, goes on green
+  - `BOOM_GATE` → stops if gate closed
 
 ---
 
-## 2. Traffic Light
+## 2. Obstruction Avoidance (Challenge 1)
 
-**File:** [`traffic_light_detector.py`](../src/risabot_automode/risabot_automode/traffic_light_detector.py)
-**Topic:** `/traffic_light_state` (red, yellow, green, unknown)
+**File:** [obstruction_avoidance.py](../src/risabot_automode/risabot_automode/obstruction_avoidance.py)
+
+**Topics:** `/obstruction_active` (Bool), `/obstruction_cmd_vel` (Twist)
+
+**Obstacle size:** 0.8m long × 0.4m wide (see layout)
 
 ### How it works
-1. **Input:** Color camera image (`/camera/color/image_raw`).
-2. **HSV Thresholding:** Filters the image for Red, Yellow, and Green pixels.
-   - *Tunable:* `red_h_low`, `green_h_high`, `val_min`, etc.
-3. **Contour Detection:** Finds circular blobs of the filtered color.
-4. **Logic:**
-   - If a Red/Yellow circle is found → Publishes `red` or `yellow`.
-   - If a Green circle is found → Publishes `green`.
-   - `auto_driver` stops if state is `red` or `yellow`. It goes if `green`.
+
+1. **Detection:** LiDAR sees an object in the lane closer than `detect_dist`
+2. **Decision:** Checks which side (left vs right) has more clearance
+3. **Timed maneuver:**
+   - **Phase 1 — Steer Out:** Turn away from obstacle for `steer_out_duration`
+   - **Phase 2 — Pass:** Drive straight alongside obstacle for `pass_duration`
+   - **Phase 3 — Return:** Turn back into lane for `steer_back_duration`
+4. **Completion:** Sets `active=False` so `auto_driver` resumes lane following
 
 ---
 
-## 3. Boom Gate
+## 3. Roundabout (Challenge 2)
 
-**File:** [`boom_gate_detector.py`](../src/risabot_automode/risabot_automode/boom_gate_detector.py)
-**Topic:** `/boom_gate_open` (True/False)
+**Handled by:** [auto_driver.py](../src/risabot_automode/risabot_automode/auto_driver.py) (ROUNDABOUT state)
 
 ### How it works
-1. **Input:** LiDAR scans (`/scan`).
-2. **Region of Interest (ROI):** Looks only at a specific slice in front of the robot (e.g., ±20 degrees, 0.1m to 0.8m).
-3. **Cluster Detection:**
-   - If it sees a **dense cluster** of points in that ROI (a horizontal bar), it assumes the gate is **CLOSED**.
-   - If the ROI is clear, the gate is **OPEN**.
-4. **Hysteresis:** Uses a counter (`consecutive_open_scans`) to prevent flickering. The gate must be seen as open for N consecutive frames before the robot moves.
+
+- Uses the **camera line follower** — the roundabout has painted lane lines
+- The state machine enters `ROUNDABOUT` after passing Challenge 1
+- On the main branch, the original controller detects roundabouts by checking for consistent left turns (>1.5s) and locks full-left steering for 3.5s
+- On the test branch, the state machine simply keeps lane following through the curved section
 
 ---
 
-## 4. Tunnel
+## 4. Tunnel (Challenge 3)
 
-**File:** [`tunnel_wall_follower.py`](../src/risabot_automode/risabot_automode/tunnel_wall_follower.py)
+**File:** [tunnel_wall_follower.py](../src/risabot_automode/risabot_automode/tunnel_wall_follower.py)
+
 **Topics:** `/tunnel_detected` (Bool), `/tunnel_cmd_vel` (Twist)
 
 ### How it works
-1. **Input:** LiDAR scans (`/scan`).
-2. **Wall Detection:** splits scan into Left and Right sides.
-3. **Error Calculation:** `error = left_dist - right_dist`.
-   - If `error > 0`, we are closer to the right wall → turn Left.
-   - If `error < 0`, we are closer to the left wall → turn Right.
-4. **PD Control:** `ang_vel = (kp * error) + (kd * derivative)`.
-   - *Tunable:* `kp`, `kd`, `target_center_dist`.
-5. **Auto Driver Logic:** When `auto_driver` enters `TUNNEL` state, it completely ignores the camera (often dark/confusing in tunnels) and drives solely off this LiDAR wall follower.
+
+1. **Input:** LiDAR scans (`/scan`)
+2. **Wall Detection:** Splits scan points into Left side and Right side
+3. **Error:** `error = left_dist - right_dist`
+   - `error > 0` → closer to right wall → steer left
+   - `error < 0` → closer to left wall → steer right
+4. **PD Control:** `angular_vel = (kp × error) + (kd × derivative)`
+5. **Why LiDAR?** Tunnels are dark — camera can't see lane lines reliably
+
+**Tunable:** `kp`, `kd`, `target_center_dist`, `forward_speed`
 
 ---
 
-## 5. Obstruction Avoidance (Lateral Dodge)
+## 5. Boom Gate (Challenge 4)
 
-**File:** [`obstruction_avoidance.py`](../src/risabot_automode/risabot_automode/obstruction_avoidance.py)
-**Topics:** `/obstruction_active` (Bool), `/obstruction_cmd_vel` (Twist)
+**File:** [boom_gate_detector.py](../src/risabot_automode/risabot_automode/boom_gate_detector.py)
+
+**Topic:** `/boom_gate_open` (Bool)
 
 ### How it works
-1. **Detection:** LiDAR sees an object in the lane (closer than `detect_dist`).
-2. **Decision:** Checks which side has more space (Left vs Right).
-3. **Maneuver (Timed State Machine):**
-   - **Phase 1 (Steer Out):** Turn 35° out of the lane for `steer_out_duration`.
-   - **Phase 2 (Pass):** Drive straight parallel to the object for `pass_duration`.
-   - **Phase 3 (Return):** Turn -35° back into the lane for `steer_back_duration`.
-4. **Completion:** Publishes `active=False`, protecting `auto_driver` until the maneuver is fully done.
+
+1. **Input:** LiDAR scans (`/scan`)
+2. **ROI:** Looks at a narrow forward arc (±20°, 0.1m to 0.8m range)
+3. **Detection:** If a **dense cluster** of points appears at similar distances (low variance = a horizontal bar), the gate is **CLOSED**
+4. **Hysteresis:** Must see "open" for N consecutive frames before publishing `True` — prevents flickering
+
+> There are **two boom gates** on the course. One after the tunnel (Challenge 4), one at the roundabout controlling access to the parking area on Lap 2.
 
 ---
 
-## 6. Parking
+## 6. Hill (Challenge 5)
 
-**File:** [`parking_controller.py`](../src/risabot_automode/risabot_automode/parking_controller.py)
-**Topics:** `/parking_cmd_vel`, `/parking_complete`, `/parking_signboard_detected`
+**Handled by:** Lane following (no special module)
+
+The hill is a physical ramp. The robot drives up and over it using normal camera lane following. No code changes needed — the camera still sees the lane lines on the ramp surface. May need slightly higher motor power (tunable via `forward_speed`).
+
+---
+
+## 7. Bumper (Challenge 6)
+
+**Handled by:** Lane following (no special module)
+
+Similar to the hill — the bumper is a physical obstacle on the ground that the robot drives over. Standard lane following handles this.
+
+---
+
+## 8. Traffic Light (Challenge 7)
+
+**File:** [traffic_light_detector.py](../src/risabot_automode/risabot_automode/traffic_light_detector.py)
+
+**Topic:** `/traffic_light_state` (String: "red", "yellow", "green", "unknown")
 
 ### How it works
-1. **Sign Detection:** Uses the camera to look for the Parking Signboard (using Blue/Red HSV thresholding or shape detection).
-2. **Phase Machine:**
-   - **Parallel:**
-     1. `FORWARD`: Drive past the spot (distance via Odometry).
-     2. `STEER_REVERSE`: Reverse while turning into the spot.
-     3. `STRAIGHTEN`: Straighten wheels and reverse fully in.
-     4. `WAIT`: Stop for 3 seconds.
-     5. `EXIT`: Drive forwards and turn out.
-   - **Perpendicular:**
-     1. `TURN_IN`: 90° turn into the spot.
-     2. `FORWARD`: Drive in until LiDAR sees the back wall.
-     3. `WAIT`: Stop.
-     4. `REVERSE_OUT`: Back out and turn to rejoin lane.
-3. **Odometry:** Heavily relies on `/odom` to measure `parallel_forward_dist`, `parallel_reverse_dist`, etc.
+
+1. **Input:** Color camera image (`/camera/color/image_raw`)
+2. **HSV Thresholding:** Filters image for Red, Yellow, and Green color ranges
+3. **Contour Detection:** Finds circular blobs matching traffic light colors
+4. **Output:**
+   - Red/Yellow detected → publishes `"red"` or `"yellow"` → robot stops
+   - Green detected → publishes `"green"` → robot proceeds
+
+> ⚠️ HSV thresholds are very sensitive to lighting. Always re-tune at the competition venue using `ros2 param set`.
 
 ---
 
-## 7. Line Follower & General Driving (Lane Follow)
+## 9. Parallel Parking (Challenge 8)
 
-**File:** [`line_follower_camera.py`](../src/risabot_automode/risabot_automode/line_follower_camera.py)
+**File:** [parking_controller.py](../src/risabot_automode/risabot_automode/parking_controller.py)
+
+**Topics:** `/parking_cmd_vel`, `/parking_complete`
+
+**Slot size:** 0.75m deep (see layout)
+
+### How it works
+
+1. `FORWARD` — Drive past the parking slot (distance measured via odometry)
+2. `STEER_REVERSE` — Reverse while turning into the slot
+3. `STRAIGHTEN` — Center wheels and reverse fully in
+4. `WAIT` — Stop for 3 seconds (competition requirement)
+5. `EXIT` — Drive forward and turn out to rejoin the lane
+
+---
+
+## 10. Perpendicular Parking (Challenge 9)
+
+**File:** [parking_controller.py](../src/risabot_automode/risabot_automode/parking_controller.py)
+
+**Slot size:** 0.4m wide (see layout)
+
+### How it works
+
+1. `TURN_IN` — 90° turn into the slot
+2. `FORWARD` — Drive in until LiDAR detects the back wall
+3. `WAIT` — Stop for required time
+4. `REVERSE_OUT` — Back out and turn to rejoin the lane
+
+---
+
+## 11. Line Follower (Used Throughout)
+
+**File:** [line_follower_camera.py](../src/risabot_automode/risabot_automode/line_follower_camera.py)
+
 **Topic:** `/lane_error` (Float32)
 
 ### How it works
-1. **Image Processing:** Crops bottom 40% of image. Filters for **White** pixels.
-2. **Histogram:** Sums pixels vertically to find "peaks" (where the white lines are).
-3. **Midpoint:** Calculates the center between Left and Right lines.
-4. **Error:** `error = image_center - lane_center`.
-5. **Cleaning:**
-   - **Dead Zone:** Ignores tint errors (<0.03) to drive straight on straights.
-   - **Smoothing:** Uses Exponential Moving Average (EMA) to filter out camera noise.
+
+1. **Crop:** Takes bottom 40% of camera image (road surface)
+2. **Threshold:** Filters for white pixels (lane markings)
+3. **Histogram:** Sums white pixels per column to find lane line peaks
+4. **Midpoint:** Center between left and right lane lines
+5. **Error:** `error = image_center - lane_center`
+6. **Smoothing:**
+   - **Dead zone** (<0.03) → drive straight on straights
+   - **EMA filter** → removes camera noise jitter
+
+**Tunable:** `white_threshold`, `crop_ratio`, `smoothing_alpha`, `dead_zone`
