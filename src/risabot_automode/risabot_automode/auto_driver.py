@@ -68,15 +68,21 @@ class AutoDriver(Node):
         self.obstacle_active = False
         self.lane_error = 0.0
 
-        # Tunable steering gain (was hardcoded at 0.8 — too aggressive)
+        # Tunable parameters
         self.declare_parameter('steering_gain', 0.5)
+        self.declare_parameter('forward_speed', 0.15)  # m/s base forward speed
+        self.declare_parameter('stale_timeout', 3.0)   # seconds before treating module data as stale
 
-        # Module inputs
+        # Module inputs (with timestamps for stale detection)
         self.traffic_light_state = 'unknown'
+        self.traffic_light_last_time = 0.0
         self.boom_gate_open = True
+        self.boom_gate_last_time = 0.0
         self.tunnel_detected = False
+        self.tunnel_last_time = 0.0
         self.tunnel_cmd = Twist()
         self.obstruction_active = False
+        self.obstruction_last_time = 0.0
         self.obstruction_cmd = Twist()
         self.parking_complete = False
         self.parking_cmd = Twist()
@@ -183,18 +189,22 @@ class AutoDriver(Node):
     # ========== New module callbacks ==========
     def traffic_light_callback(self, msg):
         self.traffic_light_state = msg.data
+        self.traffic_light_last_time = time.time()
 
     def boom_gate_callback(self, msg):
         self.boom_gate_open = msg.data
+        self.boom_gate_last_time = time.time()
 
     def tunnel_detected_callback(self, msg):
         self.tunnel_detected = msg.data
+        self.tunnel_last_time = time.time()
 
     def tunnel_cmd_callback(self, msg):
         self.tunnel_cmd = msg
 
     def obstruction_active_callback(self, msg):
         self.obstruction_active = msg.data
+        self.obstruction_last_time = time.time()
 
     def obstruction_cmd_callback(self, msg):
         self.obstruction_cmd = msg
@@ -208,6 +218,12 @@ class AutoDriver(Node):
 
     def signboard_callback(self, msg):
         self.signboard_detected = msg.data
+
+    def _is_stale(self, last_time):
+        """Check if a module's data is stale (no updates for stale_timeout seconds)."""
+        if last_time == 0.0:
+            return True  # Never received
+        return (time.time() - last_time) > self.get_parameter('stale_timeout').value
 
     def set_challenge_callback(self, msg):
         """Manual state override: ros2 topic pub /set_challenge std_msgs/String 'data: TUNNEL'"""
@@ -232,6 +248,13 @@ class AutoDriver(Node):
     def _dist_in_state(self):
         return self.distance - self.state_entry_dist
 
+    def _lane_follow_cmd(self):
+        """Build a Twist for standard lane following."""
+        cmd = Twist()
+        cmd.linear.x = self.get_parameter('forward_speed').value
+        cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
+        return cmd
+
     def publish_cmd_vel(self):
         """Main control loop — selects cmd_vel based on current challenge state."""
         cmd = Twist()
@@ -239,6 +262,16 @@ class AutoDriver(Node):
         if not self.in_auto_mode:
             # Manual mode — don't publish anything, let the controller handle /cmd_vel
             return
+
+        # Reset stale module data to safe defaults
+        if self._is_stale(self.obstruction_last_time):
+            self.obstruction_active = False
+        if self._is_stale(self.tunnel_last_time):
+            self.tunnel_detected = False
+        if self._is_stale(self.traffic_light_last_time):
+            self.traffic_light_state = 'unknown'
+        if self._is_stale(self.boom_gate_last_time):
+            self.boom_gate_open = True  # Fail-open: assume gate is open
 
         # ---- State-specific behavior ----
 
@@ -249,53 +282,48 @@ class AutoDriver(Node):
                 # Hand off to obstruction avoidance module
                 cmd = self.obstruction_cmd
             else:
-                # Normal lane following
-                cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
+                cmd = self._lane_follow_cmd()
 
         elif self.state == ChallengeState.OBSTRUCTION:
             if self.obstruction_active:
                 cmd = self.obstruction_cmd
             else:
-                # Obstruction cleared, resume lane following
-                cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
+                cmd = self._lane_follow_cmd()
 
         elif self.state == ChallengeState.ROUNDABOUT:
-            # Lane following works in roundabout (curved lines)
             if not self.obstacle_active:
-                cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
+                cmd = self._lane_follow_cmd()
 
         elif self.state == ChallengeState.TUNNEL:
             if self.tunnel_detected:
-                # Use wall follower output
                 cmd = self.tunnel_cmd
             else:
-                # Not in tunnel yet or exited — lane follow
                 if not self.obstacle_active:
-                    cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
+                    cmd = self._lane_follow_cmd()
 
         elif self.state in (ChallengeState.BOOM_GATE_TUNNEL, ChallengeState.BOOM_GATE_MAIN):
             if not self.boom_gate_open:
-                # Gate closed — stop and wait
-                pass
+                pass  # Gate closed — stop and wait
             else:
-                # Gate open — proceed with lane following
-                cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
+                cmd = self._lane_follow_cmd()
 
         elif self.state in (ChallengeState.HILL, ChallengeState.BUMPER):
-            # Normal lane following — the robot just drives through
             if not self.obstacle_active:
-                cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
+                cmd = self._lane_follow_cmd()
 
         elif self.state == ChallengeState.TRAFFIC_LIGHT:
             if self.traffic_light_state in ('red', 'yellow'):
                 pass  # Stop
             elif self.traffic_light_state == 'green':
-                cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
+                cmd = self._lane_follow_cmd()
+            else:
+                # 'unknown' — proceed with caution (reduced speed)
+                cmd = self._lane_follow_cmd()
+                cmd.linear.x *= 0.5
 
         elif self.state in (ChallengeState.PARALLEL_PARK, ChallengeState.PERPENDICULAR_PARK):
             if not self.parking_complete:
                 cmd = self.parking_cmd
-            # else: parking done, zero velocity (wait for state transition)
 
         elif self.state == ChallengeState.FINISHED:
             pass  # Stop

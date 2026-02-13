@@ -91,6 +91,11 @@ class JoyRobotController(Node):
         self.in_roundabout = False
         self.roundabout_start_time = 0.0
 
+        # Parking state (used by X button)
+        self.in_parking = False
+        self.parking_start_time = 0.0
+        self.parking_duration = 5.0  # seconds to hold in parking position
+
         # Auto-start joy_node
         try:
             topics = self.get_topic_names_and_types()
@@ -227,6 +232,8 @@ class JoyRobotController(Node):
                 continue
 
             angle = angle_min + i * angle_increment
+            # Compensate for 90° clockwise mount (matches obstacle_avoidance)
+            angle += math.pi / 2
             while angle > math.pi:
                 angle -= 2 * math.pi
             while angle < -math.pi:
@@ -402,6 +409,19 @@ class JoyRobotController(Node):
 
             motor_power = 40
 
+        # === START OF AUTOMATIC PARKING LOGIC ===
+        # (Moved BEFORE roundabout so parking can override)
+        if self.in_parking:
+            elapsed = time.time() - self.parking_start_time
+            if elapsed < self.parking_duration:
+                self.bot.set_pwm_servo(4, ANGLE_CENTER)
+                self.set_motor_safe(0)
+                return
+            else:
+                self.in_parking = False
+                self.get_logger().info('▶️ Auto-resume after parking')
+        # === END OF AUTOMATIC PARKING LOGIC ===
+
         # === START OF ROUNDABOUT CODE ===
         # Roundabout detection
         if not self.in_roundabout:
@@ -428,18 +448,6 @@ class JoyRobotController(Node):
                 self.get_logger().info('✅ Exiting roundabout')
             return  # Skip normal steering
         # === END OF ROUNDABOUT CODE ===
-
-        # === START OF AUTOMATIC PARKING LOGIC ===
-        if self.in_parking:
-            elapsed = time.time() - self.parking_start_time
-            if elapsed < self.parking_duration:
-                self.bot.set_pwm_servo(4, ANGLE_CENTER)
-                self.set_motor_safe(0)
-                return
-            else:
-                self.in_parking = False
-                self.get_logger().info('▶️ Auto-resume after parking')
-        # === END OF AUTOMATIC PARKING LOGIC ===
 
         # Apply steering
         target_angle = max(ANGLE_MAX_LEFT, min(ANGLE_MAX_RIGHT, target_angle))

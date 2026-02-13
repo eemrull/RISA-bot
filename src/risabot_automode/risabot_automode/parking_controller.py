@@ -23,7 +23,6 @@ from rclpy.qos import QoSPresetProfiles
 import cv2
 import numpy as np
 import math
-import time
 from enum import Enum
 
 
@@ -78,12 +77,12 @@ class ParkingController(Node):
 
         # State
         self.phase = ParkingPhase.IDLE
-        self.phase_start_time = 0.0
+        self.phase_start_time = self.get_clock().now()
         self.phase_start_dist = 0.0
         self.cumulative_yaw = 0.0
         self.current_speed = 0.0
         self.distance_traveled = 0.0
-        self.last_odom_time = time.time()
+        self.last_odom_time = self.get_clock().now()
         self.signboard_detected = False
 
         # Timer for control loop
@@ -94,9 +93,9 @@ class ParkingController(Node):
     def odom_callback(self, msg):
         """Track distance from odometry."""
         speed = msg.twist.twist.linear.x
-        current_time = time.time()
-        dt = current_time - self.last_odom_time
-        self.last_odom_time = current_time
+        now = self.get_clock().now()
+        dt = (now - self.last_odom_time).nanoseconds / 1e9
+        self.last_odom_time = now
         self.current_speed = speed
         self.distance_traveled += abs(speed) * dt
 
@@ -152,7 +151,7 @@ class ParkingController(Node):
     def _start_phase(self, phase):
         """Transition to a new parking phase."""
         self.phase = phase
-        self.phase_start_time = time.time()
+        self.phase_start_time = self.get_clock().now()
         self.phase_start_dist = self.distance_traveled
         self.cumulative_yaw = 0.0
         self.get_logger().info(f'  → Phase: {phase.name}')
@@ -161,7 +160,7 @@ class ParkingController(Node):
         return self.distance_traveled - self.phase_start_dist
 
     def _time_since_phase(self):
-        return time.time() - self.phase_start_time
+        return (self.get_clock().now() - self.phase_start_time).nanoseconds / 1e9
 
     def control_loop(self):
         """Main parking control loop — executes maneuver phases."""

@@ -1,4 +1,3 @@
-import os
 from launch import LaunchDescription
 from launch.actions import TimerAction
 from launch_ros.actions import Node

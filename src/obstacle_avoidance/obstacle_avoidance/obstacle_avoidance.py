@@ -19,8 +19,8 @@ class ObstacleAvoidanceNode(Node):
     def __init__(self):
         super().__init__('obstacle_avoidance_node')
 
-        # Parameters
-        self.min_obstacle_distance = 0.48
+        # Parameters (tunable at runtime)
+        self.declare_parameter('min_obstacle_distance', 0.48)
 
         # Publishers
         self.obstacle_all_pub = self.create_publisher(Bool, '/obstacle_detected', 10)
@@ -34,7 +34,7 @@ class ObstacleAvoidanceNode(Node):
             sensor_data_qos
         )
 
-        # State
+        # State — temporal smoothing buffer
         self.obstacle_active_any = False
         self.distance_buffer = []
         self.buffer_size = 5
@@ -66,21 +66,27 @@ class ObstacleAvoidanceNode(Node):
             if -math.pi/6 <= angle <= math.pi/6:
                 min_front = min(min_front, r)
 
+        # Temporal smoothing: buffer min_front values
+        self.distance_buffer.append(min_front)
+        if len(self.distance_buffer) > self.buffer_size:
+            self.distance_buffer.pop(0)
+        smoothed_min = min(self.distance_buffer)  # worst-case from recent readings
+
         # Publish front-only detection
-        front_obstacle = min_front < self.min_obstacle_distance
+        min_dist = self.get_parameter('min_obstacle_distance').value
+        front_obstacle = smoothed_min < min_dist
 
         # Debug: log only when obstacle detected
         if front_obstacle:
-            self.get_logger().warn(f'🛑 FRONT obstacle! min_front = {min_front:.2f} m')
+            self.get_logger().warn(f'🛑 FRONT obstacle! min_front = {smoothed_min:.2f} m')
 
         # Publish
         msg_front = Bool()
         msg_front.data = front_obstacle
         self.obstacle_front_pub.publish(msg_front)
 
-        # Also publish any-obstacle (optional)
-        any_obstacle = min_front < self.min_obstacle_distance  # simplify for now
-        self.obstacle_all_pub.publish(Bool(data=any_obstacle))
+        # Also publish any-obstacle
+        self.obstacle_all_pub.publish(Bool(data=front_obstacle))
 
 def main(args=None):
     rclpy.init(args=args)

@@ -14,9 +14,10 @@ class ObstacleAvoidanceCamera(Node):
     def __init__(self):
         super().__init__('obstacle_avoidance_camera')
 
-        # Parameters
-        self.black_threshold = 50  # RGB avg below this = "black" (road)
-        self.obstacle_active = False
+        # Parameters (tunable at runtime)
+        self.declare_parameter('white_threshold', 200)  # Bright pixels = white
+        self.declare_parameter('hysteresis_on', 3)      # consecutive frames to trigger
+        self.declare_parameter('hysteresis_off', 5)     # consecutive frames to clear
 
         # Publishers
         self.obstacle_pub = self.create_publisher(
@@ -34,7 +35,12 @@ class ObstacleAvoidanceCamera(Node):
             QoSPresetProfiles.SENSOR_DATA.value
         )
 
-        self.get_logger().info('Obstacle Avoidance Camera Node Started (Black Road Detection)')
+        # State — hysteresis filtering
+        self.obstacle_active = False
+        self.white_count = 0
+        self.clear_count = 0
+
+        self.get_logger().info('Obstacle Avoidance Camera Node Started (White Surface Detection)')
 
     def color_callback(self, msg):
         try:
@@ -54,27 +60,34 @@ class ObstacleAvoidanceCamera(Node):
             avg_bgr = np.mean(roi, axis=(0, 1))
             avg_intensity = np.mean(avg_bgr)  # 0–255
 
-            # Define white threshold (adjust as needed)
-            self.white_threshold = 200  # Bright pixels = white
+            white_threshold = self.get_parameter('white_threshold').value
+            is_white = avg_intensity > white_threshold
 
-            # If average intensity is high → likely white → obstacle
-            is_white = avg_intensity > self.white_threshold
+            # Hysteresis — require N consecutive frames to change state
+            hysteresis_on = self.get_parameter('hysteresis_on').value
+            hysteresis_off = self.get_parameter('hysteresis_off').value
 
-            # Update state
-            if is_white and not self.obstacle_active:
+            if is_white:
+                self.white_count += 1
+                self.clear_count = 0
+            else:
+                self.clear_count += 1
+                self.white_count = 0
+
+            if self.white_count >= hysteresis_on and not self.obstacle_active:
                 self.get_logger().warn(f'🛑 White surface detected! Avg intensity: {avg_intensity:.1f}')
                 self.obstacle_active = True
-            elif not is_white and self.obstacle_active:
+            elif self.clear_count >= hysteresis_off and self.obstacle_active:
                 self.get_logger().info(f'✅ Non-white surface. Safe to move. Avg intensity: {avg_intensity:.1f}')
                 self.obstacle_active = False
 
             # Publish obstacle status
             obstacle_msg = Bool()
-            obstacle_msg.data = True if is_white else False
+            obstacle_msg.data = self.obstacle_active
             self.obstacle_pub.publish(obstacle_msg)
 
             # Live update
-            status = "🛑 STOP" if is_white else "✅ GO"
+            status = "🛑 STOP" if self.obstacle_active else "✅ GO"
             print(
                 f"\r[obstacle_avoidance_camera] Avg intensity: {avg_intensity:.1f} | Status: {status}",
                 end='',

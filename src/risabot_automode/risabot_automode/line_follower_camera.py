@@ -23,6 +23,7 @@ class LineFollowerCamera(Node):
         self.declare_parameter('dead_zone', 0.03)        # ignore errors below this
         self.declare_parameter('white_threshold', 150)    # grayscale threshold for white lines
         self.declare_parameter('crop_ratio', 0.4)         # bottom portion of image to use
+        self.declare_parameter('show_debug', False)       # set True to show debug window
 
         self.error_pub = self.create_publisher(Float32, '/lane_error', 10)
         self.bridge = CvBridge()
@@ -94,13 +95,14 @@ class LineFollowerCamera(Node):
             # Publish the smoothed error
             self.error_pub.publish(Float32(data=self.lane_error))
 
-            # Debug (optional)
-            debug = bgr.copy()
-            cv2.line(debug, (int(left_peak), h-crop_h), (int(left_peak), h), (255, 0, 0), 2)   # blue: left line
-            cv2.line(debug, (int(right_peak), h-crop_h), (int(right_peak), h), (0, 0, 255), 2) # red: right line
-            cv2.line(debug, (int(lane_center_x), h-crop_h), (int(lane_center_x), h), (0, 255, 0), 2) # green: center
-            cv2.imshow('Lane', debug)
-            cv2.waitKey(1)
+            # Debug visualization (disabled by default for headless operation)
+            if self.get_parameter('show_debug').value:
+                debug = bgr.copy()
+                cv2.line(debug, (int(left_peak), h-crop_h), (int(left_peak), h), (255, 0, 0), 2)   # blue: left line
+                cv2.line(debug, (int(right_peak), h-crop_h), (int(right_peak), h), (0, 0, 255), 2) # red: right line
+                cv2.line(debug, (int(lane_center_x), h-crop_h), (int(lane_center_x), h), (0, 255, 0), 2) # green: center
+                cv2.imshow('Lane', debug)
+                cv2.waitKey(1)
 
             status = "CENTER" if abs(self.lane_error) < 0.05 else ("TURN RIGHT" if self.lane_error < 0 else "TURN LEFT")
             print(f"\r[LF] C:{lane_center_x} | Err:{self.lane_error:.2f} | {status}", end='', flush=True)

@@ -84,13 +84,14 @@ class BoomGateDetector(Node):
 
         # Gate detection logic:
         # A boom gate creates a dense cluster of points at roughly the same distance
-        # (the barrier surface). Open space would show few/no points or scattered points.
         is_blocked = False
         if len(forward_distances) >= min_pts:
             distances = np.array(forward_distances)
             # Check if points cluster tightly (low variance = solid barrier)
             dist_std = np.std(distances)
-            if dist_std < dist_var_max:
+            dist_mean = np.mean(distances)
+            # Require both: low spread AND reasonable distance (not noise at range_max)
+            if dist_std < dist_var_max and dist_mean < max_dist * 0.9:
                 is_blocked = True
 
         # Hysteresis to avoid flicker
