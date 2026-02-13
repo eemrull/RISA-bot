@@ -27,10 +27,8 @@ import time
 try:
     bot = Rosmaster()
     bot.set_car_type(1)  # Set to Rosmaster X3
+    bot.set_car_motion(0, 0, 0)  # Ensure motors are stopped on startup
     print("Rosmaster Serial Opened!")
-    print(f"DEBUG: Bot attributes: {dir(bot)}")
-    if hasattr(bot, 'ser'):
-        print(f"DEBUG: bot.ser exists: {bot.ser}")
 except Exception as e:
     print(f"Failed to initialize Rosmaster: {e}")
     print("Exiting. Make sure the robot is powered on and connected.")
@@ -88,8 +86,10 @@ class ServoControllerNode(Node):
         self.prev_buttons = []
         self.prev_axes = []
 
-        # Speed level (0-100%) — adjust with D-pad up/down
-        self.speed_pct = 50  # default 50%
+        # Speed levels — cycle with D-pad up/down
+        self.SPEED_LEVELS = [25, 50, 75, 100]
+        self.speed_idx = 1  # Start at 50%
+        self.speed_pct = self.SPEED_LEVELS[self.speed_idx]
 
         # Parameters for manual driving
         self.declare_parameter('max_linear_speed', 0.5)  # m/s
@@ -163,10 +163,12 @@ class ServoControllerNode(Node):
                 prev_dpad_down = (self.prev_axes[7] < -0.5) if len(self.prev_axes) > 7 else False
 
                 if dpad_up and not prev_dpad_up:
-                    self.speed_pct = min(100, self.speed_pct + 10)
+                    self.speed_idx = min(len(self.SPEED_LEVELS) - 1, self.speed_idx + 1)
+                    self.speed_pct = self.SPEED_LEVELS[self.speed_idx]
                     self.get_logger().info(f'Speed: {self.speed_pct}%')
                 if dpad_down and not prev_dpad_down:
-                    self.speed_pct = max(10, self.speed_pct - 10)
+                    self.speed_idx = max(0, self.speed_idx - 1)
+                    self.speed_pct = self.SPEED_LEVELS[self.speed_idx]
                     self.get_logger().info(f'Speed: {self.speed_pct}%')
 
             # ===== MANUAL DRIVING (only when NOT in auto mode) =====
@@ -197,10 +199,11 @@ class ServoControllerNode(Node):
                 except Exception as e:
                     self.get_logger().error(f"Hardware write failed: {e}")
 
-            # ===== CAMERA SERVOS (always active) =====
-            if len(msg.axes) > 4:
-                s1_val = int((msg.axes[3] * -1.0 + 1.0) * 90.0)
-                s2_val = int((msg.axes[4] * -1.0 + 1.0) * 90.0)
+            # ===== FRONT WHEEL SERVOS (always active) =====
+            # Right stick: axes[2] = L/R (S1), axes[3] = U/D (S2)
+            if len(msg.axes) > 3:
+                s1_val = int((msg.axes[2] * -1.0 + 1.0) * 90.0)
+                s2_val = int((msg.axes[3] * -1.0 + 1.0) * 90.0)
 
                 if s1_val != self.last_s1:
                     bot.set_pwm_servo(1, s1_val)
@@ -241,41 +244,37 @@ class ServoControllerNode(Node):
     def publish_odom(self):
         """Read bot state and publish odometry."""
         try:
-            # Assuming bot property names from dir() dump: _Rosmaster__vx, etc.
-            # But the library likely provides getters?
-            # logs showed 'get_motion_data'.
-            # Let's try get_motion_data().
-            # If that fails, we can fall back to direct access.
+            vx = 0.0
+            vy = 0.0
+            wz = 0.0
             
-            # bot.get_motion_data() likely returns (vx, vy, az)????
-            # Let's try to infer from typical Yahboom API.
-            # Usually: ax, ay, az = bot.get_accelerometer_data()
-            # vx, vy, wz = bot.get_motion_data() ??
+            # Try the official API first
+            if hasattr(bot, 'get_motion_data'):
+                try:
+                    data = bot.get_motion_data()
+                    if isinstance(data, (list, tuple)) and len(data) >= 3:
+                        vx, vy, wz = float(data[0]), float(data[1]), float(data[2])
+                    elif isinstance(data, (list, tuple)) and len(data) >= 2:
+                        vx, wz = float(data[0]), float(data[1])
+                except Exception:
+                    pass  # Fall through to zero values
             
-            # For now, let's look at available methods again:
-            # 'get_motion_data', '_Rosmaster__vx', '_Rosmaster__vy'
+            # Sanity check — reject garbage
+            if abs(vx) > 10.0 or abs(vy) > 10.0 or abs(wz) > 20.0:
+                vx, vy, wz = 0.0, 0.0, 0.0
             
-            # Direct access is safer than guessing return tuple size.
-            # Names are mangled: bot._Rosmaster__vx
-            
-            vx = getattr(bot, '_Rosmaster__vx', 0.0)
-            vy = getattr(bot, '_Rosmaster__vy', 0.0)
-            wz = getattr(bot, '_Rosmaster__vz', 0.0) # VZ is probably angular Z
-            
-            # Simple Odometry (Velocity only for now to satisfy dashboard)
             odom = Odometry()
             odom.header.stamp = self.get_clock().now().to_msg()
             odom.header.frame_id = "odom"
             odom.child_frame_id = "base_link"
             
-            odom.twist.twist.linear.x = float(vx)
-            odom.twist.twist.linear.y = float(vy)
-            odom.twist.twist.angular.z = float(wz)
+            odom.twist.twist.linear.x = vx
+            odom.twist.twist.linear.y = vy
+            odom.twist.twist.angular.z = wz
             
             self.odom_pub.publish(odom)
             
         except Exception as e:
-            # Don't spam errors
             pass
 
 
