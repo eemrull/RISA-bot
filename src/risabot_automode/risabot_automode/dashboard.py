@@ -301,7 +301,6 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
   /* ===== CAMERA ===== */
   .cam-card {
-    flex: 1;
     display: flex;
     flex-direction: column;
   }
@@ -324,13 +323,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .cam-toggle:hover { background: rgba(66,165,245,0.15); border-color: #42a5f5; }
   .cam-toggle.on { background: rgba(76,175,80,0.2); color: #4caf50; border-color: #4caf50; }
   .cam-container {
-    flex: 1;
+    width: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    aspect-ratio: 16/9;
-    height: 280px;
-    max-height: 280px;
     background: #050508;
     border-radius: 12px;
     overflow: hidden;
@@ -1458,7 +1454,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(204)
                 self.end_headers()
         elif self.path == '/api/params':
-            # Discover nodes and their parameters via ros2 CLI
+            # Discover nodes and their parameters via ros2 param dump
             result = {}
             try:
                 nodes_out = subprocess.run(
@@ -1467,34 +1463,45 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                 )
                 nodes = [n.strip() for n in nodes_out.stdout.strip().split('\n') if n.strip()]
                 for node in nodes:
+                    short_name = node.lstrip('/')
                     try:
-                        params_out = subprocess.run(
-                            ['ros2', 'param', 'list', node],
-                            capture_output=True, text=True, timeout=5
+                        # Use ros2 param dump - gets ALL params + values in one call
+                        dump_out = subprocess.run(
+                            ['ros2', 'param', 'dump', node, '--print'],
+                            capture_output=True, text=True, timeout=8
                         )
-                        param_names = [p.strip() for p in params_out.stdout.strip().split('\n')
-                                       if p.strip() and not p.strip().startswith('Warning')]
                         params = []
-                        for pname in param_names:
-                            try:
-                                val_out = subprocess.run(
-                                    ['ros2', 'param', 'get', node, pname],
-                                    capture_output=True, text=True, timeout=3
-                                )
-                                raw = val_out.stdout.strip()
-                                # Parse "Type: xxx\nValue: yyy" format
-                                value = raw
-                                for line in raw.split('\n'):
-                                    if line.strip().startswith('Value:'):
-                                        value = line.split(':', 1)[1].strip()
-                                        break
-                                params.append({'name': pname, 'value': value})
-                            except Exception:
-                                params.append({'name': pname, 'value': '?'})
-                        short_name = node.lstrip('/')
+                        raw = dump_out.stdout.strip()
+                        if raw:
+                            # Parse YAML-like output:  node_name:\n  ros__parameters:\n    key: value
+                            current_key = None
+                            for line in raw.split('\n'):
+                                stripped = line.strip()
+                                if not stripped or stripped.endswith(':') and '.' not in stripped and ':' == stripped[-1]:
+                                    # Section header like "node_name:" or "ros__parameters:"
+                                    continue
+                                if ':' in stripped:
+                                    key, _, val = stripped.partition(':')
+                                    key = key.strip()
+                                    val = val.strip()
+                                    if key and val:
+                                        params.append({'name': key, 'value': val})
+                                    elif key:
+                                        # Could be a list/dict - just record the key
+                                        current_key = key
+                        if not params:
+                            # Fallback: use param list only (no values)
+                            list_out = subprocess.run(
+                                ['ros2', 'param', 'list', node],
+                                capture_output=True, text=True, timeout=5
+                            )
+                            for pname in list_out.stdout.strip().split('\n'):
+                                pname = pname.strip()
+                                if pname and not pname.startswith('Warning'):
+                                    params.append({'name': pname, 'value': '?'})
                         result[short_name] = params
                     except Exception:
-                        pass
+                        result[short_name] = []
             except Exception:
                 pass
             self.send_response(200)
