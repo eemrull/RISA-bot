@@ -164,6 +164,12 @@ class ServoControllerNode(Node):
                     cmd.angular.z = msg.axes[0] * max_ang * scale
 
                 self.cmd_vel_pub.publish(cmd)
+                
+                # Send to hardware
+                try:
+                    bot.set_car_motion(cmd.linear.x, cmd.linear.y, cmd.angular.z)
+                except Exception as e:
+                    self.get_logger().error(f"Hardware write failed: {e}")
 
             # ===== CAMERA SERVOS (always active) =====
             if len(msg.axes) > 4:
