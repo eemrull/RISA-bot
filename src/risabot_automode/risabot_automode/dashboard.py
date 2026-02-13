@@ -98,7 +98,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   /* ===== LAYOUT ===== */
   .layout {
     display: grid;
-    grid-template-columns: 280px 1fr 280px;
+    grid-template-columns: 260px 1fr 260px;
     gap: 14px;
     padding: 14px;
     max-width: 1400px;
@@ -288,15 +288,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 200px;  /* Reduced from 300px to fix "too vertically long" */
+    aspect-ratio: 16/9;
+    max-height: 60vh;
     background: #050508;
     border-radius: 12px;
     overflow: hidden;
     position: relative;
   }
   .cam-container img {
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
     border-radius: 8px;
   }
@@ -698,6 +699,8 @@ class DashboardNode(Node):
         self.create_subscription(String, '/dashboard_state', self._dash_state_cb, 10)
         self.create_subscription(String, '/dashboard_ctrl', self._dash_ctrl_cb, 10)
         self.create_subscription(String, '/set_challenge', self._set_challenge_cb, 10)
+        # Also listen to auto commands for display
+        self.create_subscription(Twist, '/cmd_vel_auto', self._cmd_cb, 10)
 
         # Camera subscription (SENSOR_DATA QoS to match camera publisher)
         self.create_subscription(
@@ -733,6 +736,12 @@ class DashboardNode(Node):
     def _odom_cb(self, msg):
         with self.data_lock:
             self.data['speed'] = msg.twist.twist.linear.x
+            # Integrate distance from velocity
+            now = time.time()
+            if hasattr(self, '_last_odom_t'):
+                dt = min(now - self._last_odom_t, 0.2)
+                self.data['distance'] += msg.twist.twist.linear.x * dt
+            self._last_odom_t = now
 
     def _joy_cb(self, msg):
         with self.data_lock:
@@ -744,6 +753,8 @@ class DashboardNode(Node):
         try:
             parts = msg.data.split('|')
             with self.data_lock:
+                if parts[0] != self.data.get('state'):
+                    self._state_entry_time = time.time()  # Reset timer on state change
                 self.data['state'] = parts[0]
                 if len(parts) > 1:
                     self.data['lap'] = int(parts[1])

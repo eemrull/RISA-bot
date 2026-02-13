@@ -20,14 +20,9 @@ from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool, String, Float32
 from geometry_msgs.msg import Twist
-from sensor_msgs.msg import LaserScan
-from nav_msgs.msg import Odometry
 from rclpy.qos import QoSPresetProfiles
-import serial
-import struct
 import time
 import math
-import threading
 from enum import Enum
 
 
@@ -53,8 +48,7 @@ class AutoDriver(Node):
         self.get_logger().info('Auto Driver Node Starting (Competition Mode)...')
 
         # ===== Publishers =====
-        self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
-        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel_auto', 10)
         self.parking_cmd_pub = self.create_publisher(String, '/parking_command', 10)
         self.dash_state_pub = self.create_publisher(String, '/dashboard_state', 10)
 
@@ -131,10 +125,6 @@ class AutoDriver(Node):
             Float32, '/lane_error', self.lane_callback,
             QoSPresetProfiles.SENSOR_DATA.value
         )
-        self.scan_sub = self.create_subscription(
-            LaserScan, '/scan', self.scan_callback,
-            QoSPresetProfiles.SENSOR_DATA.value
-        )
 
         # ===== Subscribers — new modules =====
         self.create_subscription(
@@ -181,9 +171,7 @@ class AutoDriver(Node):
 
         self.get_logger().info(f'State: {self.state.name}')
 
-    # ========== Existing callbacks ==========
-    def scan_callback(self, msg):
-        pass  # Raw scan stored if needed
+
 
     def lidar_callback(self, msg):
         self.lidar_obstacle = msg.data
@@ -475,8 +463,7 @@ class AutoDriver(Node):
             else:
                 self.get_logger().info('✅ Obstacle cleared.')
 
-    # ========== Serial / Odometry (unchanged from original) ==========
-    # ========== Serial / Odometry (legacy removed) ==========
+    # ========== Odometry (from servo_controller) ==========
 
     def odom_callback(self, msg):
         """Update internal state from ROS odometry."""

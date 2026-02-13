@@ -163,4 +163,12 @@ def generate_launch_description():
             name='servo_controller',
             output='screen'
         ),
+
+        # N. Dashboard (web-based status monitor at http://<robot_ip>:8080)
+        Node(
+            package='risabot_automode',
+            executable='dashboard',
+            name='dashboard',
+            output='screen'
+        ),
     ])

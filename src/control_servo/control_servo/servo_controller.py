@@ -61,8 +61,8 @@ class ServoControllerNode(Node):
         self.dash_ctrl_pub = self.create_publisher(String, '/dashboard_ctrl', 10)
         self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
 
-        # Subscriber for Auto Mode commands
-        self.cmd_vel_sub = self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_callback, 10)
+        # Subscriber for Auto Mode commands (separate topic to avoid feedback loop)
+        self.cmd_vel_sub = self.create_subscription(Twist, '/cmd_vel_auto', self.cmd_vel_callback, 10)
 
         # Enable Bot Receive Threading (for Odometry)
         try:
@@ -75,12 +75,8 @@ class ServoControllerNode(Node):
         self.create_timer(0.1, self.publish_odom)
 
 
-        # Debug bot methods
-        try:
-            self.get_logger().info(f"Bot Methods: {dir(bot)}")
-            # help(bot.set_car_motion) # This might spam or not work well in ROS log
-        except:
-            pass
+        # Debug: log available bot methods once at startup
+        self.get_logger().debug(f"Bot methods: {[m for m in dir(bot) if not m.startswith('_')]}")
         
         # State
         self.auto_mode = False
@@ -185,13 +181,6 @@ class ServoControllerNode(Node):
                     cmd.linear.x = msg.axes[1] * max_lin * scale
                 if len(msg.axes) > 0:
                     cmd.angular.z = msg.axes[0] * max_ang * scale
-
-                if len(msg.axes) > 0:
-                    cmd.angular.z = msg.axes[0] * max_ang * scale
-                
-                # Debug steering
-                if abs(cmd.angular.z) > 0.1:
-                    print(f"\r[MANUAL] Steer Config: Axis0={msg.axes[0]:.2f} Max={max_ang} Cmd={cmd.angular.z:.2f}    ", end='', flush=True)
 
                 self.cmd_vel_pub.publish(cmd)
                 
