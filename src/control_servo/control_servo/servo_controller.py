@@ -75,6 +75,13 @@ class ServoControllerNode(Node):
         self.create_timer(0.1, self.publish_odom)
 
 
+        # Debug bot methods
+        try:
+            self.get_logger().info(f"Bot Methods: {dir(bot)}")
+            # help(bot.set_car_motion) # This might spam or not work well in ROS log
+        except:
+            pass
+        
         # State
         self.auto_mode = False
         self.last_s1 = 90
@@ -89,8 +96,8 @@ class ServoControllerNode(Node):
         self.speed_pct = 50  # default 50%
 
         # Parameters for manual driving
-        self.declare_parameter('max_linear_speed', 0.20)   # m/s
-        self.declare_parameter('max_angular_speed', 0.80)   # rad/s
+        self.declare_parameter('max_linear_speed', 0.5)  # m/s
+        self.declare_parameter('max_angular_speed', 5.0) # rad/s (increased from 0.80)
         self.declare_parameter('toggle_button', 11)          # Start button
         self.declare_parameter('prev_state_button', 6)       # LB
         self.declare_parameter('next_state_button', 7)       # RB
@@ -190,6 +197,13 @@ class ServoControllerNode(Node):
                 
                 # Send to hardware
                 try:
+                    # Log command every 0.5s to verify values
+                    now = self.get_clock().now().nanoseconds / 1e9
+                    if not hasattr(self, 'last_debug_time'): self.last_debug_time = 0
+                    if now - self.last_debug_time > 0.5:
+                        self.get_logger().info(f"Writing HW: vx={cmd.linear.x:.2f} vy={cmd.linear.y:.2f} wz={cmd.angular.z:.2f}")
+                        self.last_debug_time = now
+                        
                     bot.set_car_motion(cmd.linear.x, cmd.linear.y, cmd.angular.z)
                 except Exception as e:
                     self.get_logger().error(f"Hardware write failed: {e}")
