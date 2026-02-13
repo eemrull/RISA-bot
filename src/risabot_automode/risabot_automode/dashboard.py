@@ -398,7 +398,241 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   @media (max-width: 960px) {
     .layout { grid-template-columns: 1fr; }
     .cam-container { min-height: 200px; }
+    .flow-bar { overflow-x: auto; }
   }
+
+  /* ===== COMPETITION FLOW ===== */
+  .flow-section {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 14px 14px;
+  }
+  .flow-card {
+    background: var(--card);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 18px;
+    position: relative;
+    overflow: hidden;
+  }
+  .flow-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #42a5f5, transparent);
+    opacity: 0.5;
+  }
+  .flow-card h3 {
+    font-size: 0.65em;
+    text-transform: uppercase;
+    letter-spacing: 2.5px;
+    color: var(--muted);
+    margin-bottom: 14px;
+    font-weight: 700;
+  }
+  .flow-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 8px 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+  }
+  .flow-node {
+    flex-shrink: 0;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 0.72em;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    color: #555;
+    transition: all 0.4s cubic-bezier(0.4,0,0.2,1);
+    cursor: default;
+    white-space: nowrap;
+    position: relative;
+  }
+  .flow-node.done {
+    background: rgba(76,175,80,0.12);
+    border-color: rgba(76,175,80,0.3);
+    color: #81c784;
+  }
+  .flow-node.done::after {
+    content: '✓';
+    position: absolute;
+    top: -4px; right: -4px;
+    width: 14px; height: 14px;
+    background: #4caf50;
+    border-radius: 50%;
+    font-size: 9px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+  }
+  .flow-node.active {
+    background: linear-gradient(135deg, rgba(233,69,96,0.2), rgba(66,165,245,0.2));
+    border-color: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 20px rgba(233,69,96,0.25), 0 0 40px rgba(233,69,96,0.1);
+    transform: scale(1.08);
+    font-weight: 700;
+  }
+  @keyframes activeGlow {
+    0%,100% { box-shadow: 0 0 15px rgba(233,69,96,0.2); }
+    50% { box-shadow: 0 0 25px rgba(233,69,96,0.4), 0 0 50px rgba(233,69,96,0.15); }
+  }
+  .flow-node.active { animation: activeGlow 2s ease infinite; }
+  .flow-arrow {
+    flex-shrink: 0;
+    color: #333;
+    font-size: 0.7em;
+    padding: 0 4px;
+    transition: color 0.3s;
+  }
+  .flow-arrow.passed { color: #4caf50; }
+  .flow-lap-label {
+    flex-shrink: 0;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.6em;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin: 0 6px;
+  }
+  .lap1-label { background: rgba(233,69,96,0.15); color: var(--accent); border: 1px solid rgba(233,69,96,0.2); }
+  .lap2-label { background: rgba(66,165,245,0.15); color: #42a5f5; border: 1px solid rgba(66,165,245,0.2); }
+
+  /* ===== CONTROLLER POPOUT ===== */
+  .ctrl-popout-tab {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(18,18,35,0.95);
+    backdrop-filter: blur(16px);
+    padding: 10px 8px;
+    border-radius: 10px 0 0 10px;
+    border: 1px solid var(--card-border);
+    border-right: none;
+    cursor: pointer;
+    z-index: 200;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-size: 0.7em;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 1px;
+    transition: all 0.3s;
+  }
+  .ctrl-popout-tab:hover {
+    background: rgba(233,69,96,0.15);
+    padding-right: 12px;
+  }
+  .ctrl-drawer {
+    position: fixed;
+    right: -320px;
+    top: 60px;
+    bottom: 0;
+    width: 300px;
+    background: rgba(10,10,25,0.97);
+    backdrop-filter: blur(20px);
+    border-left: 1px solid rgba(233,69,96,0.15);
+    z-index: 199;
+    transition: right 0.4s cubic-bezier(0.4,0,0.2,1);
+    overflow-y: auto;
+    padding: 20px;
+    box-shadow: -4px 0 30px rgba(0,0,0,0.5);
+  }
+  .ctrl-drawer.open { right: 0; }
+  .ctrl-drawer h3 {
+    font-size: 0.7em;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--accent);
+    margin-bottom: 14px;
+    font-weight: 700;
+  }
+  .ctrl-map-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .ctrl-map-row:last-child { border: none; }
+  .ctrl-key {
+    flex-shrink: 0;
+    width: 60px;
+    padding: 4px 8px;
+    font-size: 0.75em;
+    font-weight: 700;
+    text-align: center;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #aaa;
+    margin-right: 12px;
+  }
+  .ctrl-desc {
+    font-size: 0.78em;
+    color: #888;
+  }
+  .ctrl-section-label {
+    font-size: 0.6em;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #444;
+    margin: 16px 0 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+
+  /* ===== EVENT LOG ===== */
+  .log-section {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 14px 14px;
+  }
+  .log-card {
+    background: var(--card);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+  }
+  .log-card h3 {
+    font-size: 0.65em;
+    text-transform: uppercase;
+    letter-spacing: 2.5px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .log-scroll {
+    max-height: 100px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #222 transparent;
+  }
+  .log-entry {
+    font-size: 0.72em;
+    padding: 3px 0;
+    color: #555;
+    font-family: 'Courier New', monospace;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+    animation: logFade 0.5s ease;
+  }
+  .log-entry:first-child { color: #aaa; }
+  @keyframes logFade { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+  .log-time { color: #42a5f5; margin-right: 8px; }
+  .log-event { color: #aaa; }
+  .log-val { color: var(--accent); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -557,8 +791,107 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   </div>
 </div>
 
+<!-- ===== COMPETITION FLOW TIMELINE ===== -->
+<div class="flow-section">
+  <div class="flow-card">
+    <h3>🏁 Competition Flow</h3>
+    <div class="flow-bar" id="flowBar">
+      <span class="flow-lap-label lap1-label">LAP 1</span>
+      <div class="flow-node active" id="flow_LANE_FOLLOW">Lane Follow</div>
+      <span class="flow-arrow">▶</span>
+      <div class="flow-node" id="flow_OBSTRUCTION">Obstruction</div>
+      <span class="flow-arrow">▶</span>
+      <div class="flow-node" id="flow_ROUNDABOUT">Roundabout</div>
+      <span class="flow-arrow">▶</span>
+      <div class="flow-node" id="flow_BOOM_GATE_1">Boom Gate 1</div>
+      <span class="flow-arrow">▶</span>
+      <div class="flow-node" id="flow_TUNNEL">Tunnel</div>
+      <span class="flow-arrow">▶</span>
+      <div class="flow-node" id="flow_BOOM_GATE_2">Boom Gate 2</div>
+      <span class="flow-arrow">▶</span>
+      <div class="flow-node" id="flow_HILL">Hill</div>
+      <span class="flow-arrow">▶</span>
+      <div class="flow-node" id="flow_BUMPER">Bumper</div>
+      <span class="flow-arrow">▶</span>
+      <div class="flow-node" id="flow_TRAFFIC_LIGHT">Traffic Light</div>
+      <span class="flow-arrow">▶</span>
+      <span class="flow-lap-label lap2-label">LAP 2</span>
+      <div class="flow-node" id="flow_PARALLEL_PARK">Parallel Park</div>
+      <span class="flow-arrow">▶</span>
+      <div class="flow-node" id="flow_DRIVE_TO_PERP">Drive to Perp</div>
+      <span class="flow-arrow">▶</span>
+      <div class="flow-node" id="flow_PERPENDICULAR_PARK">Perp Park</div>
+      <span class="flow-arrow">▶</span>
+      <div class="flow-node" id="flow_FINISHED">🏆 Finished</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== EVENT LOG ===== -->
+<div class="log-section">
+  <div class="log-card">
+    <h3><span style="opacity:0.6">📝</span> Event Log</h3>
+    <div class="log-scroll" id="logScroll">
+      <div class="log-entry"><span class="log-time">--:--:--</span><span class="log-event">Dashboard started</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CONTROLLER POPOUT ===== -->
+<div class="ctrl-popout-tab" onclick="toggleCtrlDrawer()">🎮 Controls</div>
+<div class="ctrl-drawer" id="ctrlDrawer">
+  <h3>🎮 Control Mapping</h3>
+  <div class="ctrl-section-label">Driving</div>
+  <div class="ctrl-map-row"><span class="ctrl-key">L Stick Y</span><span class="ctrl-desc">Throttle (forward/reverse)</span></div>
+  <div class="ctrl-map-row"><span class="ctrl-key">R Stick X</span><span class="ctrl-desc">Steering (left/right)</span></div>
+  <div class="ctrl-section-label">Speed</div>
+  <div class="ctrl-map-row"><span class="ctrl-key">D-Pad ▲</span><span class="ctrl-desc">Speed up (shift gear)</span></div>
+  <div class="ctrl-map-row"><span class="ctrl-key">D-Pad ▼</span><span class="ctrl-desc">Speed down (shift gear)</span></div>
+  <div class="ctrl-section-label">Mode</div>
+  <div class="ctrl-map-row"><span class="ctrl-key">Y</span><span class="ctrl-desc">Toggle Auto/Manual mode</span></div>
+  <div class="ctrl-map-row"><span class="ctrl-key">Start</span><span class="ctrl-desc">Toggle Auto/Manual mode</span></div>
+  <div class="ctrl-section-label">Challenge</div>
+  <div class="ctrl-map-row"><span class="ctrl-key">RB</span><span class="ctrl-desc">Next challenge state</span></div>
+  <div class="ctrl-map-row"><span class="ctrl-key">LB</span><span class="ctrl-desc">Previous challenge state</span></div>
+  <div class="ctrl-section-label">Camera</div>
+  <div class="ctrl-map-row"><span class="ctrl-key">R Stick Y</span><span class="ctrl-desc">Camera tilt (if enabled)</span></div>
+</div>
+
 <script>
 let camOn = false, camTimer = null;
+let eventLog = [];
+const FLOW_ORDER = ['LANE_FOLLOW','OBSTRUCTION','ROUNDABOUT','BOOM_GATE_1','TUNNEL','BOOM_GATE_2','HILL','BUMPER','TRAFFIC_LIGHT','PARALLEL_PARK','DRIVE_TO_PERP','PERPENDICULAR_PARK','FINISHED'];
+let lastState = '';
+
+function toggleCtrlDrawer() {
+  document.getElementById('ctrlDrawer').classList.toggle('open');
+}
+
+function addLogEntry(text) {
+  const now = new Date();
+  const ts = now.toLocaleTimeString('en-GB');
+  eventLog.unshift({time: ts, text: text});
+  if (eventLog.length > 30) eventLog.pop();
+  const container = document.getElementById('logScroll');
+  container.innerHTML = eventLog.map(e =>
+    `<div class="log-entry"><span class="log-time">${e.time}</span><span class="log-event">${e.text}</span></div>`
+  ).join('');
+}
+
+function updateFlow(currentState) {
+  const activeIdx = FLOW_ORDER.indexOf(currentState);
+  const arrows = document.querySelectorAll('.flow-arrow');
+  FLOW_ORDER.forEach((s, i) => {
+    const el = document.getElementById('flow_' + s);
+    if (!el) return;
+    el.classList.remove('active', 'done');
+    if (i === activeIdx) el.classList.add('active');
+    else if (i < activeIdx) el.classList.add('done');
+  });
+  arrows.forEach((a, i) => {
+    a.classList.toggle('passed', i < activeIdx);
+  });
+}
 
 function toggleCam() {
   camOn = !camOn;
@@ -596,13 +929,27 @@ function update() {
 
       // State
       const sb = document.getElementById('stateBadge');
-      sb.textContent = d.state;
-      sb.className = 'state-badge state-' + d.state;
+      const currentState = d.state;
+      sb.textContent = currentState;
+      sb.className = 'state-badge state-' + currentState;
+
+      // Update competition flow
+      updateFlow(currentState);
+
+      // Log state changes
+      if (currentState !== lastState && lastState !== '') {
+        addLogEntry(`State: <span class="log-val">${lastState}</span> → <span class="log-val">${currentState}</span>`);
+      }
+      lastState = currentState;
 
       const mb = document.getElementById('modeBadge');
-      const ms = d.auto_mode ? 'AUTO' : 'MANUAL';
-      mb.textContent = ms;
-      mb.className = 'mode-badge mode-' + ms;
+      const newMode = d.auto_mode ? 'AUTO' : 'MANUAL';
+      const oldMode = mb.textContent;
+      mb.textContent = newMode;
+      mb.className = 'mode-badge mode-' + newMode;
+      if (oldMode && oldMode !== newMode) {
+        addLogEntry(`Mode: <span class="log-val">${newMode}</span>`);
+      }
 
       document.getElementById('lapBadge').textContent = 'Lap ' + d.lap;
       document.getElementById('stateTime').textContent = d.state_time;
