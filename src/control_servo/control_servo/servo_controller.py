@@ -72,10 +72,11 @@ class ServoControllerNode(Node):
         # Parameters for manual driving
         self.declare_parameter('max_linear_speed', 0.20)   # m/s
         self.declare_parameter('max_angular_speed', 0.80)   # rad/s
-        self.declare_parameter('toggle_button', 7)          # Start button
-        self.declare_parameter('prev_state_button', 4)       # LB
-        self.declare_parameter('next_state_button', 5)       # RB
+        self.declare_parameter('toggle_button', 11)          # Start button
+        self.declare_parameter('prev_state_button', 6)       # LB
+        self.declare_parameter('next_state_button', 7)       # RB
 
+        self.get_logger().info('*** SERVO CONTROLLER V3 LOADED ***')
         self.get_logger().info('Servo Controller + Mode Switch started')
         self.get_logger().info('Controls:')
         self.get_logger().info('  Left Stick  → Manual drive (fwd/back + turn)')
@@ -189,7 +190,7 @@ class ServoControllerNode(Node):
             # Show which buttons are currently pressed (for mapping debug)
             pressed = [i for i, b in enumerate(msg.buttons) if b == 1]
             btn_info = f'Btns:{pressed}' if pressed else ''
-            print(f"\r[JOY] {mode_str} | State: {state_str} | Spd: {self.speed_pct}% | S1: {self.last_s1} S2: {self.last_s2} {btn_info}    ", end='', flush=True)
+            print(f"\r[JOY v3] {mode_str} | State: {state_str} | Spd: {self.speed_pct}% | S1: {self.last_s1} S2: {self.last_s2} {btn_info}    ", end='', flush=True)
 
         except Exception as e:
             self.get_logger().error(f'Error in joy_callback: {e}')

@@ -288,7 +288,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 300px;
+    min-height: 200px;  /* Reduced from 300px to fix "too vertically long" */
     background: #050508;
     border-radius: 12px;
     overflow: hidden;
@@ -598,11 +598,11 @@ function update() {
 
       // Speed & Selector
       document.getElementById('speedPct').textContent = d.speed_pct+'%';
-      document.getElementById('speedBar').style.width = d.speed_pct+'%';
       document.getElementById('ctrlState').textContent = d.ctrl_state_name;
 
-      // Buttons — standard Linux: A=0,B=1,X=2,Y=3,LB=4,RB=5,Back=6,Start=7,Guide=8,L3=9,R3=10
-      const bm={0:'btnA',1:'btnB',2:'btnX',3:'btnY',4:'btnLB',5:'btnRB',7:'btnStart',8:'btnLT',9:'btnRT'};
+      // Controller buttons — Updated to match user's specific mapping:
+      // A=0, B=1, X=3, Y=4, LB=6, RB=7, Start=11
+      const bm={0:'btnA',1:'btnB',3:'btnX',4:'btnY',6:'btnLB',7:'btnRB',8:'btnLT',9:'btnRT',11:'btnStart'};
       Object.values(bm).forEach(id=>document.getElementById(id).classList.remove('active'));
       if(d.buttons){
         d.buttons.forEach((v,i)=>{if(v&&bm[i])document.getElementById(bm[i]).classList.add('active');});
