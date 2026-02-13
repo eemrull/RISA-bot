@@ -6,7 +6,7 @@ ROS 2 Intelligent System Autonomy — Competition Robot
 | Branch | Purpose | Launch Command |
 |---|---|---|
 | `main` | Individual node testing & development | `run_risabot` |
-| `new-control-code` | Competition mode — all 9 challenges | `ros2 launch risabot_automode competition.launch.py` |
+| `test` | Competition mode — all 9 challenges | `ros2 launch risabot_automode competition.launch.py` |
 
 ## Quick Start
 
@@ -17,12 +17,12 @@ git add . && git commit -m "message" && git push
 # On the robot — pull, build, run
 ssh risabot
 cd ~/risabotcar_ws/src/risabot_automode
-git checkout new-control-code && git pull   # or: main
+git checkout test && git pull   # or: main
 cd ~/risabotcar_ws && cb && sos
 
 # Run (pick one)
 run_risabot                                          # main branch
-ros2 launch risabot_automode competition.launch.py   # new-control-code branch
+ros2 launch risabot_automode competition.launch.py   # test branch
 ```
 
 ## Build Aliases
@@ -40,8 +40,9 @@ Detailed documentation is in the [Guide/](Guide/) folder:
 
 | Guide | Description |
 |---|---|
+| [Challenge Breakdown](Guide/challenges_breakdown.md) | Deep dive into each challenge's code, with course layout |
 | [Main Branch](Guide/main_branch.md) | How `main` works — individual nodes, original controller |
-| [Test Branch](Guide/test_branch.md) | How `new-control-code` works — state machine, all challenges |
+| [Test Branch](Guide/test_branch.md) | How `test` works — state machine, all challenges |
 | [Commands Reference](Guide/commands_reference.md) | All ROS topics, launch files, `ros2 param set` commands |
 | [Tuning Guide](Guide/tuning_guide.md) | Step-by-step parameter tuning on physical course |
 | [Architecture](Guide/architecture.md) | Node graphs, data flow, package structure |
