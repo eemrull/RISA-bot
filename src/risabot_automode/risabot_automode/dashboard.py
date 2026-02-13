@@ -20,7 +20,8 @@ import json
 import time
 import http.server
 import socketserver
-import subprocess
+from rcl_interfaces.srv import GetParameters, SetParameters
+from rcl_interfaces.msg import Parameter as RosParameter, ParameterValue, ParameterType
 import numpy as np
 import cv2
 
@@ -1444,6 +1445,102 @@ class DashboardNode(Node):
 
 # ======================== HTTP Server ========================
 
+# Cached service clients for parameter operations
+_param_clients_lock = threading.Lock()
+_param_clients = {}  # {'/node_name': {'get': client, 'set': client}}
+
+def _get_client(node_name, svc_type):
+    """Get or create a cached service client."""
+    n = node_name if node_name.startswith('/') else '/' + node_name
+    key = (n, svc_type)
+    with _param_clients_lock:
+        if key not in _param_clients:
+            if svc_type == 'get':
+                _param_clients[key] = _node_ref.create_client(GetParameters, n + '/get_parameters')
+            else:
+                _param_clients[key] = _node_ref.create_client(SetParameters, n + '/set_parameters')
+    return _param_clients[key]
+
+def _ros_get_param(node_name, param_name):
+    """Get a parameter via native rclpy service (no subprocess)."""
+    try:
+        client = _get_client(node_name, 'get')
+        if not client.service_is_ready():
+            if not client.wait_for_service(timeout_sec=1.0):
+                return None, f'Node /{node_name} not available'
+        req = GetParameters.Request()
+        req.names = [param_name]
+        future = client.call_async(req)
+        deadline = time.time() + 2.0
+        while not future.done() and time.time() < deadline:
+            time.sleep(0.02)
+        if not future.done():
+            return None, 'Timeout'
+        res = future.result()
+        if res and res.values:
+            v = res.values[0]
+            if v.type == ParameterType.PARAMETER_BOOL:
+                return str(v.bool_value).lower(), None
+            elif v.type == ParameterType.PARAMETER_INTEGER:
+                return str(v.integer_value), None
+            elif v.type == ParameterType.PARAMETER_DOUBLE:
+                return str(v.double_value), None
+            elif v.type == ParameterType.PARAMETER_STRING:
+                return v.string_value, None
+            elif v.type == ParameterType.PARAMETER_NOT_SET:
+                return None, 'Not set'
+            else:
+                return '?', None
+        return None, 'No result'
+    except Exception as e:
+        return None, str(e)
+
+def _ros_set_param(node_name, param_name, value_str):
+    """Set a parameter via native rclpy service (no subprocess)."""
+    try:
+        client = _get_client(node_name, 'set')
+        if not client.service_is_ready():
+            if not client.wait_for_service(timeout_sec=1.0):
+                return False, f'Node /{node_name} not available'
+        param = RosParameter()
+        param.name = param_name
+        pv = ParameterValue()
+        # Infer type from string
+        if value_str.lower() in ('true', 'false'):
+            pv.type = ParameterType.PARAMETER_BOOL
+            pv.bool_value = value_str.lower() == 'true'
+        else:
+            try:
+                # Check if it's a pure integer (no decimal point)
+                if '.' not in value_str:
+                    pv.type = ParameterType.PARAMETER_INTEGER
+                    pv.integer_value = int(value_str)
+                else:
+                    pv.type = ParameterType.PARAMETER_DOUBLE
+                    pv.double_value = float(value_str)
+            except ValueError:
+                pv.type = ParameterType.PARAMETER_STRING
+                pv.string_value = value_str
+        param.value = pv
+        req = SetParameters.Request()
+        req.parameters = [param]
+        future = client.call_async(req)
+        deadline = time.time() + 2.0
+        while not future.done() and time.time() < deadline:
+            time.sleep(0.02)
+        if not future.done():
+            return False, 'Timeout'
+        res = future.result()
+        if res and res.results:
+            r = res.results[0]
+            if r.successful:
+                return True, 'OK'
+            else:
+                return False, r.reason or 'Failed'
+        return False, 'No result'
+    except Exception as e:
+        return False, str(e)
+
 _node_ref = None
 
 class DashboardHandler(http.server.BaseHTTPRequestHandler):
@@ -1468,31 +1565,17 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(204)
                 self.end_headers()
         elif self.path.startswith('/api/get_param'):
-            # Get a single parameter value
             from urllib.parse import urlparse, parse_qs
             qs = parse_qs(urlparse(self.path).query)
             node = qs.get('node', [''])[0]
             param = qs.get('param', [''])[0]
             result = {'ok': False}
             if node and param:
-                try:
-                    n = node if node.startswith('/') else '/' + node
-                    out = subprocess.run(
-                        ['ros2', 'param', 'get', n, param],
-                        capture_output=True, text=True, timeout=5
-                    )
-                    if out.returncode == 0:
-                        raw = out.stdout.strip()
-                        value = raw
-                        for line in raw.split('\n'):
-                            if line.strip().startswith('Value:'):
-                                value = line.split(':', 1)[1].strip()
-                                break
-                        result = {'ok': True, 'value': value}
-                    else:
-                        result = {'ok': False, 'error': out.stderr.strip() or 'Not found'}
-                except Exception as e:
-                    result = {'ok': False, 'error': str(e)}
+                value, err = _ros_get_param(node, param)
+                if err is None:
+                    result = {'ok': True, 'value': value}
+                else:
+                    result = {'ok': False, 'error': err}
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
@@ -1514,17 +1597,11 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                 node = data['node']
                 param = data['param']
                 value = str(data['value'])
-                # Ensure node has leading /
-                if not node.startswith('/'):
-                    node = '/' + node
-                out = subprocess.run(
-                    ['ros2', 'param', 'set', node, param, value],
-                    capture_output=True, text=True, timeout=5
-                )
-                if out.returncode == 0:
-                    resp = {'ok': True, 'msg': out.stdout.strip()}
+                ok, msg = _ros_set_param(node, param, value)
+                if ok:
+                    resp = {'ok': True, 'msg': msg}
                 else:
-                    resp = {'ok': False, 'error': out.stderr.strip() or out.stdout.strip()}
+                    resp = {'ok': False, 'error': msg}
             except Exception as e:
                 resp = {'ok': False, 'error': str(e)}
             self.send_response(200)
