@@ -779,8 +779,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <!-- State Machine -->
     <div class="card">
       <h3>State Machine</h3>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span class="state-badge" id="stateBadge">—</span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="state-badge" id="stateBadge" style="min-width:150px;text-align:center;">—</span>
         <span class="mode-badge" id="modeBadge">MANUAL</span>
       </div>
       <div style="margin-top:8px;">
@@ -962,15 +962,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <!-- ===== PARAMETER TUNING ===== -->
 <div class="param-section">
   <div class="param-card">
-    <h3><span>⚙️ Live Parameters</span></h3>
-    <div class="param-toolbar">
-      <button class="param-load-btn" onclick="loadAllParams()">Load Nodes</button>
-      <button class="param-refresh-btn" onclick="refreshAllParams()">Refresh Values</button>
-      <span style="font-size:0.65em;color:#333;margin-left:auto;" id="paramPoll"></span>
-    </div>
-    <div id="paramContainer">
-      <div class="param-empty">Click "Load Nodes" to discover ROS2 parameters</div>
-    </div>
+    <h3><span>⚙️ Parameter Tuning</span>
+      <span style="font-size:0.85em;color:#444;font-weight:400;text-transform:none;letter-spacing:0;"> — click Get to read, Set to apply</span>
+    </h3>
+    <div id="paramContainer"></div>
   </div>
 </div>
 
@@ -1166,88 +1161,106 @@ function update() {
       document.getElementById('connText').textContent='Disconnected';
     });
 }
-// ===== PARAMETER TUNING =====
-let paramData = {};  // {node: [{name, value, type}]}
-let paramAutoRefresh = null;
+// ===== PARAMETER TUNING (curated) =====
+const PARAM_GROUPS = [
+  { node: 'traffic_light_detector', label: '🚦 Traffic Light', params: [
+    'red_h_low1','red_h_high1','red_h_low2','red_h_high2',
+    'yellow_h_low','yellow_h_high','green_h_low','green_h_high',
+    'sat_min','val_min','min_circle_radius','max_circle_radius','min_pixel_count'
+  ]},
+  { node: 'line_follower_camera', label: '📐 Line Follower', params: [
+    'smoothing_alpha','dead_zone','white_threshold','crop_ratio','show_debug'
+  ]},
+  { node: 'auto_driver', label: '🚗 Auto Driver', params: [
+    'steering_gain','forward_speed','stale_timeout',
+    'dist_obstruction_clear','dist_roundabout','dist_boom_gate_1_pass',
+    'dist_boom_gate_2_pass','dist_hill','dist_bumper',
+    'dist_traffic_light_pass','dist_drive_to_perp'
+  ]},
+  { node: 'boom_gate_detector', label: '🚧 Boom Gate', params: [
+    'min_detect_dist','max_detect_dist','angle_window',
+    'min_gate_points','distance_variance_max','lidar_angle_offset'
+  ]},
+  { node: 'obstruction_avoidance', label: '🔀 Obstruction', params: [
+    'detect_dist','clear_dist','front_angle','side_angle_min','side_angle_max',
+    'steer_speed','steer_angular','pass_speed','pass_duration',
+    'steer_back_duration','lidar_angle_offset'
+  ]},
+  { node: 'parking_controller', label: '🅿️ Parking', params: [
+    'parallel_forward_dist','parallel_reverse_dist','parallel_steer_angle',
+    'perp_turn_angle','perp_forward_dist','park_wait_time',
+    'drive_speed','reverse_speed'
+  ]},
+  { node: 'obstacle_avoidance_camera', label: '📷 Camera Obstacle', params: [
+    'white_threshold','hysteresis_on','hysteresis_off'
+  ]},
+];
 
-async function loadAllParams() {
-  document.getElementById('paramContainer').innerHTML = '<div class="param-empty">Loading nodes...</div>';
-  try {
-    const r = await fetch('/api/params');
-    paramData = await r.json();
-    renderParams();
-  } catch(e) {
-    document.getElementById('paramContainer').innerHTML = '<div class="param-empty" style="color:#f44336">Failed to load</div>';
-  }
-}
-
-async function refreshAllParams() {
-  try {
-    const r = await fetch('/api/params');
-    paramData = await r.json();
-    renderParams();
-    document.getElementById('paramPoll').textContent = 'Refreshed ' + new Date().toLocaleTimeString('en-GB');
-  } catch(e) {}
-}
-
-function renderParams() {
+function buildParamUI() {
   const c = document.getElementById('paramContainer');
-  const nodes = Object.keys(paramData);
-  if (!nodes.length) {
-    c.innerHTML = '<div class="param-empty">No nodes found</div>';
-    return;
-  }
-  c.innerHTML = nodes.map(node => {
-    const params = paramData[node] || [];
-    const rows = params.map(p =>
-      `<div class="param-row" id="pr_${node}_${p.name.replace(/\./g,'_')}">
-        <span class="param-name">${p.name}</span>
-        <input class="param-val" id="pv_${node}_${p.name.replace(/\./g,'_')}" value="${p.value}" />
-        <button class="param-set-btn" onclick="setParam('${node}','${p.name}',this)">Set</button>
-        <span class="param-status" id="ps_${node}_${p.name.replace(/\./g,'_')}"></span>
+  c.innerHTML = PARAM_GROUPS.map(g => {
+    const rows = g.params.map(p => 
+      `<div class="param-row">
+        <span class="param-name">${p}</span>
+        <input class="param-val" id="pv_${g.node}_${p}" placeholder="—" />
+        <button class="param-set-btn" style="background:rgba(66,165,245,0.1);border-color:rgba(66,165,245,0.3);color:#64b5f6;" onclick="getParam('${g.node}','${p}')">Get</button>
+        <button class="param-set-btn" onclick="setParam('${g.node}','${p}')">Set</button>
+        <span class="param-status" id="ps_${g.node}_${p}"></span>
       </div>`
     ).join('');
     return `<div class="param-node-block">
       <div class="param-node-header" onclick="this.nextElementSibling.classList.toggle('open')">
-        <span class="param-node-name">${node}</span>
-        <span class="param-node-count">${params.length} params</span>
+        <span class="param-node-name">${g.label}</span>
+        <span class="param-node-count">${g.params.length} params</span>
       </div>
       <div class="param-node-body">${rows}</div>
     </div>`;
   }).join('');
 }
 
-async function setParam(node, paramName, btn) {
-  const inputId = 'pv_' + node + '_' + paramName.replace(/\./g, '_');
-  const statusId = 'ps_' + node + '_' + paramName.replace(/\./g, '_');
-  const input = document.getElementById(inputId);
-  const status = document.getElementById(statusId);
-  if (!input) return;
-  btn.disabled = true;
-  btn.textContent = '...';
+async function getParam(node, param) {
+  const status = document.getElementById('ps_' + node + '_' + param);
+  const input = document.getElementById('pv_' + node + '_' + param);
+  if (status) { status.className = 'param-status'; status.textContent = '...'; }
+  try {
+    const r = await fetch('/api/get_param?node=' + encodeURIComponent(node) + '&param=' + encodeURIComponent(param));
+    const d = await r.json();
+    if (d.ok) {
+      if (input) input.value = d.value;
+      if (status) { status.className = 'param-status ok'; status.textContent = '✓'; }
+    } else {
+      if (status) { status.className = 'param-status err'; status.textContent = d.error || 'Not found'; }
+    }
+  } catch(e) {
+    if (status) { status.className = 'param-status err'; status.textContent = 'Error'; }
+  }
+  setTimeout(() => { if(status) status.textContent = ''; }, 3000);
+}
+
+async function setParam(node, param) {
+  const input = document.getElementById('pv_' + node + '_' + param);
+  const status = document.getElementById('ps_' + node + '_' + param);
+  if (!input || !input.value) { if(status){status.className='param-status err';status.textContent='Empty';} return; }
+  if (status) { status.className = 'param-status'; status.textContent = '...'; }
   try {
     const r = await fetch('/api/set_param', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({node: node, param: paramName, value: input.value})
+      body: JSON.stringify({node: node, param: param, value: input.value})
     });
-    const result = await r.json();
-    if (result.ok) {
-      status.className = 'param-status ok';
-      status.textContent = '\u2713 Set';
+    const d = await r.json();
+    if (d.ok) {
+      if (status) { status.className = 'param-status ok'; status.textContent = '✓ Set'; }
     } else {
-      status.className = 'param-status err';
-      status.textContent = result.error || 'Failed';
+      if (status) { status.className = 'param-status err'; status.textContent = d.error || 'Failed'; }
     }
   } catch(e) {
-    status.className = 'param-status err';
-    status.textContent = 'Error';
+    if (status) { status.className = 'param-status err'; status.textContent = 'Error'; }
   }
-  btn.disabled = false;
-  btn.textContent = 'Set';
   setTimeout(() => { if(status) status.textContent = ''; }, 3000);
 }
 
+buildParamUI();
 setInterval(update, 200);
 update();
 </script>
@@ -1452,57 +1465,32 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             else:
                 self.send_response(204)
                 self.end_headers()
-        elif self.path == '/api/params':
-            # Discover nodes and their parameters via ros2 param dump
-            result = {}
-            try:
-                nodes_out = subprocess.run(
-                    ['ros2', 'node', 'list'],
-                    capture_output=True, text=True, timeout=5
-                )
-                nodes = [n.strip() for n in nodes_out.stdout.strip().split('\n') if n.strip()]
-                for node in nodes:
-                    short_name = node.lstrip('/')
-                    try:
-                        # Use ros2 param dump - gets ALL params + values in one call
-                        dump_out = subprocess.run(
-                            ['ros2', 'param', 'dump', node, '--print'],
-                            capture_output=True, text=True, timeout=8
-                        )
-                        params = []
-                        raw = dump_out.stdout.strip()
-                        if raw:
-                            # Parse YAML-like output:  node_name:\n  ros__parameters:\n    key: value
-                            current_key = None
-                            for line in raw.split('\n'):
-                                stripped = line.strip()
-                                if not stripped or stripped.endswith(':') and '.' not in stripped and ':' == stripped[-1]:
-                                    # Section header like "node_name:" or "ros__parameters:"
-                                    continue
-                                if ':' in stripped:
-                                    key, _, val = stripped.partition(':')
-                                    key = key.strip()
-                                    val = val.strip()
-                                    if key and val:
-                                        params.append({'name': key, 'value': val})
-                                    elif key:
-                                        # Could be a list/dict - just record the key
-                                        current_key = key
-                        if not params:
-                            # Fallback: use param list only (no values)
-                            list_out = subprocess.run(
-                                ['ros2', 'param', 'list', node],
-                                capture_output=True, text=True, timeout=5
-                            )
-                            for pname in list_out.stdout.strip().split('\n'):
-                                pname = pname.strip()
-                                if pname and not pname.startswith('Warning'):
-                                    params.append({'name': pname, 'value': '?'})
-                        result[short_name] = params
-                    except Exception:
-                        result[short_name] = []
-            except Exception:
-                pass
+        elif self.path.startswith('/api/get_param'):
+            # Get a single parameter value
+            from urllib.parse import urlparse, parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            node = qs.get('node', [''])[0]
+            param = qs.get('param', [''])[0]
+            result = {'ok': False}
+            if node and param:
+                try:
+                    n = node if node.startswith('/') else '/' + node
+                    out = subprocess.run(
+                        ['ros2', 'param', 'get', n, param],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if out.returncode == 0:
+                        raw = out.stdout.strip()
+                        value = raw
+                        for line in raw.split('\n'):
+                            if line.strip().startswith('Value:'):
+                                value = line.split(':', 1)[1].strip()
+                                break
+                        result = {'ok': True, 'value': value}
+                    else:
+                        result = {'ok': False, 'error': out.stderr.strip() or 'Not found'}
+                except Exception as e:
+                    result = {'ok': False, 'error': str(e)}
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
