@@ -328,7 +328,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     align-items: center;
     justify-content: center;
     aspect-ratio: 16/9;
-    max-height: 60vh;
+    max-height: 35vh;
     background: #050508;
     border-radius: 12px;
     overflow: hidden;
@@ -435,19 +435,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .flow-bar {
     display: flex;
     align-items: center;
-    gap: 0;
+    flex-wrap: wrap;
+    gap: 6px;
     padding: 8px 0;
-    overflow-x: auto;
-    scrollbar-width: thin;
-    scrollbar-color: #333 transparent;
   }
   .flow-node {
-    flex-shrink: 0;
-    padding: 8px 14px;
+    padding: 6px 10px;
     border-radius: 8px;
-    font-size: 0.72em;
+    font-size: 0.68em;
     font-weight: 600;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.2px;
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.06);
     color: #555;
@@ -486,10 +483,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   }
   .flow-node.active { animation: activeGlow 2s ease infinite; }
   .flow-arrow {
-    flex-shrink: 0;
     color: #333;
-    font-size: 0.7em;
-    padding: 0 4px;
+    font-size: 0.6em;
+    padding: 0 1px;
     transition: color 0.3s;
   }
   .flow-arrow.passed { color: #4caf50; }
@@ -497,7 +493,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     flex-shrink: 0;
     padding: 4px 10px;
     border-radius: 12px;
-    font-size: 0.6em;
+    font-size: 0.55em;
     font-weight: 700;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -794,20 +790,18 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <!-- ===== COMPETITION FLOW TIMELINE ===== -->
 <div class="flow-section">
   <div class="flow-card">
-    <h3>🏁 Competition Flow</h3>
+    <h3>🏁 Competition Flow <span style="font-size:0.85em;color:#444;font-weight:400;text-transform:none;letter-spacing:0;"> — Lane following runs throughout all stages</span></h3>
     <div class="flow-bar" id="flowBar">
       <span class="flow-lap-label lap1-label">LAP 1</span>
-      <div class="flow-node active" id="flow_LANE_FOLLOW">Lane Follow</div>
-      <span class="flow-arrow">▶</span>
-      <div class="flow-node" id="flow_OBSTRUCTION">Obstruction</div>
+      <div class="flow-node active" id="flow_OBSTRUCTION">Obstruction</div>
       <span class="flow-arrow">▶</span>
       <div class="flow-node" id="flow_ROUNDABOUT">Roundabout</div>
       <span class="flow-arrow">▶</span>
-      <div class="flow-node" id="flow_BOOM_GATE_1">Boom Gate 1</div>
+      <div class="flow-node" id="flow_BOOM_GATE_1">Gate 1</div>
       <span class="flow-arrow">▶</span>
       <div class="flow-node" id="flow_TUNNEL">Tunnel</div>
       <span class="flow-arrow">▶</span>
-      <div class="flow-node" id="flow_BOOM_GATE_2">Boom Gate 2</div>
+      <div class="flow-node" id="flow_BOOM_GATE_2">Gate 2</div>
       <span class="flow-arrow">▶</span>
       <div class="flow-node" id="flow_HILL">Hill</div>
       <span class="flow-arrow">▶</span>
@@ -816,13 +810,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <div class="flow-node" id="flow_TRAFFIC_LIGHT">Traffic Light</div>
       <span class="flow-arrow">▶</span>
       <span class="flow-lap-label lap2-label">LAP 2</span>
-      <div class="flow-node" id="flow_PARALLEL_PARK">Parallel Park</div>
+      <div class="flow-node" id="flow_PARALLEL_PARK">∥ Park</div>
       <span class="flow-arrow">▶</span>
-      <div class="flow-node" id="flow_DRIVE_TO_PERP">Drive to Perp</div>
+      <div class="flow-node" id="flow_DRIVE_TO_PERP">Drive</div>
       <span class="flow-arrow">▶</span>
-      <div class="flow-node" id="flow_PERPENDICULAR_PARK">Perp Park</div>
+      <div class="flow-node" id="flow_PERPENDICULAR_PARK">⊥ Park</div>
       <span class="flow-arrow">▶</span>
-      <div class="flow-node" id="flow_FINISHED">🏆 Finished</div>
+      <div class="flow-node" id="flow_FINISHED">🏆 Done</div>
     </div>
   </div>
 </div>
@@ -860,7 +854,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <script>
 let camOn = false, camTimer = null;
 let eventLog = [];
-const FLOW_ORDER = ['LANE_FOLLOW','OBSTRUCTION','ROUNDABOUT','BOOM_GATE_1','TUNNEL','BOOM_GATE_2','HILL','BUMPER','TRAFFIC_LIGHT','PARALLEL_PARK','DRIVE_TO_PERP','PERPENDICULAR_PARK','FINISHED'];
+const FLOW_ORDER = ['OBSTRUCTION','ROUNDABOUT','BOOM_GATE_1','TUNNEL','BOOM_GATE_2','HILL','BUMPER','TRAFFIC_LIGHT','PARALLEL_PARK','DRIVE_TO_PERP','PERPENDICULAR_PARK','FINISHED'];
 let lastState = '';
 
 function toggleCtrlDrawer() {
