@@ -36,6 +36,7 @@ class ChallengeState(Enum):
     PARALLEL_PARK = 6        # Parallel parking sequence
     PERPENDICULAR_PARK = 7   # Perpendicular parking sequence
     LANE_FOLLOW = 8          # Default driving mode
+    REVERSE_ADJUST = 9       # Backing up from close obstacle
 
 
 class AutoDriver(Node):
@@ -238,7 +239,8 @@ class AutoDriver(Node):
         """Build a Twist for standard lane following."""
         cmd = Twist()
         cmd.linear.x = self.get_parameter('forward_speed').value
-        cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
+        # Positive error = lane on left. Positive Z = left turn.
+        cmd.angular.z = self.get_parameter('steering_gain').value * self.lane_error
         return cmd
 
     def publish_cmd_vel(self):
@@ -296,6 +298,13 @@ class AutoDriver(Node):
             target_state = ChallengeState.OBSTRUCTION
             cmd = self.obstruction_cmd
 
+        # Priority 4.5: Front Obstacle Backup (Too close, but not actively avoiding)
+        elif self.obstacle_active:
+            target_state = ChallengeState.REVERSE_ADJUST
+            self.stop_reason = 'TOO CLOSE TO OBSTACLE'
+            cmd.linear.x = -self.get_parameter('forward_speed').value * 0.8
+            cmd.angular.z = 0.0
+
         # Priority 5: Contextual Overrides (Parking / Tunnel)
         elif self.current_lap == 2 and self.signboard_detected and not self.parking_complete:
             # We detected a parking signboard on lap 2, assuming we have entered a parking area
@@ -312,10 +321,6 @@ class AutoDriver(Node):
         else:
             target_state = ChallengeState.LANE_FOLLOW
             cmd = self._lane_follow_cmd()
-            
-            # Minor contextual tweak (e.g. unknown traffic light -> proceed with caution)
-            if self.traffic_light_state == 'unknown':
-                cmd.linear.x *= 0.5
 
         # Update and publish
         if self.state != target_state:

@@ -113,13 +113,13 @@ class LineFollowerCamera(Node):
             # Debug visualization
             if self.get_parameter('show_debug').value:
                 debug = bgr.copy()
-                cv2.line(debug, (int(left_peak), h-crop_h), (int(left_peak), h), (255, 0, 0), 2)   # blue: left line
-                cv2.line(debug, (int(right_peak), h-crop_h), (int(right_peak), h), (0, 0, 255), 2) # red: right line
-                cv2.line(debug, (int(lane_center_x), h-crop_h), (int(lane_center_x), h), (0, 255, 0), 2) # green: center
+                cv2.line(debug, (int(left_peak), h-crop_h), (int(left_peak), h), (255, 0, 0), 1)   # blue: left line
+                cv2.line(debug, (int(right_peak), h-crop_h), (int(right_peak), h), (0, 0, 255), 1) # red: right line
+                cv2.line(debug, (int(lane_center_x), h-crop_h), (int(lane_center_x), h), (0, 255, 0), 1) # green: center
                 
                 # Add status text
                 text_color = (0, 255, 0) if abs(self.lane_error) < 0.05 else (0, 165, 255)
-                cv2.putText(debug, f"Err: {self.lane_error:.3f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
+                cv2.putText(debug, f"Err: {self.lane_error:.3f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, text_color, 1)
                 
                 debug_msg = self.bridge.cv2_to_imgmsg(debug, encoding="bgr8")
                 self.debug_pub.publish(debug_msg)

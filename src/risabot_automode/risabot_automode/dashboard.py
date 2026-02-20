@@ -83,12 +83,12 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   /* ===== WARNING FLASH OVERLAY ===== */
   .warning-overlay {
     position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-    box-shadow: inset 0 0 150px rgba(255,0,0,0.6);
+    box-shadow: inset 0 0 100px rgba(255,0,0,0.3);
     pointer-events: none; opacity: 0; z-index: 999;
     transition: opacity 0.3s;
   }
-  .warning-overlay.active { animation: flashDanger 1s infinite alternate; }
-  @keyframes flashDanger { 0% { opacity: 0.2; } 100% { opacity: 0.7; } }
+  .warning-overlay.active { animation: flashDanger 1.5s infinite alternate; }
+  @keyframes flashDanger { 0% { opacity: 0.1; } 100% { opacity: 0.4; } }
 
   /* ===== HEADER ===== */
   .header {
@@ -596,24 +596,24 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     right: 0;
     top: 50%;
     transform: translateY(-50%);
-    background: rgba(18,18,35,0.95);
-    backdrop-filter: blur(16px);
+    background: #fff;
     padding: 10px 8px;
     border-radius: 10px 0 0 10px;
-    border: 1px solid var(--card-border);
+    border: 1px solid rgba(0,0,0,0.08);
     border-right: none;
     cursor: pointer;
     z-index: 200;
     writing-mode: vertical-rl;
     text-orientation: mixed;
     font-size: 0.7em;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--accent);
     letter-spacing: 1px;
     transition: all 0.3s;
+    box-shadow: -2px 0 8px rgba(0,0,0,0.06);
   }
   .ctrl-popout-tab:hover {
-    background: rgba(233,69,96,0.15);
+    background: rgba(30,102,245,0.05);
     padding-right: 12px;
   }
   .ctrl-drawer {
@@ -622,14 +622,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     top: 60px;
     bottom: 0;
     width: 300px;
-    background: rgba(10,10,25,0.97);
-    backdrop-filter: blur(20px);
-    border-left: 1px solid rgba(233,69,96,0.15);
+    background: #fff;
+    border-left: 1px solid rgba(0,0,0,0.08);
     z-index: 199;
     transition: right 0.4s cubic-bezier(0.4,0,0.2,1);
     overflow-y: auto;
     padding: 20px;
-    box-shadow: -4px 0 30px rgba(0,0,0,0.5);
+    box-shadow: -4px 0 20px rgba(0,0,0,0.08);
   }
   .ctrl-drawer.open { right: 0; }
   .ctrl-drawer h3 {
