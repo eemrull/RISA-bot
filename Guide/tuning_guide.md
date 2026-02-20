@@ -69,7 +69,38 @@ ros2 topic echo /obstacle_front
 
 ---
 
-## Step 3: Obstruction Avoidance (Lateral Dodge)
+## Step 3: Camera Obstacle (Edge Detection)
+
+The camera obstacle node detects objects by measuring **edge density** in the center of the frame. Objects have sharp edges; a flat track does not.
+
+Place an object (any color) ~30cm in front of the camera:
+
+```bash
+ros2 topic echo /obstacle_detected_camera
+```
+
+> **Tip:** Use the **Obstacle** debug tab on the Dashboard to see the live edge overlay and density percentage.
+
+| Symptom | Fix |
+|---|---|
+| Not detecting the object | `ros2 param set /obstacle_avoidance_camera edge_threshold 0.08` |
+| False positives on track lines | `ros2 param set /obstacle_avoidance_camera edge_threshold 0.18` |
+| Too sensitive to texture/noise | `ros2 param set /obstacle_avoidance_camera canny_low 80` |
+| Missing subtle edges | `ros2 param set /obstacle_avoidance_camera canny_low 30` |
+| Flickering on/off rapidly | Increase `hysteresis_on` to 5 and `hysteresis_off` to 7 |
+
+### Parameter Ranges
+
+| Parameter | Default | Range | Effect |
+|---|---|---|---|
+| `edge_threshold` | 0.12 | 0.05 – 0.30 | Ratio of edge pixels to trigger (12% default) |
+| `canny_low` | 50 | 20 – 100 | Lower = more edges (more sensitive) |
+| `canny_high` | 150 | 100 – 250 | Upper Canny threshold |
+| `blur_kernel` | 5 | 3 – 9 | Larger = smoother (reduces noise, fewer edges) |
+| `hysteresis_on` | 3 | 1 – 10 | Frames before STOP triggers |
+| `hysteresis_off` | 5 | 1 – 15 | Frames before CLEAR triggers |
+
+## Step 4: Obstruction Avoidance (Lateral Dodge)
 
 Place obstacle in the lane. Set state:
 ```bash
@@ -85,7 +116,7 @@ ros2 topic pub --once /set_challenge std_msgs/String "data: OBSTRUCTION"
 
 ---
 
-## Step 4: Traffic Light
+## Step 5: Traffic Light
 
 Hold colored cards in front of camera. Set state:
 ```bash
@@ -103,7 +134,7 @@ ros2 topic echo /traffic_light_state
 
 ---
 
-## Step 5: Boom Gate
+## Step 6: Boom Gate
 
 Drive toward the boom gate. Set state:
 ```bash
@@ -119,7 +150,7 @@ ros2 topic echo /boom_gate_open
 
 ---
 
-## Step 6: Tunnel Wall Following
+## Step 7: Tunnel Wall Following
 
 Drive into the tunnel. Set state:
 ```bash
@@ -137,7 +168,7 @@ ros2 topic echo /tunnel_detected
 
 ---
 
-## Step 7: Parking (tune last)
+## Step 8: Parking (tune last)
 
 > ⚠️ Start with **very low speeds** (0.08) and short distances (0.15). Increase gradually.
 
@@ -159,7 +190,7 @@ ros2 topic pub --once /parking_command std_msgs/String "data: perpendicular"
 | Doesn't turn enough | increase `parallel_steer_angle` |
 | Too fast | decrease `drive_speed` and `reverse_speed` |
 
-## Step 8: State Transition Distances
+## Step 9: State Transition Distances
 
 These control when the state machine auto-advances. Run a full lap and adjust:
 

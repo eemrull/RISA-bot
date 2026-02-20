@@ -2,8 +2,11 @@
 """
 Camera Obstacle Avoidance Node
 ==============================
-Uses the Astra camera feed to detect white surfaces (obstacles like boxes or walls).
-Applies a hysteresis filter to prevent flickering detections.
+Uses the Astra camera feed to detect obstacles by measuring edge density
+in the center ROI. Objects (boxes, walls, bins) create significantly more
+edges than a flat track surface (which only has smooth ground and lane lines).
+
+Uses Canny edge detection + edge pixel ratio with hysteresis filtering.
 Publishes a boolean flag to `/obstacle_detected_camera`.
 """
 
@@ -19,17 +22,21 @@ from rclpy.qos import QoSPresetProfiles
 
 class ObstacleAvoidanceCamera(Node):
     """
-    Analyzes the center ROI of the camera feed for high average brightness.
+    Analyzes the center ROI of the camera feed for high edge density.
+    Objects have sharp edges; a flat track does not.
     Used as an auxiliary detection method alongside LiDAR.
     """
     def __init__(self):
         super().__init__('obstacle_avoidance_camera')
 
         # Parameters (tunable at runtime)
-        self.declare_parameter('white_threshold', 160)  # Bright pixels = white
-        self.declare_parameter('hysteresis_on', 3)      # consecutive frames to trigger
-        self.declare_parameter('hysteresis_off', 5)     # consecutive frames to clear
-        self.declare_parameter('show_debug', False)     # publish annotated logic frame
+        self.declare_parameter('edge_threshold', 0.12)   # edge pixel ratio to trigger (0.0–1.0)
+        self.declare_parameter('canny_low', 50)          # Canny lower threshold
+        self.declare_parameter('canny_high', 150)        # Canny upper threshold
+        self.declare_parameter('blur_kernel', 5)         # GaussianBlur kernel size (odd number)
+        self.declare_parameter('hysteresis_on', 3)       # consecutive frames to trigger
+        self.declare_parameter('hysteresis_off', 5)      # consecutive frames to clear
+        self.declare_parameter('show_debug', False)      # publish annotated debug frame
 
         # Publishers
         self.obstacle_pub = self.create_publisher(
@@ -50,15 +57,18 @@ class ObstacleAvoidanceCamera(Node):
 
         # State — hysteresis filtering
         self.obstacle_active = False
-        self.white_count = 0
+        self.detect_count = 0
         self.clear_count = 0
 
-        self.get_logger().info('Obstacle Avoidance Camera Node Started (White Surface Detection)')
+        self.get_logger().info('Obstacle Avoidance Camera Node Started (Edge Density Detection)')
 
     def color_callback(self, msg):
         try:
             # Read parameters once per frame
-            white_threshold = self.get_parameter('white_threshold').value
+            edge_threshold = self.get_parameter('edge_threshold').value
+            canny_low = self.get_parameter('canny_low').value
+            canny_high = self.get_parameter('canny_high').value
+            blur_k = self.get_parameter('blur_kernel').value
             hysteresis_on = self.get_parameter('hysteresis_on').value
             hysteresis_off = self.get_parameter('hysteresis_off').value
 
@@ -74,24 +84,32 @@ class ObstacleAvoidanceCamera(Node):
                 cx - roi_size: cx + roi_size
             ]
 
-            # Calculate average BGR values
-            avg_bgr = np.mean(roi, axis=(0, 1))
-            avg_intensity = np.mean(avg_bgr)  # 0–255
+            # Convert to grayscale and blur to reduce noise
+            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            blurred = cv2.GaussianBlur(gray, (blur_k, blur_k), 0)
 
-            is_white = avg_intensity > white_threshold
+            # Canny edge detection
+            edges = cv2.Canny(blurred, canny_low, canny_high)
 
-            if is_white:
-                self.white_count += 1
+            # Calculate edge density (ratio of edge pixels to total pixels)
+            total_pixels = edges.shape[0] * edges.shape[1]
+            edge_pixels = np.count_nonzero(edges)
+            edge_density = edge_pixels / total_pixels if total_pixels > 0 else 0.0
+
+            is_obstacle = edge_density > edge_threshold
+
+            if is_obstacle:
+                self.detect_count += 1
                 self.clear_count = 0
             else:
                 self.clear_count += 1
-                self.white_count = 0
+                self.detect_count = 0
 
-            if self.white_count >= hysteresis_on and not self.obstacle_active:
-                self.get_logger().warn(f'🛑 White surface detected! Avg intensity: {avg_intensity:.1f}')
+            if self.detect_count >= hysteresis_on and not self.obstacle_active:
+                self.get_logger().warn(f'🛑 Obstacle detected! Edge density: {edge_density:.3f}')
                 self.obstacle_active = True
             elif self.clear_count >= hysteresis_off and self.obstacle_active:
-                self.get_logger().info(f'✅ Non-white surface. Safe to move. Avg intensity: {avg_intensity:.1f}')
+                self.get_logger().info(f'✅ Path clear. Edge density: {edge_density:.3f}')
                 self.obstacle_active = False
 
             # Publish obstacle status
@@ -103,22 +121,39 @@ class ObstacleAvoidanceCamera(Node):
             if self.get_parameter('show_debug').value:
                 debug = color_image.copy()
                 color = (0, 0, 255) if self.obstacle_active else (0, 255, 0)
+
                 # Draw ROI box
-                cv2.rectangle(debug, (cx - roi_size, cy - roi_size), (cx + roi_size, cy + roi_size), color, 2)
+                cv2.rectangle(debug,
+                              (cx - roi_size, cy - roi_size),
+                              (cx + roi_size, cy + roi_size),
+                              color, 2)
+
+                # Overlay the edge map inside the ROI for visibility
+                edges_bgr = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+                # Tint edges with the status color
+                edges_tinted = np.zeros_like(edges_bgr)
+                edges_tinted[:, :] = color
+                edge_mask = edges > 0
+                edges_bgr[edge_mask] = edges_tinted[edge_mask]
+                # Blend edges into the ROI area
+                roi_slice = debug[cy - roi_size: cy + roi_size,
+                                  cx - roi_size: cx + roi_size]
+                blended = cv2.addWeighted(roi_slice, 0.6, edges_bgr, 0.4, 0)
+                debug[cy - roi_size: cy + roi_size,
+                      cx - roi_size: cx + roi_size] = blended
+
                 # Add status text
                 status_text = "STOP" if self.obstacle_active else "CLEAR"
-                cv2.putText(debug, f"{status_text} | Avg: {avg_intensity:.1f}", 
+                pct = edge_density * 100
+                cv2.putText(debug, f"{status_text} | Edge: {pct:.1f}%",
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-                
+
                 debug_msg_ros = self.bridge.cv2_to_imgmsg(debug, encoding="bgr8")
                 self.debug_pub.publish(debug_msg_ros)
 
-            # Live update
-            status = "🛑 STOP" if self.obstacle_active else "✅ GO"
-            print(
-                f"\r[obstacle_avoidance_camera] Avg intensity: {avg_intensity:.1f} | Status: {status}",
-                end='',
-                flush=True
+            self.get_logger().debug(
+                f"Edge density: {edge_density:.3f} | "
+                f"{'STOP' if self.obstacle_active else 'CLEAR'}"
             )
 
         except Exception as e:

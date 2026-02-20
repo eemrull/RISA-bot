@@ -1376,7 +1376,8 @@ const PARAM_GROUPS = [
     'drive_speed','reverse_speed'
   ]},
   { node: 'obstacle_avoidance_camera', label: '📷 Camera Obstacle', params: [
-    'white_threshold','hysteresis_on','hysteresis_off', 'show_debug'
+    'edge_threshold','canny_low','canny_high','blur_kernel',
+    'hysteresis_on','hysteresis_off', 'show_debug'
   ]},
 ];
 
