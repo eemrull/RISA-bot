@@ -1345,37 +1345,77 @@ function update() {
     });
 }
 // ===== PARAMETER TUNING (curated) =====
+const PARAM_TIPS = {
+  // Traffic Light
+  red_h_low1:'Red hue range 1 lower bound (HSV)',  red_h_high1:'Red hue range 1 upper bound',
+  red_h_low2:'Red hue range 2 lower bound (wrap)',  red_h_high2:'Red hue range 2 upper bound',
+  yellow_h_low:'Yellow hue lower',  yellow_h_high:'Yellow hue upper',
+  green_h_low:'Green hue lower',  green_h_high:'Green hue upper',
+  sat_min:'Min saturation to count as color',  val_min:'Min brightness to count as color',
+  min_circle_radius:'Smallest circle to detect',  max_circle_radius:'Largest circle to detect',
+  min_pixel_count:'Min colored pixels to trigger',
+  // Line Follower
+  smoothing_alpha:'Error smoothing (0=smooth, 1=raw)',  dead_zone:'Ignore error below this',
+  white_threshold:'Brightness to count as white line',  crop_ratio:'How far down to crop (0=top, 1=bottom)',
+  // Auto Driver
+  steering_gain:'How aggressively to steer on error',  forward_speed:'Base forward speed (m/s)',
+  stale_timeout:'Seconds before data is considered stale',
+  dist_obstruction_clear:'Distance after obstruction clears',  dist_roundabout:'Distance through roundabout',
+  dist_boom_gate_1_pass:'Distance past boom gate 1',  dist_boom_gate_2_pass:'Distance past boom gate 2',
+  dist_hill:'Distance over the hill',  dist_bumper:'Distance over bumpers',
+  dist_traffic_light_pass:'Distance past green light',  dist_drive_to_perp:'Distance parallel → perp parking',
+  // Boom Gate
+  min_detect_dist:'Closest gate detection (m)',  max_detect_dist:'Farthest gate detection (m)',
+  angle_window:'Forward arc width (rad)',  min_gate_points:'Min LiDAR points for gate',
+  distance_variance_max:'Max spread of gate points',  lidar_angle_offset:'LiDAR mount rotation (rad)',
+  // Obstruction
+  detect_dist:'Start dodging at this distance (m)',  clear_dist:'Consider clear beyond this (m)',
+  front_angle:'Front detection arc (rad)',  side_angle_min:'Side arc start (rad)',  side_angle_max:'Side arc end (rad)',
+  steer_speed:'Speed while steering around (m/s)',  steer_angular:'Turn rate while dodging (rad/s)',
+  pass_speed:'Speed while passing alongside (m/s)',  pass_duration:'Seconds driving alongside',
+  steer_back_duration:'Seconds steering back to lane',  steer_away_duration:'Seconds steering away',
+  // Parking
+  parallel_forward_dist:'Drive past slot distance (m)',  parallel_reverse_dist:'Reverse into slot distance (m)',
+  parallel_steer_angle:'Steering rate during reverse (rad/s)',  perp_turn_angle:'Turn angle into slot (rad)',
+  perp_forward_dist:'Drive into slot distance (m)',  park_wait_time:'Seconds to wait in slot',
+  drive_speed:'Parking drive speed (m/s)',  reverse_speed:'Parking reverse speed (m/s)',
+  // Camera Obstacle
+  edge_threshold:'Edge pixel ratio to trigger (0.0–1.0)',  canny_low:'Canny lower threshold',
+  canny_high:'Canny upper threshold',  blur_kernel:'Gaussian blur kernel (odd number)',
+  hysteresis_on:'Frames to confirm obstacle',  hysteresis_off:'Frames to confirm clear',
+  show_debug:'Publish annotated debug frame',
+};
 const PARAM_GROUPS = [
-  { node: 'traffic_light_detector', label: '🚦 Traffic Light', params: [
+  { node: 'traffic_light_detector', label: '\ud83d\udea6 Traffic Light', params: [
     'red_h_low1','red_h_high1','red_h_low2','red_h_high2',
     'yellow_h_low','yellow_h_high','green_h_low','green_h_high',
     'sat_min','val_min','min_circle_radius','max_circle_radius','min_pixel_count',
     'show_debug'
   ]},
-  { node: 'line_follower_camera', label: '📐 Line Follower', params: [
+  { node: 'line_follower_camera', label: '\ud83d\udcd0 Line Follower', params: [
     'smoothing_alpha','dead_zone','white_threshold','crop_ratio','show_debug'
   ]},
-  { node: 'auto_driver', label: '🚗 Auto Driver', params: [
+  { node: 'auto_driver', label: '\ud83d\ude97 Auto Driver', params: [
     'steering_gain','forward_speed','stale_timeout',
     'dist_obstruction_clear','dist_roundabout','dist_boom_gate_1_pass',
     'dist_boom_gate_2_pass','dist_hill','dist_bumper',
     'dist_traffic_light_pass','dist_drive_to_perp'
   ]},
-  { node: 'boom_gate_detector', label: '🚧 Boom Gate', params: [
+  { node: 'boom_gate_detector', label: '\ud83d\udea7 Boom Gate', params: [
     'min_detect_dist','max_detect_dist','angle_window',
     'min_gate_points','distance_variance_max','lidar_angle_offset'
   ]},
-  { node: 'obstruction_avoidance', label: '🔀 Obstruction', params: [
+  { node: 'obstruction_avoidance', label: '\ud83d\udd00 Obstruction', params: [
     'detect_dist','clear_dist','front_angle','side_angle_min','side_angle_max',
     'steer_speed','steer_angular','pass_speed','pass_duration',
     'steer_back_duration','lidar_angle_offset'
   ]},
-  { node: 'parking_controller', label: '🅿️ Parking', params: [
+  { node: 'parking_controller', label: '\ud83c\udd7f\ufe0f Parking', params: [
     'parallel_forward_dist','parallel_reverse_dist','parallel_steer_angle',
     'perp_turn_angle','perp_forward_dist','park_wait_time',
     'drive_speed','reverse_speed'
   ]},
-  { node: 'obstacle_avoidance_camera', label: '📷 Camera Obstacle', params: [
+  { node: 'obstacle_avoidance_camera', label: '\ud83d\udcf7 Camera Obstacle', params: [
     'edge_threshold','canny_low','canny_high','blur_kernel',
     'hysteresis_on','hysteresis_off', 'show_debug'
   ]},
@@ -1384,15 +1424,16 @@ const PARAM_GROUPS = [
 function buildParamUI() {
   const c = document.getElementById('paramContainer');
   c.innerHTML = PARAM_GROUPS.map(g => {
-    const rows = g.params.map(p => 
-      `<div class="param-row">
-        <span class="param-name">${p}</span>
+    const rows = g.params.map(p => {
+      const tip = PARAM_TIPS[p] || '';
+      return `<div class="param-row">
+        <span class="param-name" ${tip ? 'title="'+tip+'"' : ''}>${p}</span>
         <input class="param-val" id="pv_${g.node}_${p}" placeholder="—" />
         <button class="param-set-btn" style="background:rgba(66,165,245,0.1);border-color:rgba(66,165,245,0.3);color:#64b5f6;" onclick="getParam('${g.node}','${p}')">Get</button>
         <button class="param-set-btn" onclick="setParam('${g.node}','${p}')">Set</button>
         <span class="param-status" id="ps_${g.node}_${p}"></span>
-      </div>`
-    ).join('');
+      </div>`;
+    }).join('');
     return `<div class="param-node-block">
       <div class="param-node-header" onclick="this.nextElementSibling.classList.toggle('open')">
         <span class="param-node-name">${g.label}</span>

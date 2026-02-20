@@ -93,7 +93,7 @@ ros2 topic echo /obstacle_detected_camera
 
 | Parameter | Default | Range | Effect |
 |---|---|---|---|
-| `edge_threshold` | 0.12 | 0.05 – 0.30 | Ratio of edge pixels to trigger (12% default) |
+| `edge_threshold` | 0.02 | 0.01 – 0.10 | Ratio of edge pixels to trigger (2% default) |
 | `canny_low` | 50 | 20 – 100 | Lower = more edges (more sensitive) |
 | `canny_high` | 150 | 100 – 250 | Upper Canny threshold |
 | `blur_kernel` | 5 | 3 – 9 | Larger = smoother (reduces noise, fewer edges) |

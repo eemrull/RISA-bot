@@ -30,7 +30,7 @@ class ObstacleAvoidanceCamera(Node):
         super().__init__('obstacle_avoidance_camera')
 
         # Parameters (tunable at runtime)
-        self.declare_parameter('edge_threshold', 0.12)   # edge pixel ratio to trigger (0.0–1.0)
+        self.declare_parameter('edge_threshold', 0.02)   # edge pixel ratio to trigger (0.0–1.0)
         self.declare_parameter('canny_low', 50)          # Canny lower threshold
         self.declare_parameter('canny_high', 150)        # Canny upper threshold
         self.declare_parameter('blur_kernel', 5)         # GaussianBlur kernel size (odd number)
