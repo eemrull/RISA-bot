@@ -11,16 +11,9 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool
-from rclpy.qos import QoSProfile, QoSHistoryPolicy, QoSReliabilityPolicy, QoSDurabilityPolicy
+from rclpy.qos import QoSPresetProfiles
 import math
 import numpy as np
-
-sensor_data_qos = QoSProfile(
-    history=QoSHistoryPolicy.KEEP_LAST,
-    depth=10,
-    reliability=QoSReliabilityPolicy.BEST_EFFORT,
-    durability=QoSDurabilityPolicy.VOLATILE
-)
 
 class ObstacleAvoidanceNode(Node):
     """
@@ -42,7 +35,7 @@ class ObstacleAvoidanceNode(Node):
             LaserScan,
             '/scan',
             self.scan_callback,
-            sensor_data_qos
+            QoSPresetProfiles.SENSOR_DATA.value
         )
 
         # State — temporal smoothing buffer

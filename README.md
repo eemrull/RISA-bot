@@ -47,6 +47,33 @@ Detailed documentation is in the [Guide/](Guide/) folder:
 | [Tuning Guide](Guide/tuning_guide.md) | Step-by-step parameter tuning on physical course |
 | [Architecture](Guide/architecture.md) | Node graphs, data flow, package structure |
 
+## 🖥️ Dashboard
+
+The `test` branch includes a real-time web dashboard at `http://<robot_ip>:8080`.
+
+### Features
+- **Live State Machine** — Current challenge, lap, and mode (AUTO/MANUAL)
+- **Camera Feed** — Raw + debug overlays (Lane Lines, Traffic Light, Obstacle)
+- **Traffic Light Visualizer** — Animated red/yellow/green indicator
+- **Sensor Panel** — LiDAR, Camera, Fused obstacle, Boom Gate, Tunnel, Obstruction status
+- **Odometry** — Distance + speed readout
+- **Controller Visualizer** — Button map + live analog joystick visualization
+- **Lane Following** — Error bar, linear X, angular Z
+- **Competition Flow** — Visual timeline of all challenges with progress
+- **Parameter Tuning** — Drawer with Get/Set for all tunable ROS parameters
+- **Session Uptime & Latency** — Live header indicators
+- **Lap Timer** — Auto-resets on lap change
+- **Event Log** — Timestamped state/mode changes
+
+### Camera Debug Views
+Click the camera tabs to switch between raw and annotated feeds:
+- `Raw` — Unprocessed camera feed
+- `Lane Lines` — Shows detected lane peaks and error
+- `Traffic Light` — Shows detected color circles and confidence
+- `Obstacle` — Shows ROI box and intensity values
+
+> **Note:** Debug tabs auto-toggle `show_debug` on the perception nodes.
+
 ## Troubleshooting
 
 ### astra_camera fails with `openni2_redist` missing

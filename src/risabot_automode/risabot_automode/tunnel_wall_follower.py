@@ -125,7 +125,7 @@ class TunnelWallFollower(Node):
             self.last_time = now
 
             # Debug
-            print(f"\r[TUNNEL] L: {left_avg:.2f}m  R: {right_avg:.2f}m  err: {error:.3f}  ang: {angular_z:.2f}", end='', flush=True)
+            self.get_logger().debug(f"L: {left_avg:.2f}m  R: {right_avg:.2f}m  err: {error:.3f}  ang: {angular_z:.2f}")
         else:
             # Not in tunnel — publish zero
             self.last_error = 0.0

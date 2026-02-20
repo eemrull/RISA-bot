@@ -161,7 +161,7 @@ class ObstructionAvoidance(Node):
 
         if is_active:
             direction = "LEFT" if self.avoid_direction > 0 else "RIGHT"
-            print(f"\r[OBS] {self.phase.name} → steering {direction} | t: {self._time_in_phase():.1f}s", end='', flush=True)
+            self.get_logger().debug(f"{self.phase.name} → steering {direction} | t: {self._time_in_phase():.1f}s")
 
 
 def main(args=None):

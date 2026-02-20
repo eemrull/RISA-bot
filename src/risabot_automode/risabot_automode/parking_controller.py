@@ -238,7 +238,7 @@ class ParkingController(Node):
         phase_name = self.phase.name
         dist = self._dist_since_phase()
         elapsed = self._time_since_phase()
-        print(f"\r[PARK] {phase_name} | dist: {dist:.3f}m | time: {elapsed:.1f}s", end='', flush=True)
+        self.get_logger().debug(f"{phase_name} | dist: {dist:.3f}m | time: {elapsed:.1f}s")
 
     def _finish(self):
         """Complete the parking maneuver."""

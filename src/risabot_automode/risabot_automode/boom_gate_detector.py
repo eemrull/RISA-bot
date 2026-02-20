@@ -119,7 +119,7 @@ class BoomGateDetector(Node):
         # Debug
         status = "🚧 CLOSED" if self.gate_blocked else "✅ OPEN"
         pts = len(forward_distances)
-        print(f"\r[BGD] {status} | fwd points: {pts} | blocked_cnt: {self.blocked_count} | clear_cnt: {self.clear_count}", end='', flush=True)
+        self.get_logger().debug(f"{status} | fwd points: {pts} | blocked_cnt: {self.blocked_count} | clear_cnt: {self.clear_count}")
 
 
 def main(args=None):

@@ -51,7 +51,7 @@ class ServoControllerV9(Node):
             self.bot = Rosmaster()
             self.bot.set_motor(0, 0, 0, 0)
             self.bot.set_pwm_servo(SERVO_STEER_ID, SERVO_CENTER)
-            self.get_logger().info("✅ Rosmaster Connected (V8 Refined)")
+            self.get_logger().info("✅ Rosmaster Connected (V9 Competition)")
         except Exception as e:
             self.get_logger().error(f"❌ Failed to connect to Rosmaster: {e}")
             exit(1)
@@ -93,7 +93,7 @@ class ServoControllerV9(Node):
         self.joy_lost_reported = False   # avoid spamming log
         self.create_timer(0.3, self._joy_watchdog)
 
-        self.get_logger().info("🎮 V8 Ready: Right Stick X = Steer | LB/RB = Challenges")
+        self.get_logger().info("🎮 V9 Ready: Right Stick X = Steer | LB/RB = Challenges")
         self._update_dash()
 
     def _update_dash(self):

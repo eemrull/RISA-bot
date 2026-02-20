@@ -115,7 +115,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .conn-badge {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 10px;
     font-size: 0.8em;
     color: var(--muted);
   }
@@ -124,6 +124,22 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     border-radius: 50%;
     background: #4caf50;
     animation: pulse 2s infinite;
+  }
+  .header-meta {
+    font-size: 0.72em;
+    color: var(--muted);
+    opacity: 0.7;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .latency-badge {
+    font-size: 0.65em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.05);
+    color: var(--muted);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
   }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
@@ -859,8 +875,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
 <!-- HEADER -->
 <div class="header">
-  <h1>🤖 RISA-Bot <span style="font-size:0.6em;color:rgba(255,255,255,0.4);vertical-align:middle;">v1.0</span></h1>
+  <h1>🤖 RISA-Bot <span style="font-size:0.6em;color:rgba(255,255,255,0.4);vertical-align:middle;">v2.0</span></h1>
   <div class="conn-badge">
+    <span class="header-meta" id="uptimeText">00:00:00</span>
+    <span class="latency-badge" id="latencyText">— ms</span>
     <span class="conn-dot" id="connDot"></span>
     <span id="connText">Connecting...</span>
   </div>
@@ -884,6 +902,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <div class="info-row">
         <span>⏱ <span id="stateTime">0</span>s</span>
         <span>📏 <span id="stateDist">0.00</span>m</span>
+        <span>🏁 <span id="lapTimer" style="font-variant-numeric:tabular-nums;">00:00</span></span>
       </div>
     </div>
 
@@ -1099,6 +1118,23 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 let eventLog = [];
 const FLOW_ORDER = ['OBSTRUCTION','ROUNDABOUT','BOOM_GATE_1','TUNNEL','BOOM_GATE_2','HILL','BUMPER','TRAFFIC_LIGHT','PARALLEL_PARK','DRIVE_TO_PERP','PERPENDICULAR_PARK','FINISHED'];
 let lastState = '';
+let lastLap = 0;
+let lapStartTime = Date.now();
+const dashStartTime = Date.now();
+
+// Session uptime timer
+setInterval(() => {
+  const elapsed = Math.floor((Date.now() - dashStartTime) / 1000);
+  const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+  const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+  const s = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('uptimeText').textContent = h + ':' + m + ':' + s;
+  // Lap timer
+  const lapElapsed = Math.floor((Date.now() - lapStartTime) / 1000);
+  const lm = String(Math.floor(lapElapsed / 60)).padStart(2, '0');
+  const ls = String(lapElapsed % 60).padStart(2, '0');
+  document.getElementById('lapTimer').textContent = lm + ':' + ls;
+}, 1000);
 
 function toggleCtrlDrawer() {
   document.getElementById('ctrlDrawer').classList.toggle('open');
@@ -1167,9 +1203,12 @@ function setCamView(view, btn) {
 
 let last_data_time = 0;
 function update() {
+  const fetchStart = performance.now();
   fetch('/data')
     .then(r => r.json())
     .then(d => {
+      const latency = Math.round(performance.now() - fetchStart);
+      document.getElementById('latencyText').textContent = latency + ' ms';
       document.getElementById('connDot').style.background = '#4caf50';
       document.getElementById('connText').textContent = 'Connected';
 
@@ -1198,6 +1237,12 @@ function update() {
       }
 
       document.getElementById('lapBadge').textContent = 'Lap ' + d.lap;
+      // Lap timer reset
+      if (d.lap !== lastLap && lastLap !== 0) {
+        lapStartTime = Date.now();
+        addLogEntry(`Lap <span class="log-val">${d.lap}</span> started`);
+      }
+      lastLap = d.lap;
       document.getElementById('stateTime').textContent = d.state_time;
       document.getElementById('stateDist').textContent = d.state_dist;
 

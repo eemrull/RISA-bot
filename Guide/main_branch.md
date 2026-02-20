@@ -48,7 +48,7 @@ ros2 launch control_servo robot_rc.launch.py
 ## Controller Node (`servo_controller`)
 
 The main branch uses the **original monolithic controller** at:
-`control_servo/servo_controller/servo_controller.py` (469 lines)
+`control_servo/control_servo/servo_controller.py` (V9 — Competition Ready)
 
 ### Controls
 
@@ -98,3 +98,8 @@ The controller opens `Rosmaster()` which uses the same serial port as `auto_driv
 | `/obstacle_front` | Bool | obstacle_avoidance |
 | `/obstacle_detected_fused` | Bool | auto_driver |
 | `/joy` | Joy | joy_node |
+| `/dashboard_state` | String | auto_driver |
+| `/dashboard_ctrl` | String | servo_controller |
+| `/camera/debug/line_follower` | Image | line_follower_camera |
+| `/camera/debug/traffic_light` | Image | traffic_light_detector |
+| `/camera/debug/obstacle` | Image | obstacle_avoidance_camera |

@@ -446,7 +446,7 @@ class AutoDriver(Node):
         state_name = self.state.name
         t = self._time_in_state()
         d = self._dist_in_state()
-        print(f"\r[AUTO] Lap{self.current_lap} | {state_name} | dist: {d:.2f}m | t: {t:.0f}s | err: {self.lane_error:.2f} | obs: {self.obstacle_active}", end='', flush=True)
+        self.get_logger().debug(f"Lap{self.current_lap} | {state_name} | dist: {d:.2f}m | t: {t:.0f}s | err: {self.lane_error:.2f} | obs: {self.obstacle_active}")
 
     def update_combined_obstacle_state(self):
         new_obstacle_state = self.lidar_obstacle or self.camera_obstacle
