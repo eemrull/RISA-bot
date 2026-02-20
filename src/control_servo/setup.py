@@ -17,10 +17,10 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='sunrise',
-    maintainer_email='sunrise@todo.todo',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    maintainer='eemrull',
+    maintainer_email='eemrull@localhost',
+    description='RISA-bot competition servo controller and hardware interface',
+    license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [

@@ -55,14 +55,35 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   body {
     font-family: 'Inter', sans-serif;
     background: var(--bg);
-    background-image:
-      radial-gradient(ellipse at 20% 50%, rgba(15,52,96,0.2) 0%, transparent 50%),
-      radial-gradient(ellipse at 80% 20%, rgba(233,69,96,0.12) 0%, transparent 50%),
-      radial-gradient(ellipse at 50% 100%, rgba(66,165,245,0.06) 0%, transparent 40%);
     color: var(--text);
     min-height: 100vh;
     overflow-x: hidden;
+    position: relative;
   }
+
+  /* ===== ANIMATED ORB BACKGROUND ===== */
+  .bg-orbs {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    z-index: -1; overflow: hidden; pointer-events: none;
+  }
+  .orb {
+    position: absolute; border-radius: 50%; filter: blur(60px);
+    animation: float 20s infinite ease-in-out alternate; opacity: 0.15;
+  }
+  .orb-1 { width: 400px; height: 400px; background: rgba(233,69,96,1); top: -10%; left: 10%; animation-delay: 0s; }
+  .orb-2 { width: 500px; height: 500px; background: rgba(15,52,96,1); bottom: -20%; right: -10%; animation-delay: -5s; }
+  .orb-3 { width: 300px; height: 300px; background: rgba(66,165,245,1); top: 50%; left: 60%; animation-delay: -10s; }
+  @keyframes float { 0% { transform: translateY(0) scale(1); } 100% { transform: translateY(-50px) scale(1.1); } }
+
+  /* ===== WARNING FLASH OVERLAY ===== */
+  .warning-overlay {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    box-shadow: inset 0 0 150px rgba(255,0,0,0.6);
+    pointer-events: none; opacity: 0; z-index: 999;
+    transition: opacity 0.3s;
+  }
+  .warning-overlay.active { animation: flashDanger 1s infinite alternate; }
+  @keyframes flashDanger { 0% { opacity: 0.2; } 100% { opacity: 0.7; } }
 
   /* ===== HEADER ===== */
   .header {
@@ -117,14 +138,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
   /* ===== CARDS ===== */
   .card {
-    background: var(--card);
-    backdrop-filter: blur(16px);
-    border: 1px solid var(--card-border);
+    background: rgba(18,18,35,0.65);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: var(--radius);
     padding: 18px;
-    transition: all 0.35s cubic-bezier(0.4,0,0.2,1);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     position: relative;
     overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
   }
   .card::before {
     content: '';
@@ -136,9 +159,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     transition: opacity 0.3s;
   }
   .card:hover {
-    border-color: rgba(233,69,96,0.2);
-    box-shadow: 0 4px 20px rgba(233,69,96,0.08);
-    transform: translateY(-1px);
+    border-color: rgba(233,69,96,0.3);
+    box-shadow: 0 15px 35px rgba(233,69,96,0.15), inset 0 0 20px rgba(255,255,255,0.02);
+    transform: translateY(-4px) scale(1.02);
   }
   .card:hover::before { opacity: 1; }
   .card h3 {
@@ -202,29 +225,38 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
   /* ===== TRAFFIC LIGHT ===== */
   .traffic-light {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    justify-content: center;
-    background: #0a0a0a;
-    padding: 10px 20px;
-    border-radius: 25px;
-    width: fit-content;
-    margin: 0 auto;
+    display: flex; gap: 12px; align-items: center; justify-content: center;
+    background: linear-gradient(145deg, #111, #080808);
+    padding: 14px 24px; border-radius: 40px;
+    width: fit-content; margin: 0 auto;
+    box-shadow: inset 0 4px 10px rgba(0,0,0,0.8), 0 2px 8px rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.05);
   }
   .tl-circle {
-    width: 28px; height: 28px;
-    border-radius: 50%;
-    border: 2px solid #222;
-    transition: all 0.3s;
+    width: 32px; height: 32px; border-radius: 50%;
+    border: 2px solid #000; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.8);
   }
-  .tl-red    { background: #221111; }
-  .tl-yellow { background: #222011; }
-  .tl-green  { background: #112211; }
-  .tl-red.active    { background: #f44336; box-shadow: 0 0 20px #f44336; border-color: #f44336; }
-  .tl-yellow.active { background: #ffeb3b; box-shadow: 0 0 20px #ffeb3b; border-color: #ffeb3b; }
-  .tl-green.active  { background: #4caf50; box-shadow: 0 0 20px #4caf50; border-color: #4caf50; }
-  .tl-label { text-align: center; margin-top: 6px; font-size: 0.75em; color: var(--muted); }
+  .tl-red { background: #3a1111; }
+  .tl-yellow { background: #3a3311; }
+  .tl-green { background: #113a11; }
+
+  .tl-red.active { 
+    background: radial-gradient(circle at 30% 30%, #ff8a80, #f44336); 
+    box-shadow: 0 0 20px #f44336, 0 0 40px rgba(244,67,54,0.4), inset 0 -2px 6px rgba(0,0,0,0.3);
+    border-color: #ff5252;
+  }
+  .tl-yellow.active { 
+    background: radial-gradient(circle at 30% 30%, #fff59d, #ffeb3b); 
+    box-shadow: 0 0 20px #ffeb3b, 0 0 40px rgba(255,235,59,0.4), inset 0 -2px 6px rgba(0,0,0,0.3);
+    border-color: #ffff00;
+  }
+  .tl-green.active { 
+    background: radial-gradient(circle at 30% 30%, #a5d6a7, #4caf50); 
+    box-shadow: 0 0 20px #4caf50, 0 0 40px rgba(76,175,80,0.4), inset 0 -2px 6px rgba(0,0,0,0.3);
+    border-color: #69f0ae;
+  }
+  .tl-label { text-align: center; margin-top: 8px; font-size: 0.75em; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
 
   /* ===== SENSOR ROWS ===== */
   .s-row {
@@ -281,13 +313,14 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     display: flex; justify-content: center; gap: 6px; margin-top: 8px;
   }
   .gear-dot {
-    width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,0.08);
+    width: 12px; height: 12px; border-radius: 50%; background: rgba(255,255,255,0.08);
     border: 1px solid rgba(255,255,255,0.1);
-    transition: all 0.3s;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   }
   .gear-dot.active {
-    background: var(--accent); border-color: var(--accent);
-    box-shadow: 0 0 8px rgba(233,69,96,0.5);
+    background: var(--accent); border-color: #fff;
+    box-shadow: 0 0 15px rgba(233,69,96,0.8), 0 0 30px rgba(233,69,96,0.4);
+    transform: scale(1.3);
   }
 
   /* ===== CHALLENGE SELECTOR ===== */
@@ -765,6 +798,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 </head>
 <body>
 
+<!-- BACKGROUND ORBS -->
+<div class="bg-orbs">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
+<!-- WARNING OVERLAY -->
+<div id="warning-overlay" class="warning-overlay"></div>
+
 <!-- HEADER -->
 <div class="header">
   <h1>🤖 RISA-Bot <span style="font-size:0.6em;color:rgba(255,255,255,0.4);vertical-align:middle;">v1.0</span></h1>
@@ -1109,6 +1152,14 @@ function update() {
       ss('dotTunnel','valTunnel',d.tunnel_detected,'IN TUNNEL','NO');
       ss('dotObst','valObst',d.obstruction_active,'DODGING','NO');
       ss('dotPark','valPark',d.parking_complete,'DONE','NO');
+
+      // Warning Flash Overlay (if blocked in AUTO)
+      const isBlocked = d.fused_obstacle; // Use fused for reliable alarm
+      const overlay = document.getElementById('warning-overlay');
+      if (overlay) {
+        if (d.auto_mode && isBlocked) overlay.classList.add('active');
+        else overlay.classList.remove('active');
+      }
 
       const gD=document.getElementById('dotGate'),gV=document.getElementById('valGate');
       if(d.boom_gate===null){gD.className='dot dot-gray';gV.textContent='—';}

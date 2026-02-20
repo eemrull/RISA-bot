@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+"""
+Obstacle Avoidance Node
+=======================
+Uses LiDAR scans to detect obstacles in the immediate front path of the robot.
+Publishes boolean flags if an obstacle is closer than the configured minimum distance.
+Applies temporal smoothing to avoid false positives.
+"""
 
 import rclpy
 from rclpy.node import Node
@@ -16,6 +23,10 @@ sensor_data_qos = QoSProfile(
 )
 
 class ObstacleAvoidanceNode(Node):
+    """
+    Subscribes to `/scan` and publishes `/obstacle_front` and `/obstacle_detected`.
+    Filters out side/rear points and focuses on a narrow forward cone.
+    """
     def __init__(self):
         super().__init__('obstacle_avoidance_node')
 
@@ -48,6 +59,9 @@ class ObstacleAvoidanceNode(Node):
 
         min_front = float('inf')
 
+        # Read parameter once per callback
+        min_dist = self.get_parameter('min_obstacle_distance').value
+
         for i, r in enumerate(ranges):
             if not (msg.range_min <= r <= msg.range_max) or math.isnan(r) or math.isinf(r):
                 continue
@@ -73,7 +87,6 @@ class ObstacleAvoidanceNode(Node):
         smoothed_min = min(self.distance_buffer)  # worst-case from recent readings
 
         # Publish front-only detection
-        min_dist = self.get_parameter('min_obstacle_distance').value
         front_obstacle = smoothed_min < min_dist
 
         # Debug: log only when obstacle detected

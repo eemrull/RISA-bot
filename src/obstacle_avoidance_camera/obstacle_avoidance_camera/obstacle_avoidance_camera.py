@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+"""
+Camera Obstacle Avoidance Node
+==============================
+Uses the Astra camera feed to detect white surfaces (obstacles like boxes or walls).
+Applies a hysteresis filter to prevent flickering detections.
+Publishes a boolean flag to `/obstacle_detected_camera`.
+"""
 
 import rclpy
 from rclpy.node import Node
@@ -11,6 +18,10 @@ from rclpy.qos import QoSPresetProfiles
 
 
 class ObstacleAvoidanceCamera(Node):
+    """
+    Analyzes the center ROI of the camera feed for high average brightness.
+    Used as an auxiliary detection method alongside LiDAR.
+    """
     def __init__(self):
         super().__init__('obstacle_avoidance_camera')
 
@@ -44,6 +55,11 @@ class ObstacleAvoidanceCamera(Node):
 
     def color_callback(self, msg):
         try:
+            # Read parameters once per frame
+            white_threshold = self.get_parameter('white_threshold').value
+            hysteresis_on = self.get_parameter('hysteresis_on').value
+            hysteresis_off = self.get_parameter('hysteresis_off').value
+
             # Convert ROS Image to OpenCV
             color_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
 
@@ -60,12 +76,7 @@ class ObstacleAvoidanceCamera(Node):
             avg_bgr = np.mean(roi, axis=(0, 1))
             avg_intensity = np.mean(avg_bgr)  # 0–255
 
-            white_threshold = self.get_parameter('white_threshold').value
             is_white = avg_intensity > white_threshold
-
-            # Hysteresis — require N consecutive frames to change state
-            hysteresis_on = self.get_parameter('hysteresis_on').value
-            hysteresis_off = self.get_parameter('hysteresis_off').value
 
             if is_white:
                 self.white_count += 1
