@@ -52,7 +52,7 @@ Detailed documentation is in the [Guide/](Guide/) folder:
 The `test` branch includes a real-time web dashboard at `http://<robot_ip>:8080`.
 
 ### Features
-- **Live State Machine** — Current challenge, lap, and mode (AUTO/MANUAL)
+- **Live State Machine** — Current challenge, lap, mode (AUTO/MANUAL), and **stop reason** display
 - **Camera Feed** — Raw + debug overlays (Lane Lines, Traffic Light, Obstacle)
 - **Traffic Light Visualizer** — Animated red/yellow/green indicator
 - **Sensor Panel** — LiDAR, Camera, Fused obstacle, Boom Gate, Tunnel, Obstruction status
@@ -60,10 +60,11 @@ The `test` branch includes a real-time web dashboard at `http://<robot_ip>:8080`
 - **Controller Visualizer** — Button map + live analog joystick visualization
 - **Lane Following** — Error bar, linear X, angular Z
 - **Competition Flow** — Visual timeline of all challenges with progress
-- **Parameter Tuning** — Drawer with Get/Set for all tunable ROS parameters
+- **Parameter Tuning** — Slide-out drawer with Get/Set for all tunable ROS parameters (dashboard slides right to accommodate)
 - **Session Uptime & Latency** — Live header indicators
 - **Lap Timer** — Auto-resets on lap change
-- **Event Log** — Timestamped state/mode changes
+- **Event Log** — Timestamped state/mode changes and stop/resume events
+- **Light Theme** — Clean, readable light UI
 
 ### Camera Debug Views
 Click the camera tabs to switch between raw and annotated feeds:

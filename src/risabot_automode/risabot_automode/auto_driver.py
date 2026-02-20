@@ -392,10 +392,7 @@ class AutoDriver(Node):
                 cmd = self._lane_follow_cmd()
 
         elif self.state == ChallengeState.ROUNDABOUT:
-            if self.obstacle_active:
-                self.stop_reason = 'OBSTACLE BLOCKED'
-            else:
-                cmd = self._lane_follow_cmd()
+            cmd = self._lane_follow_cmd()
 
         elif self.state == ChallengeState.BOOM_GATE_1:
             # Lap 1: always open — lane follow through
@@ -408,10 +405,7 @@ class AutoDriver(Node):
             if self.tunnel_detected:
                 cmd = self.tunnel_cmd
             else:
-                if self.obstacle_active:
-                    self.stop_reason = 'OBSTACLE BLOCKED'
-                else:
-                    cmd = self._lane_follow_cmd()
+                cmd = self._lane_follow_cmd()
 
         elif self.state == ChallengeState.BOOM_GATE_2:
             if not self.boom_gate_open:
@@ -420,10 +414,7 @@ class AutoDriver(Node):
                 cmd = self._lane_follow_cmd()
 
         elif self.state in (ChallengeState.HILL, ChallengeState.BUMPER):
-            if self.obstacle_active:
-                self.stop_reason = 'OBSTACLE BLOCKED'
-            else:
-                cmd = self._lane_follow_cmd()
+            cmd = self._lane_follow_cmd()
 
         elif self.state == ChallengeState.TRAFFIC_LIGHT:
             if self.traffic_light_state in ('red', 'yellow'):

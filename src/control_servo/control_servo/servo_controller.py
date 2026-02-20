@@ -187,9 +187,9 @@ class ServoControllerV9(Node):
             # Throttle: Left Stick Y (Axis 1)
             throttle_raw = axis(1)
             
-            # Steering: Right Stick X (Axis 3)
-            # Axis 2 is typically Left Trigger (which rests at 1.0, causing instant hard steering)
-            steer_raw = axis(3)
+            # Steering: Right Stick X (Axis 2)
+            # Ghost state protection handles startup noise from triggers
+            steer_raw = axis(2)
             
             # Deadzone
             if abs(throttle_raw) < 0.1: throttle_raw = 0.0

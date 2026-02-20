@@ -1391,12 +1391,12 @@ function update() {
       }
       if(d.axes&&d.axes.length>3){
         document.getElementById('joyValL').textContent='L: '+d.axes[0].toFixed(1)+', '+d.axes[1].toFixed(1);
-        document.getElementById('joyValR').textContent='R: '+d.axes[3].toFixed(1)+', '+d.axes[2].toFixed(1);
+        document.getElementById('joyValR').textContent='R: '+d.axes[2].toFixed(1)+', '+d.axes[3].toFixed(1);
         
         let lx = 50 + (d.axes[0] * -50);
         let ly = 50 + (d.axes[1] * -50);
-        let rx = 50 + (d.axes[3] * -50);
-        let ry = 50 + (d.axes[2] * -50);
+        let rx = 50 + (d.axes[2] * -50);
+        let ry = 50 + (d.axes[3] * -50);
         
         const dl = document.getElementById('joyDotL');
         const dr = document.getElementById('joyDotR');
