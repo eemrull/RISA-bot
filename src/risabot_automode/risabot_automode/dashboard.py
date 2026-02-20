@@ -397,10 +397,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .cam-container.active { border-color: rgba(66,165,245,0.4); box-shadow: 0 0 20px rgba(66,165,245,0.1) inset; }
   .cam-off { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #555; font-size: 0.85em; }
   .cam-off .icon { font-size: 2em; margin-bottom: 8px; opacity: 0.5; }
-  .cam-tabs { display: flex; gap: 4px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: 8px; margin-bottom: 8px; }
-  .cam-tab { flex: 1; text-align: center; font-size: 0.7em; padding: 6px 0; border-radius: 6px; cursor: pointer; color: #888; transition: all 0.2s; font-weight: 600; }
-  .cam-tab:hover { background: rgba(255,255,255,0.05); color: #ddd; }
-  .cam-tab.active { background: #42a5f5; color: #fff; }
+  .cam-tabs { display: flex; gap: 4px; background: rgba(0,0,0,0.05); padding: 4px; border-radius: 8px; margin-bottom: 8px; }
+  .cam-tab { flex: 1; text-align: center; font-size: 0.7em; padding: 6px 0; border-radius: 6px; cursor: pointer; color: #5c5f77; transition: all 0.2s; font-weight: 600; }
+  .cam-tab:hover { background: rgba(0,0,0,0.05); color: #4c4f69; }
+  .cam-tab.active { background: var(--accent); color: #fff; }
   
   /* ===== FLOW TIMELINE ===== */
   .ctrl-grid {
@@ -449,12 +449,12 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
-    box-shadow: 0 0 8px rgba(255,255,255,0.1);
+    box-shadow: 0 0 8px rgba(0,0,0,0.1);
     transition: background 0.2s;
   }
   .joy-dot.active {
-    background: var(--accent2);
-    box-shadow: 0 0 12px var(--accent2);
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
   }
   .joy-label {
     font-size: 0.65em;
@@ -464,11 +464,12 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .btn-debug {
     margin-top: 6px;
     padding: 4px 6px;
-    background: rgba(0,0,0,0.3);
+    background: var(--surface2);
     border-radius: 4px;
     font-size: 0.65em;
     font-family: 'Courier New', monospace;
-    color: #ff9800;
+    font-weight: 700;
+    color: var(--text);
     min-height: 18px;
   }
 
@@ -828,16 +829,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   }
   .param-row {
     display: grid;
-    grid-template-columns: 1fr 100px 42px 42px;
+    grid-template-columns: 1fr 60px 44px 44px;
     align-items: center;
     padding: 6px 14px;
-    border-top: 1px solid rgba(255,255,255,0.03);
-    gap: 8px;
+    border-top: 1px solid rgba(0,0,0,0.03);
+    gap: 4px;
     position: relative;
   }
   .param-name {
-    font-size: 0.85em;
-    color: #e0e0e0;
+    font-size: 0.8em;
+    color: var(--text);
     font-weight: 500;
   }
   .param-val {
@@ -845,9 +846,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     box-sizing: border-box;
     padding: 6px 8px;
     border-radius: 4px;
-    border: 1px solid rgba(255,255,255,0.15);
-    background: rgba(0,0,0,0.4);
-    color: #fff;
+    border: 1px solid rgba(0,0,0,0.15);
+    background: var(--surface2);
+    color: var(--text);
     font-size: 0.8em;
     font-family: 'Segoe UI', Roboto, sans-serif;
     outline: none;
@@ -855,18 +856,31 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   }
   .param-val:focus { border-color: var(--accent); }
   .param-set-btn {
-    padding: 4px 10px;
+    padding: 4px 6px;
     border-radius: 4px;
-    border: 1px solid rgba(76,175,80,0.3);
-    background: rgba(76,175,80,0.1);
-    color: #81c784;
+    border: 1px solid rgba(64,160,43,0.3);
+    background: rgba(64,160,43,0.1);
+    color: var(--success);
     cursor: pointer;
     font-size: 0.65em;
-    font-weight: 600;
+    font-weight: 700;
     transition: all 0.2s;
     font-family: inherit;
   }
-  .param-set-btn:hover { background: rgba(76,175,80,0.25); border-color: #4caf50; }
+  .param-set-btn:hover { background: rgba(64,160,43,0.2); border-color: var(--success); }
+  .param-get-btn {
+    padding: 4px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(30,102,245,0.3);
+    background: rgba(30,102,245,0.1);
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 0.65em;
+    font-weight: 700;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .param-get-btn:hover { background: rgba(30,102,245,0.2); border-color: var(--accent); }
   .param-status {
     position: absolute;
     right: 14px;
@@ -1288,8 +1302,8 @@ function update() {
         }
       } else {
         stopEl.textContent = 'DRIVING';
-        stopEl.style.background = 'rgba(166,227,161,0.15)';
-        stopEl.style.color = '#a6e3a1';
+        stopEl.style.background = 'rgba(64,160,43,0.15)';
+        stopEl.style.color = '#40a02b';
         if (lastStopReason && lastStopReason.length > 0) {
           addLogEntry(`✅ Resumed driving`);
         }
@@ -1357,8 +1371,8 @@ function update() {
         d.buttons.forEach((v,i)=>{if(v&&bm[i])document.getElementById(bm[i]).classList.add('active');});
         const p=[];d.buttons.forEach((v,i)=>{if(v)p.push('btn['+i+']');});
         const db=document.getElementById('btnDebug');
-        if(p.length){db.textContent='Active: '+p.join(', ');db.style.color='#4caf50';}
-        else{db.textContent='No buttons pressed';db.style.color='#333';}
+        if(p.length){db.textContent='Active: '+p.join(', ');db.style.color='var(--success)';}
+        else{db.textContent='No buttons pressed';db.style.color='var(--muted)';}
       }
 
       // D-pad (axes 6,7)
@@ -1479,7 +1493,7 @@ function buildParamUI() {
       return `<div class="param-row">
         <span class="param-name" ${tip ? 'title="'+tip+'"' : ''}>${p}</span>
         <input class="param-val" id="pv_${g.node}_${p}" placeholder="—" />
-        <button class="param-set-btn" style="background:rgba(66,165,245,0.1);border-color:rgba(66,165,245,0.3);color:#64b5f6;" onclick="getParam('${g.node}','${p}')">Get</button>
+        <button class="param-get-btn" onclick="getParam('${g.node}','${p}')">Get</button>
         <button class="param-set-btn" onclick="setParam('${g.node}','${p}')">Set</button>
         <span class="param-status" id="ps_${g.node}_${p}"></span>
       </div>`;
