@@ -187,10 +187,9 @@ class ServoControllerV9(Node):
             # Throttle: Left Stick Y (Axis 1)
             throttle_raw = axis(1)
             
-            # Steering: Right Stick X
-            # User Feedback V9: "Forward/Back steers" (Axis 3 on this controller).
-            # "Switch axis 3 to 2" -> So we use Axis 2.
-            steer_raw = axis(2)
+            # Steering: Right Stick X (Axis 3)
+            # Axis 2 is typically Left Trigger (which rests at 1.0, causing instant hard steering)
+            steer_raw = axis(3)
             
             # Deadzone
             if abs(throttle_raw) < 0.1: throttle_raw = 0.0

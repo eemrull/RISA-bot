@@ -154,6 +154,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     padding: 14px;
     max-width: 1600px;
     margin: 0 auto;
+    transition: transform 0.4s cubic-bezier(0.4,0,0.2,1);
+  }
+  .layout.drawer-open {
+    transform: translateX(170px);
   }
   .col { display: flex; flex-direction: column; gap: 12px; }
 
@@ -221,7 +225,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     vertical-align: middle;
   }
   .mode-AUTO { background: #4caf50; color: #fff; box-shadow: 0 0 8px rgba(76,175,80,0.3); }
-  .mode-MANUAL { background: #ff9800; color: #fff; box-shadow: 0 0 8px rgba(255,152,0,0.3); }
+  .mode-MANUAL { background: #d32f2f; color: #fff; box-shadow: 0 0 8px rgba(211,47,47,0.3); }
 
   .lap-badge {
     padding: 4px 10px;
@@ -344,10 +348,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     display: inline-block;
     padding: 4px 10px;
     border-radius: 6px;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 0.78em;
-    background: rgba(74,20,140,0.4);
-    color: #ce93d8;
+    background: #4a148c;
+    color: #fff;
     border: 1px solid rgba(206,147,216,0.2);
   }
 
@@ -1167,6 +1171,7 @@ function toggleCtrlDrawer() {
 
 function toggleParamDrawer() {
   document.getElementById('paramDrawer').classList.toggle('open');
+  document.querySelector('.layout').classList.toggle('drawer-open');
 }
 
 function addLogEntry(text) {
