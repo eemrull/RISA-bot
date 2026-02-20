@@ -92,17 +92,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
   /* ===== HEADER ===== */
   .header {
-    background: rgba(10,10,25,0.95);
-    backdrop-filter: blur(24px);
+    background: #fff;
     padding: 14px 28px;
-    border-bottom: 1px solid rgba(233,69,96,0.15);
+    border-bottom: 1px solid rgba(0,0,0,0.08);
     display: flex;
     align-items: center;
     justify-content: space-between;
     position: sticky;
     top: 0;
     z-index: 100;
-    box-shadow: 0 4px 30px rgba(0,0,0,0.4);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
   }
   .header h1 {
     font-size: 1.4em;
@@ -157,7 +156,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     transition: transform 0.4s cubic-bezier(0.4,0,0.2,1);
   }
   .layout.drawer-open {
-    transform: translateX(170px);
+    transform: translateX(210px);
   }
   .col { display: flex; flex-direction: column; gap: 12px; }
 
@@ -412,16 +411,18 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .ctrl-btn {
     padding: 6px 2px;
     border-radius: 6px;
-    background: rgba(255,255,255,0.04);
+    background: rgba(0,0,0,0.04);
+    border: 1px solid rgba(0,0,0,0.06);
     font-size: 0.7em;
-    color: #444;
+    color: #6c6f85;
     transition: all 0.15s;
-    font-weight: 500;
+    font-weight: 600;
   }
   .ctrl-btn.active {
     background: var(--accent);
     color: #fff;
-    box-shadow: 0 0 10px rgba(233,69,96,0.4);
+    border-color: var(--accent);
+    box-shadow: 0 0 8px rgba(30,102,245,0.3);
   }
   .joy-info {
     margin-top: 14px;
@@ -718,32 +719,33 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   /* ===== PARAMETER DRAWER ===== */
   .param-popout-tab {
     position: fixed; left: 0; top: 50%; transform: translateY(-50%);
-    background: rgba(18,18,35,0.95); backdrop-filter: blur(16px);
+    background: #fff;
     padding: 10px 8px; border-radius: 0 10px 10px 0;
-    border: 1px solid var(--card-border); border-left: none;
+    border: 1px solid rgba(0,0,0,0.08); border-left: none;
     cursor: pointer; z-index: 200; writing-mode: vertical-lr;
-    text-orientation: mixed; font-size: 0.7em; font-weight: 600;
-    color: #42a5f5; letter-spacing: 1px; transition: all 0.3s;
+    text-orientation: mixed; font-size: 0.7em; font-weight: 700;
+    color: var(--accent); letter-spacing: 1px; transition: all 0.3s;
+    box-shadow: 2px 0 8px rgba(0,0,0,0.06);
   }
-  .param-popout-tab:hover { background: rgba(66,165,245,0.15); padding-left: 12px; }
+  .param-popout-tab:hover { background: rgba(30,102,245,0.05); padding-left: 12px; }
   .param-drawer {
-    position: fixed; left: -400px; top: 60px; bottom: 0; width: 340px;
-    background: rgba(10,10,25,0.97); backdrop-filter: blur(20px);
-    border-right: 1px solid rgba(66,165,245,0.15); z-index: 199;
+    position: fixed; left: -480px; top: 60px; bottom: 0; width: 420px;
+    background: #fff;
+    border-right: 1px solid rgba(0,0,0,0.08); z-index: 199;
     transition: left 0.4s cubic-bezier(0.4,0,0.2,1); overflow-y: auto;
-    padding: 20px; box-shadow: 4px 0 30px rgba(0,0,0,0.5);
+    padding: 20px; box-shadow: 4px 0 20px rgba(0,0,0,0.08);
   }
   .param-drawer.open { left: 0; }
   .param-drawer h3 {
     font-size: 0.85em; text-transform: uppercase; letter-spacing: 2px;
-    color: #42a5f5; margin-bottom: 8px; font-weight: 700;
+    color: var(--accent); margin-bottom: 8px; font-weight: 700;
   }
-  .param-drawer .note { font-size: 0.8em; color: var(--muted); margin-bottom: 12px; }
+  .param-drawer .note { font-size: 0.8em; color: #666; margin-bottom: 12px; }
   .param-card h3 {
     font-size: 0.65em;
     text-transform: uppercase;
     letter-spacing: 2.5px;
-    color: var(--muted);
+    color: #666;
     margin-bottom: 12px;
     font-weight: 700;
     display: flex;
@@ -757,46 +759,45 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .param-refresh-btn, .param-load-btn {
     padding: 5px 14px;
     border-radius: 6px;
-    border: 1px solid rgba(255,255,255,0.1);
-    background: rgba(255,255,255,0.05);
-    color: #42a5f5;
+    border: 1px solid rgba(30,102,245,0.2);
+    background: rgba(30,102,245,0.05);
+    color: var(--accent);
     cursor: pointer;
     font-size: 0.75em;
-    font-weight: 600;
+    font-weight: 700;
     transition: all 0.2s;
     font-family: inherit;
   }
   .param-refresh-btn:hover, .param-load-btn:hover {
-    background: rgba(66,165,245,0.15); border-color: #42a5f5;
+    background: rgba(30,102,245,0.1); border-color: var(--accent);
   }
   .param-name[title] {
     position: relative;
     cursor: help;
-    border-bottom: 1px dotted rgba(0,0,0,0.4);
+    border-bottom: 1px dotted rgba(0,0,0,0.25);
   }
-  /* Show tooltips OVER EVERYTHING including boundaries */
   .param-name[title]:hover::after {
     content: attr(title);
-    position: fixed; /* Fixed position escapes parent bounds */
-    transform: translate(0, 24px); /* Offset from mouse */
-    background: #4c4f69;
-    border: 1px solid rgba(0,0,0,0.2);
-    color: #eff1f5;
+    position: fixed;
+    transform: translate(0, 24px);
+    background: #333;
+    border: 1px solid rgba(0,0,0,0.3);
+    color: #fff;
     padding: 6px 10px;
     border-radius: 6px;
     font-size: 0.85em;
     font-weight: 500;
-    max-width: 300px; /* Allow wrapping */
-    white-space: normal; /* Allow wrapping */
+    max-width: 300px;
+    white-space: normal;
     z-index: 99999;
     pointer-events: none;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     animation: tipFade 0.15s ease;
   }
   @keyframes tipFade { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: translateY(0); } }
   .param-node-block {
-    margin-bottom: 12px;
-    border: 1px solid rgba(0,0,0,0.05);
+    margin-bottom: 8px;
+    border: 1px solid rgba(0,0,0,0.08);
     border-radius: 10px;
     overflow: hidden;
   }
@@ -805,19 +806,20 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
-    background: rgba(255,255,255,0.03);
+    background: #f8f9fb;
     cursor: pointer;
     transition: background 0.2s;
   }
-  .param-node-header:hover { background: rgba(255,255,255,0.06); }
+  .param-node-header:hover { background: #f0f1f5; }
   .param-node-name {
     font-size: 0.8em;
     font-weight: 700;
-    color: #42a5f5;
+    color: var(--accent);
   }
   .param-node-count {
     font-size: 0.65em;
-    color: #444;
+    color: #888;
+    font-weight: 600;
   }
   .param-node-body {
     max-height: 0;
@@ -829,58 +831,63 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   }
   .param-row {
     display: grid;
-    grid-template-columns: 1fr 60px 44px 44px;
+    grid-template-columns: 1fr 80px 38px 38px;
     align-items: center;
     padding: 6px 14px;
-    border-top: 1px solid rgba(0,0,0,0.03);
-    gap: 4px;
+    border-top: 1px solid rgba(0,0,0,0.04);
+    gap: 6px;
     position: relative;
   }
   .param-name {
-    font-size: 0.8em;
-    color: var(--text);
-    font-weight: 500;
+    font-size: 0.78em;
+    color: #333;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .param-val {
     width: 100%;
     box-sizing: border-box;
-    padding: 6px 8px;
+    padding: 5px 8px;
     border-radius: 4px;
-    border: 1px solid rgba(0,0,0,0.15);
-    background: var(--surface2);
-    color: var(--text);
+    border: 1px solid rgba(0,0,0,0.12);
+    background: #f8f9fb;
+    color: #333;
     font-size: 0.8em;
     font-family: 'Segoe UI', Roboto, sans-serif;
     outline: none;
     transition: border-color 0.2s;
   }
-  .param-val:focus { border-color: var(--accent); }
+  .param-val:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(30,102,245,0.15); }
   .param-set-btn {
-    padding: 4px 6px;
+    padding: 4px 0;
     border-radius: 4px;
     border: 1px solid rgba(64,160,43,0.3);
-    background: rgba(64,160,43,0.1);
+    background: rgba(64,160,43,0.08);
     color: var(--success);
     cursor: pointer;
     font-size: 0.65em;
     font-weight: 700;
     transition: all 0.2s;
     font-family: inherit;
+    text-align: center;
   }
-  .param-set-btn:hover { background: rgba(64,160,43,0.2); border-color: var(--success); }
+  .param-set-btn:hover { background: rgba(64,160,43,0.15); border-color: var(--success); }
   .param-get-btn {
-    padding: 4px 6px;
+    padding: 4px 0;
     border-radius: 4px;
     border: 1px solid rgba(30,102,245,0.3);
-    background: rgba(30,102,245,0.1);
+    background: rgba(30,102,245,0.08);
     color: var(--accent);
     cursor: pointer;
     font-size: 0.65em;
     font-weight: 700;
     transition: all 0.2s;
     font-family: inherit;
+    text-align: center;
   }
-  .param-get-btn:hover { background: rgba(30,102,245,0.2); border-color: var(--accent); }
+  .param-get-btn:hover { background: rgba(30,102,245,0.15); border-color: var(--accent); }
   .param-status {
     position: absolute;
     right: 14px;
@@ -890,12 +897,12 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     border-radius: 3px;
     animation: logFade 0.3s ease;
   }
-  .param-status.ok { color: #4caf50; }
-  .param-status.err { color: #f44336; }
+  .param-status.ok { color: var(--success); }
+  .param-status.err { color: var(--danger); }
   .param-empty {
     text-align: center;
     padding: 20px;
-    color: #333;
+    color: #888;
     font-size: 0.8em;
   }
 </style>
