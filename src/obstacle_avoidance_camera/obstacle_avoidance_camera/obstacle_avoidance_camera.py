@@ -26,7 +26,7 @@ class ObstacleAvoidanceCamera(Node):
         super().__init__('obstacle_avoidance_camera')
 
         # Parameters (tunable at runtime)
-        self.declare_parameter('white_threshold', 200)  # Bright pixels = white
+        self.declare_parameter('white_threshold', 160)  # Bright pixels = white
         self.declare_parameter('hysteresis_on', 3)      # consecutive frames to trigger
         self.declare_parameter('hysteresis_off', 5)     # consecutive frames to clear
         self.declare_parameter('show_debug', False)     # publish annotated logic frame
@@ -65,10 +65,10 @@ class ObstacleAvoidanceCamera(Node):
             # Convert ROS Image to OpenCV
             color_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
 
-            # Get center region (20% of image)
+            # Get center region (25% of image)
             h, w = color_image.shape[:2]
             cx, cy = w // 2, h // 2
-            roi_size = min(h, w) // 5
+            roi_size = min(h, w) // 4
             roi = color_image[
                 cy - roi_size: cy + roi_size,
                 cx - roi_size: cx + roi_size

@@ -41,15 +41,15 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0a0a14;
-    --card: rgba(18,18,35,0.85);
-    --card-border: rgba(255,255,255,0.06);
-    --accent: #e94560;
-    --accent2: #0f3460;
-    --text: #e0e0e0;
-    --muted: #555;
+    --bg: #24273a;
+    --card: rgba(30, 32, 48, 0.85); /* Macchiato Mantle */
+    --card-border: rgba(255, 255, 255, 0.06);
+    --accent: #ed8796; /* Macchiato Maroon / Red */
+    --accent2: #8aadf4; /* Macchiato Blue */
+    --text: #cad3f5;
+    --muted: #a5adcb;
     --radius: 16px;
-    --glow: rgba(233,69,96,0.15);
+    --glow: rgba(237, 135, 150, 0.15);
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -406,11 +406,42 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     box-shadow: 0 0 10px rgba(233,69,96,0.4);
   }
   .joy-info {
-    margin-top: 6px;
-    font-size: 0.7em;
-    color: #444;
+    margin-top: 14px;
     display: flex;
-    gap: 8px;
+    justify-content: center;
+    gap: 30px;
+  }
+  .joy-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .joy-circle {
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.3);
+    border: 2px solid rgba(255,255,255,0.1);
+    position: relative;
+  }
+  .joy-dot {
+    width: 14px; height: 14px;
+    background: var(--muted);
+    border-radius: 50%;
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 8px rgba(255,255,255,0.1);
+    transition: background 0.2s;
+  }
+  .joy-dot.active {
+    background: var(--accent2);
+    box-shadow: 0 0 12px var(--accent2);
+  }
+  .joy-label {
+    font-size: 0.65em;
+    color: var(--muted);
+    font-weight: 600;
   }
   .btn-debug {
     margin-top: 6px;
@@ -976,8 +1007,14 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <div class="ctrl-btn" id="btnRT" style="grid-column:3;">RT</div>
       </div>
       <div class="joy-info">
-        <span>L: <span id="joyL">0.0, 0.0</span></span>
-        <span>R: <span id="joyR">0.0, 0.0</span></span>
+        <div class="joy-container">
+          <div class="joy-circle"><div class="joy-dot" id="joyDotL"></div></div>
+          <div class="joy-label" id="joyValL">L: 0.0, 0.0</div>
+        </div>
+        <div class="joy-container">
+          <div class="joy-circle"><div class="joy-dot" id="joyDotR"></div></div>
+          <div class="joy-label" id="joyValR">R: 0.0, 0.0</div>
+        </div>
       </div>
       <div class="btn-debug" id="btnDebug">Press a button to see index…</div>
     </div>
@@ -1237,8 +1274,24 @@ function update() {
         document.getElementById('btnDown').classList.toggle('active',d.axes[7]<-0.5);
       }
       if(d.axes&&d.axes.length>3){
-        document.getElementById('joyL').textContent=d.axes[0].toFixed(1)+', '+d.axes[1].toFixed(1);
-        document.getElementById('joyR').textContent=d.axes[2].toFixed(1)+', '+d.axes[3].toFixed(1);
+        document.getElementById('joyValL').textContent='L: '+d.axes[0].toFixed(1)+', '+d.axes[1].toFixed(1);
+        document.getElementById('joyValR').textContent='R: '+d.axes[2].toFixed(1)+', '+d.axes[3].toFixed(1);
+        
+        let lx = 50 + (d.axes[0] * -50);
+        let ly = 50 + (d.axes[1] * -50);
+        let rx = 50 + (d.axes[2] * -50);
+        let ry = 50 + (d.axes[3] * -50);
+        
+        const dl = document.getElementById('joyDotL');
+        const dr = document.getElementById('joyDotR');
+        
+        dl.style.left = lx + '%';
+        dl.style.top = ly + '%';
+        dl.classList.toggle('active', Math.abs(d.axes[0]) > 0.05 || Math.abs(d.axes[1]) > 0.05);
+        
+        dr.style.left = rx + '%';
+        dr.style.top = ry + '%';
+        dr.classList.toggle('active', Math.abs(d.axes[2]) > 0.05 || Math.abs(d.axes[3]) > 0.05);
       }
     })
     .catch(()=>{
@@ -1410,7 +1463,7 @@ class DashboardNode(Node):
             'speed': 0.0,
             'buttons': [],
             'axes': [],
-            'speed_pct': 50,
+            'speed_pct': 25,
             'ctrl_state_index': 0,
             'ctrl_state_name': 'LANE_FOLLOW',
         }
