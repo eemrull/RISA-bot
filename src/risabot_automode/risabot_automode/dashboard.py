@@ -53,7 +53,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 15px; /* Improved readability */
+    font-weight: 500;
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
@@ -664,19 +666,31 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .log-event { color: #aaa; }
   .log-val { color: var(--accent); font-weight: 600; }
 
-  /* ===== PARAMETER PANEL ===== */
-  .param-section {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 0 14px 14px;
+  /* ===== PARAMETER DRAWER ===== */
+  .param-popout-tab {
+    position: fixed; left: 0; top: 50%; transform: translateY(-50%);
+    background: rgba(18,18,35,0.95); backdrop-filter: blur(16px);
+    padding: 10px 8px; border-radius: 0 10px 10px 0;
+    border: 1px solid var(--card-border); border-left: none;
+    cursor: pointer; z-index: 200; writing-mode: vertical-lr;
+    text-orientation: mixed; font-size: 0.7em; font-weight: 600;
+    color: #42a5f5; letter-spacing: 1px; transition: all 0.3s;
   }
-  .param-card {
-    background: var(--card);
-    backdrop-filter: blur(16px);
-    border: 1px solid var(--card-border);
-    border-radius: var(--radius);
-    padding: 18px;
+  .param-popout-tab:hover { background: rgba(66,165,245,0.15); padding-left: 12px; }
+  
+  .param-drawer {
+    position: fixed; left: -360px; top: 60px; bottom: 0; width: 340px;
+    background: rgba(10,10,25,0.97); backdrop-filter: blur(20px);
+    border-right: 1px solid rgba(66,165,245,0.15); z-index: 199;
+    transition: left 0.4s cubic-bezier(0.4,0,0.2,1); overflow-y: auto;
+    padding: 20px; box-shadow: 4px 0 30px rgba(0,0,0,0.5);
   }
+  .param-drawer.open { left: 0; }
+  .param-drawer h3 {
+    font-size: 0.7em; text-transform: uppercase; letter-spacing: 2px;
+    color: #42a5f5; margin-bottom: 8px; font-weight: 700;
+  }
+  .param-drawer .note { font-size: 0.75em; color: var(--muted); margin-bottom: 12px; }
   .param-card h3 {
     font-size: 0.65em;
     text-transform: uppercase;
@@ -1006,13 +1020,12 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 </div>
 
 <!-- ===== PARAMETER TUNING ===== -->
-<div class="param-section">
-  <div class="param-card">
-    <h3><span>⚙️ Parameter Tuning</span>
-      <span style="font-size:0.85em;color:#444;font-weight:400;text-transform:none;letter-spacing:0;"> — click Get to read, Set to apply</span>
-    </h3>
-    <div id="paramContainer"></div>
-  </div>
+<!-- ===== PARAMETER TUNING DRAWER ===== -->
+<div class="param-popout-tab" onclick="toggleParamDrawer()">⚙️ Parameters</div>
+<div class="param-drawer" id="paramDrawer">
+  <h3>⚙️ Parameter Tuning</h3>
+  <div class="note">💡 Changes apply instantly to nodes but revert to defaults upon restart.</div>
+  <div id="paramContainer"></div>
 </div>
 
 <!-- ===== CONTROLLER POPOUT ===== -->
@@ -1043,6 +1056,10 @@ let lastState = '';
 
 function toggleCtrlDrawer() {
   document.getElementById('ctrlDrawer').classList.toggle('open');
+}
+
+function toggleParamDrawer() {
+  document.getElementById('paramDrawer').classList.toggle('open');
 }
 
 function addLogEntry(text) {
@@ -1272,23 +1289,34 @@ function buildParamUI() {
   }).join('');
 }
 
-async function getParam(node, param) {
+async function getParam(node, param, isInitialLoad=false) {
   const status = document.getElementById('ps_' + node + '_' + param);
   const input = document.getElementById('pv_' + node + '_' + param);
-  if (status) { status.className = 'param-status'; status.textContent = '...'; }
+  if (status && !isInitialLoad) { status.className = 'param-status'; status.textContent = '...'; }
   try {
     const r = await fetch('/api/get_param?node=' + encodeURIComponent(node) + '&param=' + encodeURIComponent(param));
     const d = await r.json();
     if (d.ok) {
-      if (input) input.value = d.value;
-      if (status) { status.className = 'param-status ok'; status.textContent = '✓'; }
+      if (input) {
+        input.value = d.value;
+        if (isInitialLoad) {
+          input.placeholder = `Def: ${d.value}`;
+          const pName = input.parentElement.querySelector('.param-name');
+          if (pName) {
+            pName.innerHTML = `${param} <span style="color:#555;font-size:0.85em;">(def: ${d.value})</span>`;
+          }
+        }
+      }
+      if (status && !isInitialLoad) { status.className = 'param-status ok'; status.textContent = '✓'; }
     } else {
-      if (status) { status.className = 'param-status err'; status.textContent = d.error || 'Not found'; }
+      if (status && !isInitialLoad) { status.className = 'param-status err'; status.textContent = d.error || 'Not found'; }
     }
   } catch(e) {
-    if (status) { status.className = 'param-status err'; status.textContent = 'Error'; }
+    if (status && !isInitialLoad) { status.className = 'param-status err'; status.textContent = 'Error'; }
   }
-  setTimeout(() => { if(status) status.textContent = ''; }, 3000);
+  if (!isInitialLoad) {
+    setTimeout(() => { if(status) status.textContent = ''; }, 3000);
+  }
 }
 
 async function setParam(node, param) {
@@ -1315,6 +1343,16 @@ async function setParam(node, param) {
 }
 
 buildParamUI();
+
+// Auto-fetch parameters on load to populate current values and defaults
+setTimeout(async () => {
+  for (const g of PARAM_GROUPS) {
+    for (const p of g.params) {
+      await getParam(g.node, p, true);
+    }
+  }
+}, 1000);
+
 setInterval(update, 200);
 update();
 </script>

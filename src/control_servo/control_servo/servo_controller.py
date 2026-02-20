@@ -73,8 +73,11 @@ class ServoControllerV9(Node):
         self.speed_idx = 1 # Index 1 -> 40
         self.current_speed_limit = self.speed_levels[self.speed_idx]
 
-        self.last_servo_val = SERVO_CENTER
-        self.last_motor_val = 0
+        self.target_motor_val = 0
+        self.target_servo_val = SERVO_CENTER
+        # Hardware continuous update loop (10 Hz)
+        self.create_timer(0.1, self._hardware_update_loop)
+
         # Debounce
         self.prev_buttons = [0] * 15
         self.prev_axes = [0.0] * 8
@@ -108,8 +111,6 @@ class ServoControllerV9(Node):
                 self.joy_lost_reported = True
             if self.manual_mode:
                 self.stop_robot()
-                self.last_motor_val = 0
-                self.last_servo_val = SERVO_CENTER
 
     def joy_callback(self, msg):
         # Mark controller as alive
@@ -222,19 +223,22 @@ class ServoControllerV9(Node):
         self.apply_hardware(pwm_val, steer_angle)
 
     def apply_hardware(self, motor_pwm, steer_angle):
-        """Send motor PWM and steering angle to Rosmaster, with change thresholds."""
+        """Update target hardware state; timer loop handles transmission."""
+        self.target_motor_val = motor_pwm
+        self.target_servo_val = steer_angle
+
+    def _hardware_update_loop(self):
+        """Send continuous 10Hz heartbeat to Rosmaster to prevent stuck states."""
         try:
-            if abs(motor_pwm - self.last_motor_val) > 2:
-                self.bot.set_motor(motor_pwm, 0, 0, 0)
-                self.last_motor_val = motor_pwm
-            
-            if abs(steer_angle - self.last_servo_val) > 1:
-                self.bot.set_pwm_servo(SERVO_STEER_ID, steer_angle)
-                self.last_servo_val = steer_angle
+            self.bot.set_motor(self.target_motor_val, 0, 0, 0)
+            self.bot.set_pwm_servo(SERVO_STEER_ID, self.target_servo_val)
         except Exception as e:
-            self.get_logger().error(f"HW error: {e}")
+            # Only print errors occasionally to avoid spam
+            pass
 
     def stop_robot(self):
+        self.target_motor_val = 0
+        self.target_servo_val = SERVO_CENTER
         try:
             self.bot.set_motor(0, 0, 0, 0)
             self.bot.set_pwm_servo(SERVO_STEER_ID, SERVO_CENTER)

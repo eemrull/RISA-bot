@@ -142,7 +142,7 @@ class TrafficLightDetector(Node):
             # Debug output
             if self.current_state != 'unknown':
                 emoji = {'red': '🔴', 'yellow': '🟡', 'green': '🟢'}.get(self.current_state, '❓')
-                print(f"\r[TLD] {emoji} {self.current_state.upper()} (conf: {self.confidence_count}/{self.required_confidence}, score: {best_score:.0f})", end='', flush=True)
+                print(f"\r[TLD] {emoji} {self.current_state.upper()} (conf: {self.confidence_count}/{required_confidence}, score: {best_score:.0f})", end='', flush=True)
 
         except Exception as e:
             self.get_logger().error(f'Traffic light detection error: {e}')
