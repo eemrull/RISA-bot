@@ -156,7 +156,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     transition: transform 0.4s cubic-bezier(0.4,0,0.2,1);
   }
   .layout.drawer-open {
-    transform: translateX(210px);
+    transform: translateX(100px);
   }
   .col { display: flex; flex-direction: column; gap: 12px; }
 
@@ -215,10 +215,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .state-FINISHED { background: #ffd600; color: #333; }
 
   .mode-badge {
-    padding: 2px 8px;
-    border-radius: 4px;
+    padding: 4px 12px;
+    border-radius: 6px;
     font-weight: 700;
-    font-size: 0.6em;
+    font-size: 0.75em;
     letter-spacing: 1px;
     transition: all 0.3s;
     vertical-align: middle;
@@ -245,11 +245,11 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   /* ===== TRAFFIC LIGHT ===== */
   .traffic-light {
     display: flex; gap: 12px; align-items: center; justify-content: center;
-    background: linear-gradient(145deg, #111, #080808);
+    background: linear-gradient(145deg, #555, #444);
     padding: 14px 24px; border-radius: 40px;
     width: fit-content; margin: 0 auto;
-    box-shadow: inset 0 4px 10px rgba(0,0,0,0.8), 0 2px 8px rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.05);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.1);
+    border: 1px solid rgba(0,0,0,0.1);
   }
   .tl-circle {
     width: 32px; height: 32px; border-radius: 50%;
@@ -1391,12 +1391,12 @@ function update() {
       }
       if(d.axes&&d.axes.length>3){
         document.getElementById('joyValL').textContent='L: '+d.axes[0].toFixed(1)+', '+d.axes[1].toFixed(1);
-        document.getElementById('joyValR').textContent='R: '+d.axes[2].toFixed(1)+', '+d.axes[3].toFixed(1);
+        document.getElementById('joyValR').textContent='R: '+d.axes[3].toFixed(1)+', '+d.axes[2].toFixed(1);
         
         let lx = 50 + (d.axes[0] * -50);
         let ly = 50 + (d.axes[1] * -50);
-        let rx = 50 + (d.axes[2] * -50);
-        let ry = 50 + (d.axes[3] * -50);
+        let rx = 50 + (d.axes[3] * -50);
+        let ry = 50 + (d.axes[2] * -50);
         
         const dl = document.getElementById('joyDotL');
         const dr = document.getElementById('joyDotR');
