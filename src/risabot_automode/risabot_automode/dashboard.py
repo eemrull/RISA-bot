@@ -754,20 +754,22 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     max-height: 2000px;
   }
   .param-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr 100px 42px 42px;
     align-items: center;
     padding: 6px 14px;
     border-top: 1px solid rgba(255,255,255,0.03);
     gap: 8px;
+    position: relative;
   }
   .param-name {
-    flex: 1;
     font-size: 0.85em;
     color: #e0e0e0;
     font-weight: 500;
   }
   .param-val {
-    width: 120px;
+    width: 100%;
+    box-sizing: border-box;
     padding: 6px 8px;
     border-radius: 4px;
     border: 1px solid rgba(255,255,255,0.15);
@@ -793,6 +795,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   }
   .param-set-btn:hover { background: rgba(76,175,80,0.25); border-color: #4caf50; }
   .param-status {
+    position: absolute;
+    right: 14px;
+    bottom: -8px;
     font-size: 0.65em;
     padding: 2px 6px;
     border-radius: 3px;
