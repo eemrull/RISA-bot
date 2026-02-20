@@ -1681,10 +1681,25 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                 self.send_error(404)
         elif self.path.startswith('/api/set_cam_view'):
             from urllib.parse import urlparse, parse_qs
+            import threading
             qs = parse_qs(urlparse(self.path).query)
             view = qs.get('view', ['raw'])[0]
             if _node_ref:
                 _node_ref.active_camera_view = view
+            
+            # Auto-toggle show_debug for performance 
+            def auto_toggle_debug(selected_view):
+                mapping = {
+                    'line_follower': 'line_follower_camera',
+                    'traffic_light': 'traffic_light_detector',
+                    'obstacle': 'obstacle_avoidance_camera'
+                }
+                for v, node_name in mapping.items():
+                    val_str = 'true' if v == selected_view else 'false'
+                    _ros_set_param(node_name, 'show_debug', val_str)
+                    
+            threading.Thread(target=auto_toggle_debug, args=(view,), daemon=True).start()
+
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
