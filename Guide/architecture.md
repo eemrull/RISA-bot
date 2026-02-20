@@ -27,14 +27,12 @@ graph LR
     subgraph Control
         AD[auto_driver]
         SC[servo_controller]
-        DB[dashboard]
     end
 
     CAM -->|/camera/color/image_raw| LFC
     CAM -->|/camera/color/image_raw| OAC
     CAM -->|/camera/color/image_raw| TLD
     CAM -->|/camera/color/image_raw| PKG
-    CAM -->|/camera/color/image_raw| DB
     LID -->|/scan| OA
     LID -->|/scan| BGD
     LID -->|/scan| TWF
@@ -53,11 +51,10 @@ graph LR
     JOY -->|/joy| SC
     SC -->|/auto_mode| AD
     SC -->|/set_challenge| AD
+    SC -->|/cmd_vel| AD
 
     AD -->|/cmd_vel| ROBOT[Motors]
     AD -->|/odom| ODOM[Odometry]
-    AD -->|state + sensor data| DB
-    DB -->|HTTP :8080| BROWSER[Web Browser]
 ```
 
 ## Data Flow
@@ -76,14 +73,6 @@ Joystick → servo_controller → /auto_mode → auto_driver
                                     └─ BOOM_GATE_2 → random, stop if closed
                                               ↓
                                           /cmd_vel → Motors
-
-Dashboard (port 8080):
-    ├─ Subscribes to: state, mode, cmd_vel, lane_error, odom, joy,
-    │   obstacle_front, obstacle_camera, tunnel_detected,
-    │   traffic_light_state, boom_gate_open, parking_complete,
-    │   obstruction_active, camera image
-    ├─ Serves: live web dashboard with camera feed
-    └─ Parameter tuning: native rclpy service clients (no subprocess)
 ```
 
 ## Package Map
@@ -94,7 +83,6 @@ RISA-bot/src/
 │   ├── risabot_automode/
 │   │   ├── auto_driver.py         ← Brain: state machine + serial/odometry
 │   │   ├── line_follower_camera.py ← Lane error from camera
-│   │   ├── dashboard.py              ← [test only] Web dashboard (HTTP :8080)
 │   │   ├── traffic_light_detector.py  ← [test only] HSV circle detection
 │   │   ├── boom_gate_detector.py      ← [test only] LiDAR barrier detection
 │   │   ├── tunnel_wall_follower.py    ← [test only] PD wall following
@@ -106,18 +94,12 @@ RISA-bot/src/
 │   └── config/
 │       └── ydlidar.yaml
 ├── control_servo/             ← Joystick controller
-│   └── control_servo/
-│       └── servo_controller.py   ← Mode toggle + manual driving + joy watchdog
+│   ├── control_servo/
+│   │   └── servo_controller.py   ← OLD: basic servo-only (not used)
+│   └── servo_controller/
+│       └── servo_controller.py   ← ACTIVE: mode toggle + manual driving
 ├── obstacle_avoidance/        ← LiDAR front obstacle detection
 ├── obstacle_avoidance_camera/ ← Camera obstacle detection
 ├── ros2_astra_camera/         ← Camera driver (third-party)
 └── ydlidar_ros2_driver/       ← LiDAR driver (third-party)
 ```
-
-## Safety Feature: Joystick Watchdog
-
-The `servo_controller` includes a watchdog that monitors `/joy` messages:
-
-- If no joystick message is received for **0.5 seconds**, the robot stops all motors
-- Prevents the robot from moving autonomously when the controller is turned off or disconnected
-- Manual driving is disabled until the first valid `/joy` message is received

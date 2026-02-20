@@ -47,8 +47,8 @@ ros2 launch control_servo robot_rc.launch.py
 
 ## Controller Node (`servo_controller`)
 
-The main branch uses the **original monolithic controller** (`second_servo.py`, 469 lines).
-On the **test branch**, this has been refactored into `servo_controller.py` (V9) with separated concerns.
+The main branch uses the **original monolithic controller** at:
+`control_servo/control_servo/servo_controller.py` (V9 — Competition Ready)
 
 ### Controls
 
@@ -98,15 +98,8 @@ The controller opens `Rosmaster()` which uses the same serial port as `auto_driv
 | `/obstacle_front` | Bool | obstacle_avoidance |
 | `/obstacle_detected_fused` | Bool | auto_driver |
 | `/joy` | Joy | joy_node |
-
----
-
-## Differences from Test Branch
-
-| Feature | Main | Test |
-|---|---|---|
-| Controller | `second_servo.py` (monolithic) | `servo_controller.py` V9 (separated) |
-| Joy Watchdog | ❌ | ✅ (auto-stops if controller disconnects) |
-| Dashboard | ❌ | ✅ (web UI at `:8080`) |
-| Challenge modules | ❌ | ✅ (9 challenges with state machine) |
-| Launch | Individual tabs/tmux | Single `competition.launch.py` |
+| `/dashboard_state` | String | auto_driver |
+| `/dashboard_ctrl` | String | servo_controller |
+| `/camera/debug/line_follower` | Image | line_follower_camera |
+| `/camera/debug/traffic_light` | Image | traffic_light_detector |
+| `/camera/debug/obstacle` | Image | obstacle_avoidance_camera |

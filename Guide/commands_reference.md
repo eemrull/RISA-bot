@@ -72,8 +72,8 @@ git add . && git commit -m "message" && git push
 
 # On the robot — pull and build
 ssh risabot
-cd ~/risabotcar_ws/src/RISA-bot
-git checkout test && git pull     # or: main
+cd ~/risabotcar_ws/src/risabot_automode
+git checkout new-control-code && git pull     # or: main
 cd ~/risabotcar_ws && cb && sos
 ```
 
@@ -101,22 +101,9 @@ ros2 run risabot_automode boom_gate_detector
 ros2 run risabot_automode tunnel_wall_follower
 ros2 run risabot_automode obstruction_avoidance
 ros2 run risabot_automode parking_controller
-ros2 run risabot_automode dashboard
 ros2 run obstacle_avoidance obstacle_avoidance
 ros2 run obstacle_avoidance_camera obstacle_avoidance_camera
 ```
-
----
-
-## Web Dashboard
-
-Open in any browser on the same network:
-
-```
-http://<robot_ip>:8080
-```
-
-The dashboard shows live camera feed, state machine status, sensor data, controller state, and allows **parameter tuning** directly from the browser — no terminal needed for `ros2 param set`.
 
 ---
 
@@ -172,12 +159,6 @@ ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.15}, angular: {z: 0.
 
 ## Set Parameters (Live Tuning)
 
-### Option 1: Dashboard (Recommended)
-
-Open `http://<robot_ip>:8080`, expand a parameter group (e.g., 🚗 Auto Driver), and use the **Get/Set** buttons. Fast and doesn't require a terminal.
-
-### Option 2: Terminal
-
 ```bash
 # List all parameters for a node
 ros2 param list /auto_driver
@@ -225,7 +206,6 @@ ros2 node list
 # Check node details (subscriptions, publishers, params)
 ros2 node info /auto_driver
 ros2 node info /line_follower_camera
-ros2 node info /dashboard
 
 # Check if camera is Publishing
 ros2 topic hz /camera/color/image_raw    # Should be ~30 Hz

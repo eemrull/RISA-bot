@@ -6,7 +6,7 @@ The test branch is for **competition-ready code** with all 9 challenges integrat
 
 ```bash
 ssh risabot
-cd ~/risabotcar_ws/src/RISA-bot && git checkout test && git pull
+cd ~/risabotcar_ws/src/risabot_automode && git checkout test && git pull
 cd ~/risabotcar_ws && cb && sos
 ros2 launch risabot_automode competition.launch.py
 ```
@@ -29,38 +29,8 @@ Everything in one command:
 | **obstruction_avoidance** | risabot_automode | Lateral dodge maneuver |
 | **parking_controller** | risabot_automode | Parallel + perpendicular parking |
 | auto_driver | risabot_automode | State machine brain (5s delayed start) |
-| **dashboard** | risabot_automode | Web dashboard at http://\<robot_ip\>:8080 |
 | joy_node | joy | Joystick driver |
-| servo_controller | control_servo | Mode toggle + manual driving + joy watchdog |
-
-## Web Dashboard
-
-The dashboard is a live web interface at `http://<robot_ip>:8080`. Open it in any browser on the same network.
-
-### What it shows
-
-- **Camera Feed** — Live camera stream with auto-refresh
-- **State Machine** — Current challenge state, mode (AUTO/MANUAL), lap count
-- **Sensor Data** — Lane error, obstacle status, traffic light, boom gate, tunnel, parking
-- **Controller Status** — Joystick connection, linear/angular velocity
-- **Odometry** — X/Y position, heading
-- **Parameter Tuning** — Read/write ROS2 parameters directly from the browser
-
-### Parameter Tuning Panel
-
-The dashboard includes a built-in parameter tuning panel with pre-configured groups for all tunable nodes:
-
-| Group | Node | Example Params |
-|---|---|---|
-| 🚦 Traffic Light | traffic_light_detector | `sat_min`, `val_min`, HSV ranges |
-| 📐 Line Follower | line_follower_camera | `smoothing_alpha`, `dead_zone`, `white_threshold` |
-| 🚗 Auto Driver | auto_driver | `steering_gain`, `forward_speed`, `dist_*` distances |
-| 🚧 Boom Gate | boom_gate_detector | `min_detect_dist`, `max_detect_dist` |
-| 🔀 Obstruction | obstruction_avoidance | `detect_dist`, `steer_angular`, durations |
-| 🅿️ Parking | parking_controller | `parallel_forward_dist`, `perp_turn_angle` |
-| 📷 Camera Obstacle | obstacle_avoidance_camera | `white_threshold`, `hysteresis_on/off` |
-
-Click **Get** to read a parameter's current value, edit the value, then click **Set** to apply. Uses native rclpy service clients — no subprocess overhead.
+| servo_controller | control_servo | Mode toggle + manual driving |
 
 ## Controller (Test Branch)
 
@@ -73,14 +43,6 @@ Click **Get** to read a parameter's current value, edit the value, then click **
 | **LB** (4) | Cycle to previous challenge state |
 
 > Button numbers are for Xbox-style controllers. Verify with `jstest /dev/input/js0`.
-
-### Joystick Watchdog
-
-The servo controller includes a safety watchdog:
-
-- If no `/joy` message is received for **0.5 seconds**, the robot auto-stops
-- Prevents the robot from driving on its own when the controller is turned off or disconnects
-- Manual driving is disabled until the first valid `/joy` message arrives
 
 ## State Machine
 
@@ -168,11 +130,8 @@ ros2 topic pub --once /parking_command std_msgs/String "data: perpendicular"
 
 ## Tunable Parameters
 
-All parameters can be changed at runtime without rebuilding.
+All parameters can be changed at runtime without rebuilding:
 
-**Option 1 — Dashboard** (recommended): Open `http://<robot_ip>:8080`, expand a parameter group, click Get/Set.
-
-**Option 2 — Terminal**:
 ```bash
 ros2 param set /auto_driver forward_speed 0.2
 ros2 param set /auto_driver dist_roundabout 2.0
@@ -202,10 +161,8 @@ ros2 param set /auto_driver dist_roundabout 2.0
 | Feature | Main | Test |
 |---|---|---|
 | Launch command | `run_risabot` | `ros2 launch risabot_automode competition.launch.py` |
-| Dashboard | ❌ No dashboard | ✅ Web dashboard at :8080 |
 | Auto mode | Monolithic controller handles everything | State machine + modular nodes |
 | Manual driving | Through `Rosmaster.set_motor()` directly | Through `/cmd_vel` topic |
 | Challenges | Lane follow + basic dodge | All 9 competition challenges |
 | Camera | Launched separately | Included in launch file |
 | Serial conflict | ⚠️ Controller and auto_driver fight | ✅ Only auto_driver uses serial |
-| Joy watchdog | ❌ None | ✅ Auto-stops on controller disconnect |

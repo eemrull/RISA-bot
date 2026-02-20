@@ -6,7 +6,7 @@ ROS 2 Intelligent System Autonomy — Competition Robot
 | Branch | Purpose | Launch Command |
 |---|---|---|
 | `main` | Individual node testing & development | `run_risabot` |
-| `test` | Competition mode — all 9 challenges + dashboard | `ros2 launch risabot_automode competition.launch.py` |
+| `test` | Competition mode — all 9 challenges | `ros2 launch risabot_automode competition.launch.py` |
 
 ## Quick Start
 
@@ -16,7 +16,7 @@ git add . && git commit -m "message" && git push
 
 # On the robot — pull, build, run
 ssh risabot
-cd ~/risabotcar_ws/src/RISA-bot
+cd ~/risabotcar_ws/src/risabot_automode
 git checkout test && git pull   # or: main
 cd ~/risabotcar_ws && cb && sos
 
@@ -42,51 +42,38 @@ Detailed documentation is in the [Guide/](Guide/) folder:
 |---|---|
 | [Challenge Breakdown](Guide/challenges_breakdown.md) | Deep dive into each challenge's code, with course layout |
 | [Main Branch](Guide/main_branch.md) | How `main` works — individual nodes, original controller |
-| [Test Branch](Guide/test_branch.md) | How `test` works — state machine, dashboard, all challenges |
+| [Test Branch](Guide/test_branch.md) | How `test` works — state machine, all challenges |
 | [Commands Reference](Guide/commands_reference.md) | All ROS topics, launch files, `ros2 param set` commands |
 | [Tuning Guide](Guide/tuning_guide.md) | Step-by-step parameter tuning on physical course |
 | [Architecture](Guide/architecture.md) | Node graphs, data flow, package structure |
 
-## Features (Test Branch)
+## 🖥️ Dashboard
 
-- **9 Competition Challenges** — Autonomous navigation through lane follow, obstruction, roundabout, tunnel, boom gate, hill, bumper, traffic light, parking
-- **Joystick Safety Watchdog** — Robot auto-stops if controller disconnects or is turned off
-- **Lap Tracking** — Automatic lap 1 → lap 2 transition with different challenge routes
-- **Manual Override** — Start button toggles auto/manual, LB/RB cycles states
+The `test` branch includes a real-time web dashboard at `http://<robot_ip>:8080`.
 
-## 🖥️ Dashboard (Test Branch)
-
-Real-time web dashboard at `http://<robot_ip>:8080` with **Catppuccin Macchiato** theme.
-
-### Core Panels
-- **State Machine** — Current challenge, lap, mode (AUTO/MANUAL), state timer, distance, and lap timer
-- **Traffic Light** — Animated red/yellow/green visualizer
-- **Manual Control** — Speed gauge with gear dots and D-Pad shifting
-- **Lane Following** — Error bar, linear X, angular Z readout
-- **Sensors** — LiDAR, Camera, Fused obstacle, Boom Gate, Tunnel, Obstruction, Parking status
-- **Odometry** — Distance + speed
-- **Controller** — Button map + **live visual analog joystick circles**
-- **Competition Flow** — Visual timeline of all challenges with progress tracking
-- **Event Log** — Timestamped state/mode changes
+### Features
+- **Live State Machine** — Current challenge, lap, mode (AUTO/MANUAL), and **stop reason** display
+- **Camera Feed** — Raw + debug overlays (Lane Lines, Traffic Light, Obstacle)
+- **Traffic Light Visualizer** — Animated red/yellow/green indicator
+- **Sensor Panel** — LiDAR, Camera, Fused obstacle, Boom Gate, Tunnel, Obstruction status
+- **Odometry** — Distance + speed readout
+- **Controller Visualizer** — Button map + live analog joystick visualization
+- **Lane Following** — Error bar, linear X, angular Z
+- **Competition Flow** — Visual timeline of all challenges with progress
+- **Parameter Tuning** — Slide-out drawer with Get/Set for all tunable ROS parameters (dashboard slides right to accommodate)
+- **Session Uptime & Latency** — Live header indicators
+- **Lap Timer** — Auto-resets on lap change
+- **Event Log** — Timestamped state/mode changes and stop/resume events
+- **Light Theme** — Clean, readable light UI
 
 ### Camera Debug Views
-Click tabs to switch between raw and annotated perception feeds:
-| Tab | Shows |
-|---|---|
-| `Raw` | Unprocessed camera feed |
-| `Lane Lines` | Detected lane peaks, center point, error value |
-| `Traffic Light` | Color circles with confidence values |
-| `Obstacle` | ROI box with intensity values |
+Click the camera tabs to switch between raw and annotated feeds:
+- `Raw` — Unprocessed camera feed
+- `Lane Lines` — Shows detected lane peaks and error
+- `Traffic Light` — Shows detected color circles and confidence
+- `Obstacle` — Shows ROI box and intensity values
 
-> Debug tabs auto-toggle `show_debug` on the perception nodes for zero-config use.
-
-### Header Indicators
-- **Session Uptime** — `HH:MM:SS` counter since page load
-- **Network Latency** — Round-trip `ms` badge showing WiFi quality
-- **Connection Status** — Green dot with live/disconnected state
-
-### Parameter Tuning
-Slide-out ⚙️ drawer on the left edge with Get/Set for all tunable ROS parameters across all nodes. Changes are instant but session-only.
+> **Note:** Debug tabs auto-toggle `show_debug` on the perception nodes.
 
 ## Troubleshooting
 

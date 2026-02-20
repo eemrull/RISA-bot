@@ -77,7 +77,6 @@ graph LR
   - `BOOM_GATE` → stops if gate closed
   - `DRIVE_TO_PERP` → lane follow from parallel to perpendicular parking area
 - Stale data timeout (3s) prevents stuck states if a module crashes
-- **Dashboard** at `http://<robot_ip>:8080` shows live state, lane error, and distance
 
 ---
 
@@ -152,7 +151,7 @@ graph LR
 > - **Boom Gate 1** (`BOOM_GATE_1`): After roundabout exit 1. Always open on Lap 1, closed on Lap 2
 > - **Boom Gate 2** (`BOOM_GATE_2`): After the tunnel. Randomly open or closed — robot stops if closed, proceeds when open
 
-**Tunable:** `min_gate_points`, `max_detect_dist`, `gate_angle_window`, `gate_dist_var_max`, `hysteresis`
+**Tunable:** `min_gate_points`, `max_gate_dist`, `gate_angle_window`, `gate_dist_var_max`
 
 ---
 
@@ -244,14 +243,3 @@ Similar to the hill — the bumper is a physical obstacle on the ground that the
 **Tunable:** `white_threshold`, `crop_ratio`, `smoothing_alpha`, `dead_zone`, `show_debug`
 
 > Set `show_debug:=True` to see the lane detection overlay on a desktop. Disabled by default for headless operation on the robot.
-
----
-
-## Parameter Tuning
-
-All ROS parameters above can be tuned live without rebuilding:
-
-1. **Dashboard** (recommended): Open `http://<robot_ip>:8080` → Parameter Tuning panel
-2. **CLI**: `ros2 param set <node_name> <param> <value>`
-
-See [tuning_guide.md](tuning_guide.md) for recommended tuning order.
