@@ -70,7 +70,7 @@ class ServoControllerV9(Node):
         self.manual_mode = True
         self.challenge_index = 0
         self.speed_levels = [25, 40, 60, 100]
-        self.speed_idx = 1 # Index 1 -> 40
+        self.speed_idx = 0 # Index 0 -> 25% Default
         self.current_speed_limit = self.speed_levels[self.speed_idx]
 
         self.target_motor_val = 0
@@ -82,8 +82,12 @@ class ServoControllerV9(Node):
         self.prev_buttons = [0] * 15
         self.prev_axes = [0.0] * 8
 
-        # Safety: Joy watchdog — stop robot if controller disconnects
+        # Safety: Joy watchdog & Ghost Input Protection
         self.joy_alive = False          # True once first /joy received
+        self.joy_unlocked = False       # True once input changes from initial ghost state
+        self.initial_joy_axes = None
+        self.initial_joy_buttons = None
+        
         self.last_joy_time = 0.0        # timestamp of last /joy message
         self.joy_timeout = 0.5          # seconds before declaring controller lost
         self.joy_lost_reported = False   # avoid spamming log
@@ -115,12 +119,26 @@ class ServoControllerV9(Node):
     def joy_callback(self, msg):
         # Mark controller as alive
         self.last_joy_time = time.time()
+        
         if not self.joy_alive:
             self.joy_alive = True
-            self.get_logger().info("🎮 Controller connected")
+            self.initial_joy_axes = list(msg.axes)
+            self.initial_joy_buttons = list(msg.buttons)
+            self.get_logger().info("🎮 Controller receiver connected (Awaiting sync...)")
+            
         if self.joy_lost_reported:
-            self.get_logger().info("🎮 Controller reconnected")
+            self.get_logger().info("🎮 Controller synced")
             self.joy_lost_reported = False
+            self.joy_unlocked = True  # Assuming sync means valid state now
+
+        # Ghost state protection: USB dongles often send a stream of [0, 1.0, 0...] when the gamepad is off.
+        # Ignore all commands until the state deviates from the initial generic signature.
+        if not self.joy_unlocked:
+            if list(msg.axes) != self.initial_joy_axes or list(msg.buttons) != self.initial_joy_buttons:
+                self.joy_unlocked = True
+                self.get_logger().info("🎮 Controller unlocked (Valid human input detected)")
+            else:
+                return  # Return early, ignore phantom inputs
 
         # Helpers
         def btn(idx): return msg.buttons[idx] if idx < len(msg.buttons) else 0
@@ -228,13 +246,21 @@ class ServoControllerV9(Node):
         self.target_servo_val = steer_angle
 
     def _hardware_update_loop(self):
-        """Send continuous 10Hz heartbeat to Rosmaster to prevent stuck states."""
-        try:
-            self.bot.set_motor(self.target_motor_val, 0, 0, 0)
-            self.bot.set_pwm_servo(SERVO_STEER_ID, self.target_servo_val)
-        except Exception as e:
-            # Only print errors occasionally to avoid spam
-            pass
+        """Send 10Hz heartbeat to Rosmaster, but only update on change or 1-second timeout to prevent serial spam."""
+        now = time.time()
+        # If values changed, OR every 1 second (safety heartbeat)
+        if (self.target_motor_val != getattr(self, 'sent_motor_val', None) or 
+            self.target_servo_val != getattr(self, 'sent_servo_val', None) or
+            now - getattr(self, 'last_hw_send_time', 0.0) > 1.0):
+            
+            try:
+                self.bot.set_motor(self.target_motor_val, 0, 0, 0)
+                self.bot.set_pwm_servo(SERVO_STEER_ID, self.target_servo_val)
+                self.sent_motor_val = self.target_motor_val
+                self.sent_servo_val = self.target_servo_val
+                self.last_hw_send_time = now
+            except Exception:
+                pass
 
     def stop_robot(self):
         self.target_motor_val = 0

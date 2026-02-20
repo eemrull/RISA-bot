@@ -53,8 +53,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
-    font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    font-size: 15px; /* Improved readability */
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 16px; /* Crisper base size for 1440p */
     font-weight: 500;
     background: var(--bg);
     color: var(--text);
@@ -677,9 +677,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     color: #42a5f5; letter-spacing: 1px; transition: all 0.3s;
   }
   .param-popout-tab:hover { background: rgba(66,165,245,0.15); padding-left: 12px; }
-  
   .param-drawer {
-    position: fixed; left: -360px; top: 60px; bottom: 0; width: 340px;
+    position: fixed; left: -500px; top: 60px; bottom: 0; width: 440px; /* Widened for 1440p */
     background: rgba(10,10,25,0.97); backdrop-filter: blur(20px);
     border-right: 1px solid rgba(66,165,245,0.15); z-index: 199;
     transition: left 0.4s cubic-bezier(0.4,0,0.2,1); overflow-y: auto;
@@ -687,10 +686,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   }
   .param-drawer.open { left: 0; }
   .param-drawer h3 {
-    font-size: 0.7em; text-transform: uppercase; letter-spacing: 2px;
+    font-size: 0.85em; text-transform: uppercase; letter-spacing: 2px;
     color: #42a5f5; margin-bottom: 8px; font-weight: 700;
   }
-  .param-drawer .note { font-size: 0.75em; color: var(--muted); margin-bottom: 12px; }
+  .param-drawer .note { font-size: 0.8em; color: var(--muted); margin-bottom: 12px; }
   .param-card h3 {
     font-size: 0.65em;
     text-transform: uppercase;
