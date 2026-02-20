@@ -50,11 +50,43 @@ Detailed documentation is in the [Guide/](Guide/) folder:
 ## Features (Test Branch)
 
 - **9 Competition Challenges** — Autonomous navigation through lane follow, obstruction, roundabout, tunnel, boom gate, hill, bumper, traffic light, parking
-- **Live Web Dashboard** — Real-time status at `http://<robot_ip>:8080` with camera feed, state machine view, sensor data, and parameter tuning
-- **Parameter Tuning via Dashboard** — Read/write ROS2 parameters directly from the browser, no terminal needed
 - **Joystick Safety Watchdog** — Robot auto-stops if controller disconnects or is turned off
 - **Lap Tracking** — Automatic lap 1 → lap 2 transition with different challenge routes
 - **Manual Override** — Start button toggles auto/manual, LB/RB cycles states
+
+## 🖥️ Dashboard (Test Branch)
+
+Real-time web dashboard at `http://<robot_ip>:8080` with **Catppuccin Macchiato** theme.
+
+### Core Panels
+- **State Machine** — Current challenge, lap, mode (AUTO/MANUAL), state timer, distance, and lap timer
+- **Traffic Light** — Animated red/yellow/green visualizer
+- **Manual Control** — Speed gauge with gear dots and D-Pad shifting
+- **Lane Following** — Error bar, linear X, angular Z readout
+- **Sensors** — LiDAR, Camera, Fused obstacle, Boom Gate, Tunnel, Obstruction, Parking status
+- **Odometry** — Distance + speed
+- **Controller** — Button map + **live visual analog joystick circles**
+- **Competition Flow** — Visual timeline of all challenges with progress tracking
+- **Event Log** — Timestamped state/mode changes
+
+### Camera Debug Views
+Click tabs to switch between raw and annotated perception feeds:
+| Tab | Shows |
+|---|---|
+| `Raw` | Unprocessed camera feed |
+| `Lane Lines` | Detected lane peaks, center point, error value |
+| `Traffic Light` | Color circles with confidence values |
+| `Obstacle` | ROI box with intensity values |
+
+> Debug tabs auto-toggle `show_debug` on the perception nodes for zero-config use.
+
+### Header Indicators
+- **Session Uptime** — `HH:MM:SS` counter since page load
+- **Network Latency** — Round-trip `ms` badge showing WiFi quality
+- **Connection Status** — Green dot with live/disconnected state
+
+### Parameter Tuning
+Slide-out ⚙️ drawer on the left edge with Get/Set for all tunable ROS parameters across all nodes. Changes are instant but session-only.
 
 ## Troubleshooting
 
