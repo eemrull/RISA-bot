@@ -54,7 +54,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    font-size: 16px; /* Crisper base size for 1440p */
+    font-size: 18px; /* Bigger base size for readability */
     font-weight: 500;
     background: var(--bg);
     color: var(--text);
@@ -768,6 +768,30 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .param-refresh-btn:hover, .param-load-btn:hover {
     background: rgba(66,165,245,0.15); border-color: #42a5f5;
   }
+  .param-name[title] {
+    position: relative;
+    cursor: help;
+    border-bottom: 1px dotted rgba(255,255,255,0.2);
+  }
+  .param-name[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    left: 0; top: 100%;
+    margin-top: 4px;
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--text);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.9em;
+    font-weight: 400;
+    white-space: nowrap;
+    z-index: 999;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    animation: tipFade 0.15s ease;
+  }
+  @keyframes tipFade { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: translateY(0); } }
   .param-node-block {
     margin-bottom: 12px;
     border: 1px solid rgba(255,255,255,0.04);
@@ -1251,23 +1275,24 @@ function update() {
       document.getElementById('stateDist').textContent = d.state_dist;
 
       // Stop reason badge
-      const sb = document.getElementById('stopBadge');
-      if (d.stop_reason && d.stop_reason.length > 0) {
-        sb.textContent = '⛔ ' + d.stop_reason;
-        sb.style.background = 'rgba(243,139,168,0.2)';
-        sb.style.color = '#f38ba8';
-        if (d.stop_reason !== lastStopReason && lastStopReason === '') {
-          addLogEntry(`⛔ Stopped: <span class="log-val">${d.stop_reason}</span>`);
+      const stopEl = document.getElementById('stopBadge');
+      const sr = d.stop_reason || '';
+      if (sr.length > 0) {
+        stopEl.textContent = '⛔ ' + sr;
+        stopEl.style.background = 'rgba(243,139,168,0.2)';
+        stopEl.style.color = '#f38ba8';
+        if (sr !== lastStopReason && lastStopReason === '') {
+          addLogEntry(`⛔ Stopped: <span class="log-val">${sr}</span>`);
         }
       } else {
-        sb.textContent = 'DRIVING';
-        sb.style.background = 'rgba(166,227,161,0.15)';
-        sb.style.color = '#a6e3a1';
+        stopEl.textContent = 'DRIVING';
+        stopEl.style.background = 'rgba(166,227,161,0.15)';
+        stopEl.style.color = '#a6e3a1';
         if (lastStopReason && lastStopReason.length > 0) {
           addLogEntry(`✅ Resumed driving`);
         }
       }
-      lastStopReason = d.stop_reason || '';
+      lastStopReason = sr;
 
       // Traffic light
       ['Red','Yellow','Green'].forEach(c => {
