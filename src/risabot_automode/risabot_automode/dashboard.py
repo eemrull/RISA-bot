@@ -762,20 +762,19 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   }
   .param-name {
     flex: 1;
-    font-size: 0.72em;
-    color: #888;
-    font-family: 'Courier New', monospace;
-    word-break: break-all;
+    font-size: 0.85em;
+    color: #e0e0e0;
+    font-weight: 500;
   }
   .param-val {
     width: 120px;
-    padding: 4px 8px;
+    padding: 6px 8px;
     border-radius: 4px;
-    border: 1px solid rgba(255,255,255,0.1);
-    background: rgba(0,0,0,0.3);
-    color: #e0e0e0;
-    font-size: 0.72em;
-    font-family: 'Courier New', monospace;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(0,0,0,0.4);
+    color: #fff;
+    font-size: 0.8em;
+    font-family: 'Segoe UI', Roboto, sans-serif;
     outline: none;
     transition: border-color 0.2s;
   }
@@ -866,16 +865,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <div class="card">
       <h3>Manual Control</h3>
       <div class="speed-display">
-        <div class="num" id="speedPct">40%</div>
+        <div class="num" id="speedPct">25%</div>
         <div class="unit">Drive Speed</div>
         <div class="gear-dots">
-          <div class="gear-dot" id="gear0"></div>
-          <div class="gear-dot active" id="gear1"></div>
+          <div class="gear-dot active" id="gear0"></div>
+          <div class="gear-dot" id="gear1"></div>
           <div class="gear-dot" id="gear2"></div>
           <div class="gear-dot" id="gear3"></div>
         </div>
       </div>
-      <div class="meter"><div class="meter-fill meter-orange" id="speedBar" style="width:40%"></div></div>
+      <div class="meter"><div class="meter-fill meter-orange" id="speedBar" style="width:25%"></div></div>
       <div style="margin-top:6px;font-size:0.65em;color:#444;text-align:center;">D-pad ▲/▼ to shift</div>
       <div style="margin-top:12px;">
         <div class="s-row">

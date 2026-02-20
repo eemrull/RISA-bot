@@ -113,6 +113,7 @@ class ServoControllerV9(Node):
                 self.get_logger().warn(
                     f"⚠️ Controller lost (no /joy for {elapsed:.1f}s) — STOPPING ROBOT")
                 self.joy_lost_reported = True
+                self.joy_unlocked = False  # Lock to ignore phantom inputs on next receive
             if self.manual_mode:
                 self.stop_robot()
 
@@ -127,9 +128,9 @@ class ServoControllerV9(Node):
             self.get_logger().info("🎮 Controller receiver connected (Awaiting sync...)")
             
         if self.joy_lost_reported:
-            self.get_logger().info("🎮 Controller synced")
+            self.get_logger().info("🎮 Controller module synced. Awaiting explicit input to unlock...")
             self.joy_lost_reported = False
-            self.joy_unlocked = True  # Assuming sync means valid state now
+            # Do NOT aggressively unlock here; rely on the deviation check below
 
         # Ghost state protection: USB dongles often send a stream of [0, 1.0, 0...] when the gamepad is off.
         # Ignore all commands until the state deviates from the initial generic signature.
