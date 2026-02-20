@@ -904,6 +904,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <span>📏 <span id="stateDist">0.00</span>m</span>
         <span>🏁 <span id="lapTimer" style="font-variant-numeric:tabular-nums;">00:00</span></span>
       </div>
+      <div id="stopReasonRow" style="margin-top:6px;">
+        <span id="stopBadge" style="display:inline-block;padding:3px 10px;border-radius:4px;font-size:0.75em;font-weight:700;letter-spacing:0.5px;background:rgba(166,227,161,0.15);color:#a6e3a1;">DRIVING</span>
+      </div>
     </div>
 
     <!-- Traffic Light -->
@@ -1121,6 +1124,7 @@ let lastState = '';
 let lastLap = 0;
 let lapStartTime = Date.now();
 const dashStartTime = Date.now();
+let lastStopReason = '';
 
 // Session uptime timer
 setInterval(() => {
@@ -1245,6 +1249,25 @@ function update() {
       lastLap = d.lap;
       document.getElementById('stateTime').textContent = d.state_time;
       document.getElementById('stateDist').textContent = d.state_dist;
+
+      // Stop reason badge
+      const sb = document.getElementById('stopBadge');
+      if (d.stop_reason && d.stop_reason.length > 0) {
+        sb.textContent = '⛔ ' + d.stop_reason;
+        sb.style.background = 'rgba(243,139,168,0.2)';
+        sb.style.color = '#f38ba8';
+        if (d.stop_reason !== lastStopReason && lastStopReason === '') {
+          addLogEntry(`⛔ Stopped: <span class="log-val">${d.stop_reason}</span>`);
+        }
+      } else {
+        sb.textContent = 'DRIVING';
+        sb.style.background = 'rgba(166,227,161,0.15)';
+        sb.style.color = '#a6e3a1';
+        if (lastStopReason && lastStopReason.length > 0) {
+          addLogEntry(`✅ Resumed driving`);
+        }
+      }
+      lastStopReason = d.stop_reason || '';
 
       // Traffic light
       ['Red','Yellow','Green'].forEach(c => {
@@ -1543,6 +1566,7 @@ class DashboardNode(Node):
             'tunnel_detected': None,
             'obstruction_active': None,
             'parking_complete': None,
+            'stop_reason': '',
             'lane_error': 0.0,
             'cmd_lin_x': 0.0,
             'cmd_ang_z': 0.0,
@@ -1629,7 +1653,7 @@ class DashboardNode(Node):
             self.data['axes'] = list(msg.axes)
 
     def _dash_state_cb(self, msg):
-        """Parse STATE|LAP|DIST format from auto_driver."""
+        """Parse STATE|LAP|DIST|STOP_REASON format from auto_driver."""
         try:
             parts = msg.data.split('|')
             with self.data_lock:
@@ -1640,6 +1664,10 @@ class DashboardNode(Node):
                     self.data['lap'] = int(parts[1])
                 if len(parts) > 2:
                     self.data['state_dist'] = parts[2]
+                if len(parts) > 3:
+                    self.data['stop_reason'] = parts[3]
+                else:
+                    self.data['stop_reason'] = ''
         except Exception:
             self._set('state', msg.data)
 

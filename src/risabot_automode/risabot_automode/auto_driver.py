@@ -66,6 +66,7 @@ class AutoDriver(Node):
         self.lidar_obstacle = False
         self.camera_obstacle = False
         self.obstacle_active = False
+        self.stop_reason = ''
         self.lane_error = 0.0
 
         # Tunable parameters
@@ -254,7 +255,7 @@ class AutoDriver(Node):
         if self._dash_counter % 10 != 0:  # 50Hz timer / 10 = 5Hz
             return
         msg = String()
-        msg.data = f'{self.state.name}|{self.current_lap}|{self._dist_in_state():.2f}'
+        msg.data = f'{self.state.name}|{self.current_lap}|{self._dist_in_state():.2f}|{self.stop_reason}'
         self.dash_state_pub.publish(msg)
 
     def _time_in_state(self):
@@ -357,10 +358,12 @@ class AutoDriver(Node):
     def publish_cmd_vel(self):
         """Main control loop — selects cmd_vel based on current challenge state."""
         cmd = Twist()
+        self.stop_reason = ''  # clear each tick
 
         # In manual mode: skip autonomous cmd_vel entirely,
         # let servo_controller own /cmd_vel. Still publish dash state.
         if not self.in_auto_mode:
+            self.stop_reason = 'MANUAL MODE'
             self._publish_dash_state()
             return
 
@@ -381,7 +384,7 @@ class AutoDriver(Node):
 
         if self.state == ChallengeState.LANE_FOLLOW:
             if self.obstacle_active:
-                pass  # Stop
+                self.stop_reason = 'OBSTACLE BLOCKED'
             else:
                 cmd = self._lane_follow_cmd()
 
@@ -392,35 +395,42 @@ class AutoDriver(Node):
                 cmd = self._lane_follow_cmd()
 
         elif self.state == ChallengeState.ROUNDABOUT:
-            if not self.obstacle_active:
+            if self.obstacle_active:
+                self.stop_reason = 'OBSTACLE BLOCKED'
+            else:
                 cmd = self._lane_follow_cmd()
 
         elif self.state == ChallengeState.BOOM_GATE_1:
             # Lap 1: always open — lane follow through
             if self.boom_gate_open:
                 cmd = self._lane_follow_cmd()
-            # else: stop and wait (shouldn't happen on lap 1)
+            else:
+                self.stop_reason = 'BOOM GATE CLOSED'
 
         elif self.state == ChallengeState.TUNNEL:
             if self.tunnel_detected:
                 cmd = self.tunnel_cmd
             else:
-                if not self.obstacle_active:
+                if self.obstacle_active:
+                    self.stop_reason = 'OBSTACLE BLOCKED'
+                else:
                     cmd = self._lane_follow_cmd()
 
         elif self.state == ChallengeState.BOOM_GATE_2:
             if not self.boom_gate_open:
-                pass  # Gate closed — stop and wait
+                self.stop_reason = 'BOOM GATE CLOSED'
             else:
                 cmd = self._lane_follow_cmd()
 
         elif self.state in (ChallengeState.HILL, ChallengeState.BUMPER):
-            if not self.obstacle_active:
+            if self.obstacle_active:
+                self.stop_reason = 'OBSTACLE BLOCKED'
+            else:
                 cmd = self._lane_follow_cmd()
 
         elif self.state == ChallengeState.TRAFFIC_LIGHT:
             if self.traffic_light_state in ('red', 'yellow'):
-                pass  # Stop
+                self.stop_reason = f'TRAFFIC LIGHT {self.traffic_light_state.upper()}'
             elif self.traffic_light_state == 'green':
                 cmd = self._lane_follow_cmd()
             else:
@@ -437,7 +447,7 @@ class AutoDriver(Node):
             cmd = self._lane_follow_cmd()
 
         elif self.state == ChallengeState.FINISHED:
-            pass  # Stop
+            self.stop_reason = 'COMPETITION FINISHED'
 
         self.cmd_vel_pub.publish(cmd)
         self._publish_dash_state()
