@@ -29,6 +29,7 @@ class ObstacleAvoidanceCamera(Node):
         self.declare_parameter('white_threshold', 200)  # Bright pixels = white
         self.declare_parameter('hysteresis_on', 3)      # consecutive frames to trigger
         self.declare_parameter('hysteresis_off', 5)     # consecutive frames to clear
+        self.declare_parameter('show_debug', False)     # publish annotated logic frame
 
         # Publishers
         self.obstacle_pub = self.create_publisher(
@@ -36,6 +37,7 @@ class ObstacleAvoidanceCamera(Node):
             '/obstacle_detected_camera',
             10
         )
+        self.debug_pub = self.create_publisher(Image, '/camera/debug/obstacle', 10)
 
         # Subscribers
         self.bridge = CvBridge()
@@ -96,6 +98,20 @@ class ObstacleAvoidanceCamera(Node):
             obstacle_msg = Bool()
             obstacle_msg.data = self.obstacle_active
             self.obstacle_pub.publish(obstacle_msg)
+
+            # Debug Visualization
+            if self.get_parameter('show_debug').value:
+                debug = color_image.copy()
+                color = (0, 0, 255) if self.obstacle_active else (0, 255, 0)
+                # Draw ROI box
+                cv2.rectangle(debug, (cx - roi_size, cy - roi_size), (cx + roi_size, cy + roi_size), color, 2)
+                # Add status text
+                status_text = "STOP" if self.obstacle_active else "CLEAR"
+                cv2.putText(debug, f"{status_text} | Avg: {avg_intensity:.1f}", 
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                
+                debug_msg_ros = self.bridge.cv2_to_imgmsg(debug, encoding="bgr8")
+                self.debug_pub.publish(debug_msg_ros)
 
             # Live update
             status = "🛑 STOP" if self.obstacle_active else "✅ GO"

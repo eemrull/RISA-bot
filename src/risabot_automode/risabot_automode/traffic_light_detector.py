@@ -34,9 +34,11 @@ class TrafficLightDetector(Node):
         self.declare_parameter('min_circle_radius', 8)
         self.declare_parameter('max_circle_radius', 80)
         self.declare_parameter('min_pixel_count', 50)
+        self.declare_parameter('show_debug', False)
 
         # Publisher
         self.state_pub = self.create_publisher(String, '/traffic_light_state', 10)
+        self.debug_pub = self.create_publisher(Image, '/camera/debug/traffic_light', 10)
 
         # Subscriber
         self.bridge = CvBridge()
@@ -138,6 +140,36 @@ class TrafficLightDetector(Node):
                 state_msg = String()
                 state_msg.data = self.current_state
                 self.state_pub.publish(state_msg)
+
+            # Debug visualization
+            if self.get_parameter('show_debug').value:
+                debug = roi.copy()
+                if best_color != 'unknown':
+                    # To draw the circle, we need to find the contours again 
+                    # for the best color (or we could store it from the loop above).
+                    # For simplicity, we'll re-run just the bounding box on the winning mask
+                    best_ranges = ranges[best_color]
+                    b_mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+                    for (lower, upper) in best_ranges:
+                        b_mask |= cv2.inRange(hsv, lower, upper)
+                    b_mask = cv2.morphologyEx(b_mask, cv2.MORPH_OPEN, kernel)
+                    b_mask = cv2.morphologyEx(b_mask, cv2.MORPH_CLOSE, kernel)
+                    b_cnts, _ = cv2.findContours(b_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    
+                    if b_cnts:
+                        largest_cnt = max(b_cnts, key=cv2.contourArea)
+                        ((cx, cy), radius) = cv2.minEnclosingCircle(largest_cnt)
+                        color_rgb = (0, 0, 255) if best_color == 'red' else ((0, 255, 255) if best_color == 'yellow' else (0, 255, 0))
+                        
+                        cv2.circle(debug, (int(cx), int(cy)), int(radius), color_rgb, 2)
+                        cv2.putText(debug, f"{best_color.upper()} ({self.confidence_count}/{required_confidence})", 
+                                    (int(cx) - 20, int(cy) - int(radius) - 10), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color_rgb, 2)
+                
+                # Add overall status text
+                cv2.putText(debug, f"State: {self.current_state.upper()}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                debug_msg = self.bridge.cv2_to_imgmsg(debug, encoding="bgr8")
+                self.debug_pub.publish(debug_msg)
 
             # Debug output
             if self.current_state != 'unknown':

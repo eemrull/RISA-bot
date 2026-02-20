@@ -376,14 +376,15 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     object-fit: contain;
     border-radius: 8px;
   }
-  .cam-off {
-    color: #333;
-    font-size: 0.85em;
-    text-align: center;
-  }
-  .cam-off .icon { font-size: 3em; margin-bottom: 8px; opacity: 0.3; }
-
-  /* ===== CONTROLLER ===== */
+  .cam-container.active { border-color: rgba(66,165,245,0.4); box-shadow: 0 0 20px rgba(66,165,245,0.1) inset; }
+  .cam-off { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #555; font-size: 0.85em; }
+  .cam-off .icon { font-size: 2em; margin-bottom: 8px; opacity: 0.5; }
+  .cam-tabs { display: flex; gap: 4px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: 8px; margin-bottom: 8px; }
+  .cam-tab { flex: 1; text-align: center; font-size: 0.7em; padding: 6px 0; border-radius: 6px; cursor: pointer; color: #888; transition: all 0.2s; font-weight: 600; }
+  .cam-tab:hover { background: rgba(255,255,255,0.05); color: #ddd; }
+  .cam-tab.active { background: #42a5f5; color: #fff; }
+  
+  /* ===== FLOW TIMELINE ===== */
   .ctrl-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -915,6 +916,12 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <div class="card cam-card">
       <h3>Camera Feed</h3>
       <button class="cam-toggle" id="camBtn" onclick="toggleCam()">📷 Enable Camera</button>
+      <div class="cam-tabs" id="camTabs" style="display:none;">
+        <div class="cam-tab active" onclick="setCamView('raw', this)">Raw</div>
+        <div class="cam-tab" onclick="setCamView('line_follower', this)">Lane Lines</div>
+        <div class="cam-tab" onclick="setCamView('traffic_light', this)">Traffic Light</div>
+        <div class="cam-tab" onclick="setCamView('obstacle', this)">Obstacle</div>
+      </div>
       <div class="cam-container" id="camContainer">
         <div class="cam-off" id="camOff">
           <div class="icon">📷</div>
@@ -1052,7 +1059,6 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 </div>
 
 <script>
-let camOn = false, camTimer = null;
 let eventLog = [];
 const FLOW_ORDER = ['OBSTRUCTION','ROUNDABOUT','BOOM_GATE_1','TUNNEL','BOOM_GATE_2','HILL','BUMPER','TRAFFIC_LIGHT','PARALLEL_PARK','DRIVE_TO_PERP','PERPENDICULAR_PARK','FINISHED'];
 let lastState = '';
@@ -1092,32 +1098,37 @@ function updateFlow(currentState) {
 }
 
 function toggleCam() {
-  camOn = !camOn;
-  const btn = document.getElementById('camBtn');
-  const img = document.getElementById('camImg');
+  const b = document.getElementById('camBtn');
+  const d = document.getElementById('camContainer');
+  const t = document.getElementById('camTabs');
   const off = document.getElementById('camOff');
-  if (camOn) {
-    btn.textContent = '📷 Disable Camera';
-    btn.classList.add('on');
-    img.style.display = 'block';
-    off.style.display = 'none';
-    refreshCam();
-    camTimer = setInterval(refreshCam, 200);
-  } else {
-    btn.textContent = '📷 Enable Camera';
-    btn.classList.remove('on');
+  const img = document.getElementById('camImg');
+  if(b.classList.contains('active')) {
+    b.classList.remove('active');
+    b.textContent = '📷 Enable Camera';
+    d.classList.remove('active');
+    t.style.display = 'none';
+    off.style.display = 'flex';
     img.style.display = 'none';
     img.src = '';
-    off.style.display = '';
-    if (camTimer) clearInterval(camTimer);
+  } else {
+    b.classList.add('active');
+    b.textContent = '⏹ Disable Camera';
+    d.classList.add('active');
+    t.style.display = 'flex';
+    off.style.display = 'none';
+    img.style.display = 'block';
+    img.src = '/camera_feed?' + new Date().getTime();
   }
 }
 
-function refreshCam() {
-  if (!camOn) return;
-  document.getElementById('camImg').src = '/camera_feed?' + Date.now();
+function setCamView(view, btn) {
+  document.querySelectorAll('.cam-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  fetch('/api/set_cam_view?view=' + encodeURIComponent(view));
 }
 
+let last_data_time = 0;
 function update() {
   fetch('/data')
     .then(r => r.json())
@@ -1240,7 +1251,8 @@ const PARAM_GROUPS = [
   { node: 'traffic_light_detector', label: '🚦 Traffic Light', params: [
     'red_h_low1','red_h_high1','red_h_low2','red_h_high2',
     'yellow_h_low','yellow_h_high','green_h_low','green_h_high',
-    'sat_min','val_min','min_circle_radius','max_circle_radius','min_pixel_count'
+    'sat_min','val_min','min_circle_radius','max_circle_radius','min_pixel_count',
+    'show_debug'
   ]},
   { node: 'line_follower_camera', label: '📐 Line Follower', params: [
     'smoothing_alpha','dead_zone','white_threshold','crop_ratio','show_debug'
@@ -1266,7 +1278,7 @@ const PARAM_GROUPS = [
     'drive_speed','reverse_speed'
   ]},
   { node: 'obstacle_avoidance_camera', label: '📷 Camera Obstacle', params: [
-    'white_threshold','hysteresis_on','hysteresis_off'
+    'white_threshold','hysteresis_on','hysteresis_off', 'show_debug'
   ]},
 ];
 
@@ -1374,6 +1386,7 @@ class DashboardNode(Node):
         self.bridge = CvBridge() if CvBridge else None
         self.latest_jpeg = None
         self.jpeg_lock = threading.Lock()
+        self.active_camera_view = 'raw'
 
         # Shared state (read by HTTP handler)
         self.data = {
@@ -1428,10 +1441,11 @@ class DashboardNode(Node):
         # Also listen to auto commands for display
         self.create_subscription(Twist, '/cmd_vel_auto', self._cmd_cb, 10)
 
-        # Camera subscription (SENSOR_DATA QoS to match camera publisher)
-        self.create_subscription(
-            Image, '/camera/color/image_raw', self._image_cb, qos
-        )
+        # Camera subscriptions (SENSOR_DATA QoS to match camera publisher)
+        self.create_subscription(Image, '/camera/color/image_raw', lambda msg: self._image_cb(msg, 'raw'), qos)
+        self.create_subscription(Image, '/camera/debug/line_follower', lambda msg: self._image_cb(msg, 'line_follower'), qos)
+        self.create_subscription(Image, '/camera/debug/traffic_light', lambda msg: self._image_cb(msg, 'traffic_light'), qos)
+        self.create_subscription(Image, '/camera/debug/obstacle', lambda msg: self._image_cb(msg, 'obstacle'), qos)
 
         self.get_logger().info('Dashboard subscriptions ready')
 
@@ -1507,9 +1521,9 @@ class DashboardNode(Node):
         name = msg.data.upper()
         self._set('ctrl_state_name', name)
 
-    def _image_cb(self, msg):
-        """Convert ROS Image to JPEG for the web feed."""
-        if self.bridge is None:
+    def _image_cb(self, msg, view_name):
+        """Convert ROS Image to JPEG for the web feed, tracking which view is active."""
+        if self.bridge is None or view_name != self.active_camera_view:
             return
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
@@ -1648,14 +1662,33 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             jpeg = _node_ref.get_jpeg() if _node_ref else None
             if jpeg:
                 self.send_response(200)
-                self.send_header('Content-Type', 'image/jpeg')
-                self.send_header('Content-Length', str(len(jpeg)))
-                self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
                 self.end_headers()
-                self.wfile.write(jpeg)
+                try:
+                    while True:
+                        jpeg1 = _node_ref.get_jpeg()
+                        if jpeg1:
+                            self.wfile.write(b'--frame\r\n')
+                            self.send_header('Content-Type', 'image/jpeg')
+                            self.send_header('Content-Length', str(len(jpeg1)))
+                            self.end_headers()
+                            self.wfile.write(jpeg1)
+                            self.wfile.write(b'\r\n')
+                        time.sleep(0.05)
+                except Exception:
+                    pass
             else:
-                self.send_response(204)
-                self.end_headers()
+                self.send_error(404)
+        elif self.path.startswith('/api/set_cam_view'):
+            from urllib.parse import urlparse, parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            view = qs.get('view', ['raw'])[0]
+            if _node_ref:
+                _node_ref.active_camera_view = view
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'{"ok":true}')
         elif self.path.startswith('/api/get_param'):
             from urllib.parse import urlparse, parse_qs
             qs = parse_qs(urlparse(self.path).query)

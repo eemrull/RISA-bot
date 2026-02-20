@@ -40,6 +40,7 @@ class LineFollowerCamera(Node):
         self.declare_parameter('show_debug', False)       # set True to show debug window
 
         self.error_pub = self.create_publisher(Float32, '/lane_error', 10)
+        self.debug_pub = self.create_publisher(Image, '/camera/debug/line_follower', 10)
         self.bridge = CvBridge()
         self.color_sub = self.create_subscription(
             Image,
@@ -109,14 +110,19 @@ class LineFollowerCamera(Node):
             # Publish the smoothed error
             self.error_pub.publish(Float32(data=self.lane_error))
 
-            # Debug visualization (disabled by default for headless operation)
+            # Debug visualization
             if self.get_parameter('show_debug').value:
                 debug = bgr.copy()
                 cv2.line(debug, (int(left_peak), h-crop_h), (int(left_peak), h), (255, 0, 0), 2)   # blue: left line
                 cv2.line(debug, (int(right_peak), h-crop_h), (int(right_peak), h), (0, 0, 255), 2) # red: right line
                 cv2.line(debug, (int(lane_center_x), h-crop_h), (int(lane_center_x), h), (0, 255, 0), 2) # green: center
-                cv2.imshow('Lane', debug)
-                cv2.waitKey(1)
+                
+                # Add status text
+                text_color = (0, 255, 0) if abs(self.lane_error) < 0.05 else (0, 165, 255)
+                cv2.putText(debug, f"Err: {self.lane_error:.3f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
+                
+                debug_msg = self.bridge.cv2_to_imgmsg(debug, encoding="bgr8")
+                self.debug_pub.publish(debug_msg)
 
             status = "CENTER" if abs(self.lane_error) < 0.05 else ("TURN RIGHT" if self.lane_error < 0 else "TURN LEFT")
             print(f"\r[LF] C:{lane_center_x} | Err:{self.lane_error:.2f} | {status}", end='', flush=True)
