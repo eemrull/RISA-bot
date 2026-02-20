@@ -722,7 +722,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   }
   .param-popout-tab:hover { background: rgba(66,165,245,0.15); padding-left: 12px; }
   .param-drawer {
-    position: fixed; left: -500px; top: 60px; bottom: 0; width: 440px; /* Widened for 1440p */
+    position: fixed; left: -400px; top: 60px; bottom: 0; width: 340px;
     background: rgba(10,10,25,0.97); backdrop-filter: blur(20px);
     border-right: 1px solid rgba(66,165,245,0.15); z-index: 199;
     transition: left 0.4s cubic-bezier(0.4,0,0.2,1); overflow-y: auto;
@@ -1572,6 +1572,7 @@ class DashboardNode(Node):
         self.latest_jpeg = None
         self.jpeg_lock = threading.Lock()
         self.active_camera_view = 'raw'
+        self.initial_joy_axes = None
 
         # Shared state (read by HTTP handler)
         self.data = {
@@ -1672,7 +1673,14 @@ class DashboardNode(Node):
     def _joy_cb(self, msg):
         with self.data_lock:
             self.data['buttons'] = list(msg.buttons)
-            self.data['axes'] = list(msg.axes)
+            if self.initial_joy_axes is None:
+                self.initial_joy_axes = list(msg.axes)
+            
+            if self.initial_joy_axes and list(msg.axes) == self.initial_joy_axes:
+                self.data['axes'] = [0.0] * len(msg.axes)
+            else:
+                self.initial_joy_axes = []  # Clear forever once moved
+                self.data['axes'] = list(msg.axes)
 
     def _dash_state_cb(self, msg):
         """Parse STATE|LAP|DIST|STOP_REASON format from auto_driver."""

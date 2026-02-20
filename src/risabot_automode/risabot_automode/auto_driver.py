@@ -383,10 +383,7 @@ class AutoDriver(Node):
         # ---- State-specific behavior ----
 
         if self.state == ChallengeState.LANE_FOLLOW:
-            if self.obstacle_active:
-                self.stop_reason = 'OBSTACLE BLOCKED'
-            else:
-                cmd = self._lane_follow_cmd()
+            cmd = self._lane_follow_cmd()
 
         elif self.state == ChallengeState.OBSTRUCTION:
             if self.obstruction_active:
