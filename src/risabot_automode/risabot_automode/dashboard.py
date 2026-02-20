@@ -1386,36 +1386,36 @@ const PARAM_TIPS = {
   show_debug:'Publish annotated debug frame',
 };
 const PARAM_GROUPS = [
-  { node: 'traffic_light_detector', label: '\ud83d\udea6 Traffic Light', params: [
+  { node: 'traffic_light_detector', label: '🚦 Traffic Light', params: [
     'red_h_low1','red_h_high1','red_h_low2','red_h_high2',
     'yellow_h_low','yellow_h_high','green_h_low','green_h_high',
     'sat_min','val_min','min_circle_radius','max_circle_radius','min_pixel_count',
     'show_debug'
   ]},
-  { node: 'line_follower_camera', label: '\ud83d\udcd0 Line Follower', params: [
+  { node: 'line_follower_camera', label: '📐 Line Follower', params: [
     'smoothing_alpha','dead_zone','white_threshold','crop_ratio','show_debug'
   ]},
-  { node: 'auto_driver', label: '\ud83d\ude97 Auto Driver', params: [
+  { node: 'auto_driver', label: '🚗 Auto Driver', params: [
     'steering_gain','forward_speed','stale_timeout',
     'dist_obstruction_clear','dist_roundabout','dist_boom_gate_1_pass',
     'dist_boom_gate_2_pass','dist_hill','dist_bumper',
     'dist_traffic_light_pass','dist_drive_to_perp'
   ]},
-  { node: 'boom_gate_detector', label: '\ud83d\udea7 Boom Gate', params: [
+  { node: 'boom_gate_detector', label: '🚧 Boom Gate', params: [
     'min_detect_dist','max_detect_dist','angle_window',
     'min_gate_points','distance_variance_max','lidar_angle_offset'
   ]},
-  { node: 'obstruction_avoidance', label: '\ud83d\udd00 Obstruction', params: [
+  { node: 'obstruction_avoidance', label: '🔀 Obstruction', params: [
     'detect_dist','clear_dist','front_angle','side_angle_min','side_angle_max',
     'steer_speed','steer_angular','pass_speed','pass_duration',
     'steer_back_duration','lidar_angle_offset'
   ]},
-  { node: 'parking_controller', label: '\ud83c\udd7f\ufe0f Parking', params: [
+  { node: 'parking_controller', label: '🅿️ Parking', params: [
     'parallel_forward_dist','parallel_reverse_dist','parallel_steer_angle',
     'perp_turn_angle','perp_forward_dist','park_wait_time',
     'drive_speed','reverse_speed'
   ]},
-  { node: 'obstacle_avoidance_camera', label: '\ud83d\udcf7 Camera Obstacle', params: [
+  { node: 'obstacle_avoidance_camera', label: '📷 Camera Obstacle', params: [
     'edge_threshold','canny_low','canny_high','blur_kernel',
     'hysteresis_on','hysteresis_off', 'show_debug'
   ]},
