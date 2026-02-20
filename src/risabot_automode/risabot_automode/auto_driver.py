@@ -27,19 +27,15 @@ from enum import Enum
 
 
 class ChallengeState(Enum):
-    LANE_FOLLOW = 0          # Default: camera lane following
-    OBSTRUCTION = 1          # Challenge 1: lateral obstruction avoidance
-    ROUNDABOUT = 2           # Challenge 2: curved lane following
-    BOOM_GATE_1 = 3          # Boom gate after roundabout exit 1 (open lap 1)
-    TUNNEL = 4               # Challenge 3: LiDAR wall following (dark tunnel)
-    BOOM_GATE_2 = 5          # Challenge 4: boom gate after tunnel (random)
-    HILL = 6                 # Challenge 5: lane follow uphill
-    BUMPER = 7               # Challenge 6: lane follow over bumps
-    TRAFFIC_LIGHT = 8        # Challenge 7: stop on red/yellow, go on green
-    PARALLEL_PARK = 9        # Challenge 8: parallel parking
-    DRIVE_TO_PERP = 10       # Drive from parallel to perpendicular parking area
-    PERPENDICULAR_PARK = 11  # Challenge 9: perpendicular parking
-    FINISHED = 12
+    MANUAL = 0               # Manual override active
+    FINISHED = 1             # Competition complete
+    TRAFFIC_LIGHT = 2        # Stopped at Red/Yellow light
+    BOOM_GATE = 3            # Stopped at closed gate
+    OBSTRUCTION = 4          # Active obstacle avoidance
+    TUNNEL = 5               # Tunnel wall following
+    PARALLEL_PARK = 6        # Parallel parking sequence
+    PERPENDICULAR_PARK = 7   # Perpendicular parking sequence
+    LANE_FOLLOW = 8          # Default driving mode
 
 
 class AutoDriver(Node):
@@ -56,11 +52,12 @@ class AutoDriver(Node):
         self.cmd_vel_timer = self.create_timer(0.02, self.publish_cmd_vel)
 
         # ===== State =====
-        self.state = ChallengeState.LANE_FOLLOW
+        self.state = ChallengeState.MANUAL
         self.in_auto_mode = False
-        self.distance = 0.0
-        self.last_time = time.time()
         self.current_lap = 1  # Tracks lap 1 vs lap 2
+        
+        # High-level mission tracking flags
+        self.lap_1_complete = False
 
         # Obstacle / sensor flags
         self.lidar_obstacle = False
@@ -74,15 +71,9 @@ class AutoDriver(Node):
         self.declare_parameter('forward_speed', 0.15)  # m/s base forward speed
         self.declare_parameter('stale_timeout', 3.0)   # seconds before treating module data as stale
 
-        # Transition distance thresholds (meters) — tune on the physical track
-        self.declare_parameter('dist_obstruction_clear', 0.3)   # min distance after obstruction clears
-        self.declare_parameter('dist_roundabout', 1.5)          # distance through roundabout
-        self.declare_parameter('dist_boom_gate_1_pass', 0.5)    # distance after passing boom gate 1
-        self.declare_parameter('dist_boom_gate_2_pass', 0.5)    # distance after passing boom gate 2
-        self.declare_parameter('dist_hill', 1.0)                # distance over the hill
-        self.declare_parameter('dist_bumper', 0.8)              # distance over bumpers
-        self.declare_parameter('dist_traffic_light_pass', 0.5)  # distance after passing green light
-        self.declare_parameter('dist_drive_to_perp', 1.0)       # distance from parallel to perp parking
+        # Distance threshold (only for determining if a lap is complete after passing traffic light)
+        self.declare_parameter('dist_lap_complete', 1.0)
+        self.distance_past_light = 0.0
 
         # Module inputs (with timestamps for stale detection)
         self.traffic_light_state = 'unknown'
@@ -101,13 +92,10 @@ class AutoDriver(Node):
 
         # Transition tracking
         self.state_entry_time = time.time()
-        self.state_entry_dist = 0.0
-        self.tunnel_was_active = False       # tracks if we entered the tunnel
-        self.traffic_light_was_green = False # tracks if green was detected
-        self.obstruction_was_active = False  # tracks if obstruction was engaged
 
-        # Odometry integration
+        # Odometry integration (used minimally now)
         self.last_odom_time = time.time()
+        self.distance = 0.0
 
         # ===== Subscribers — existing =====
         self.lidar_sub = self.create_subscription(
@@ -235,18 +223,6 @@ class AutoDriver(Node):
             self.get_logger().error(f'Unknown challenge: {msg.data}')
 
     # ========== State machine ==========
-    def _transition_to(self, new_state):
-        """Transition to a new challenge state."""
-        self.get_logger().info(f'🔄 State: {self.state.name} → {new_state.name}')
-        self.state = new_state
-        self.state_entry_time = time.time()
-        self.state_entry_dist = self.distance
-        self.parking_complete = False
-        self.tunnel_was_active = False
-        self.traffic_light_was_green = False
-        self.obstruction_was_active = False
-        self._publish_dash_state()
-
     def _publish_dash_state(self):
         """Publish state info for the dashboard (~5 Hz throttle)."""
         if not hasattr(self, '_dash_counter'):
@@ -255,14 +231,8 @@ class AutoDriver(Node):
         if self._dash_counter % 10 != 0:  # 50Hz timer / 10 = 5Hz
             return
         msg = String()
-        msg.data = f'{self.state.name}|{self.current_lap}|{self._dist_in_state():.2f}|{self.stop_reason}'
+        msg.data = f'{self.state.name}|{self.current_lap}|{self.distance:.2f}|{self.stop_reason}'
         self.dash_state_pub.publish(msg)
-
-    def _time_in_state(self):
-        return time.time() - self.state_entry_time
-
-    def _dist_in_state(self):
-        return self.distance - self.state_entry_dist
 
     def _lane_follow_cmd(self):
         """Build a Twist for standard lane following."""
@@ -271,103 +241,20 @@ class AutoDriver(Node):
         cmd.angular.z = -self.get_parameter('steering_gain').value * self.lane_error
         return cmd
 
-    def _check_transitions(self):
-        """Check if the current state should auto-advance based on sensors/distance."""
-        dist = self._dist_in_state()
-        t = self._time_in_state()
-
-        if self.state == ChallengeState.LANE_FOLLOW:
-            # Advance to OBSTRUCTION when obstruction module detects something
-            if self.obstruction_active:
-                self._transition_to(ChallengeState.OBSTRUCTION)
-
-        elif self.state == ChallengeState.OBSTRUCTION:
-            # Track that we engaged obstruction avoidance
-            if self.obstruction_active:
-                self.obstruction_was_active = True
-            # After obstruction clears and we've moved past it
-            if self.obstruction_was_active and not self.obstruction_active:
-                if dist > self.get_parameter('dist_obstruction_clear').value:
-                    self._transition_to(ChallengeState.ROUNDABOUT)
-
-        elif self.state == ChallengeState.ROUNDABOUT:
-            # After traveling through the roundabout, pick exit based on lap
-            if dist > self.get_parameter('dist_roundabout').value:
-                if self.current_lap == 1:
-                    # Lap 1: exit 1 → boom gate 1 (open) → tunnel
-                    self._transition_to(ChallengeState.BOOM_GATE_1)
-                else:
-                    # Lap 2: boom gate 1 is closed → exit 2 → parking
-                    self._transition_to(ChallengeState.PARALLEL_PARK)
-                    # Send parking command for parallel
-                    self.parking_cmd_pub.publish(String(data='parallel'))
-
-        elif self.state == ChallengeState.BOOM_GATE_1:
-            # Lap 1: gate is always open, pass through
-            if self.boom_gate_open and dist > self.get_parameter('dist_boom_gate_1_pass').value:
-                self._transition_to(ChallengeState.TUNNEL)
-
-        elif self.state == ChallengeState.TUNNEL:
-            # Track if tunnel was entered
-            if self.tunnel_detected:
-                self.tunnel_was_active = True
-            # Transition when tunnel exits (was active, now not)
-            if self.tunnel_was_active and not self.tunnel_detected:
-                self._transition_to(ChallengeState.BOOM_GATE_2)
-
-        elif self.state == ChallengeState.BOOM_GATE_2:
-            # Random gate: wait if closed, pass if open
-            if self.boom_gate_open and dist > self.get_parameter('dist_boom_gate_2_pass').value:
-                self._transition_to(ChallengeState.HILL)
-
-        elif self.state == ChallengeState.HILL:
-            if dist > self.get_parameter('dist_hill').value:
-                self._transition_to(ChallengeState.BUMPER)
-
-        elif self.state == ChallengeState.BUMPER:
-            if dist > self.get_parameter('dist_bumper').value:
-                self._transition_to(ChallengeState.TRAFFIC_LIGHT)
-
-        elif self.state == ChallengeState.TRAFFIC_LIGHT:
-            # Track if green was seen
-            if self.traffic_light_state == 'green':
-                self.traffic_light_was_green = True
-            # After green and moved past the light
-            if self.traffic_light_was_green and dist > self.get_parameter('dist_traffic_light_pass').value:
-                # Lap complete — start lap 2
-                self.current_lap = 2
-                self.get_logger().info('\U0001f3c1 Lap 1 complete — starting Lap 2')
-                self._transition_to(ChallengeState.LANE_FOLLOW)
-
-        elif self.state == ChallengeState.PARALLEL_PARK:
-            if self.parking_complete:
-                self.get_logger().info('\U0001f17f\ufe0f Parallel parking done → driving to perpendicular area')
-                self._transition_to(ChallengeState.DRIVE_TO_PERP)
-
-        elif self.state == ChallengeState.DRIVE_TO_PERP:
-            # Drive forward to perpendicular parking area
-            if dist > self.get_parameter('dist_drive_to_perp').value:
-                self._transition_to(ChallengeState.PERPENDICULAR_PARK)
-                self.parking_cmd_pub.publish(String(data='perpendicular'))
-
-        elif self.state == ChallengeState.PERPENDICULAR_PARK:
-            if self.parking_complete:
-                self._transition_to(ChallengeState.FINISHED)
-                self.get_logger().info('\U0001f389 Competition FINISHED!')
-
     def publish_cmd_vel(self):
-        """Main control loop — selects cmd_vel based on current challenge state."""
+        """Main control loop — Hybrid Priority Evaluator."""
         cmd = Twist()
-        self.stop_reason = ''  # clear each tick
+        self.stop_reason = ''
+        target_state = ChallengeState.LANE_FOLLOW
 
-        # In manual mode: skip autonomous cmd_vel entirely,
-        # let servo_controller own /cmd_vel. Still publish dash state.
+        # Priority 1: Manual Mode Override
         if not self.in_auto_mode:
+            self.state = ChallengeState.MANUAL
             self.stop_reason = 'MANUAL MODE'
             self._publish_dash_state()
             return
 
-        # Reset stale module data to safe defaults
+        # Handle Stale Data Safety Fallbacks
         if self._is_stale(self.obstruction_last_time):
             self.obstruction_active = False
         if self._is_stale(self.tunnel_last_time):
@@ -375,76 +262,71 @@ class AutoDriver(Node):
         if self._is_stale(self.traffic_light_last_time):
             self.traffic_light_state = 'unknown'
         if self._is_stale(self.boom_gate_last_time):
-            self.boom_gate_open = True  # Fail-open: assume gate is open
+            self.boom_gate_open = True
 
-        # Check for automatic state transitions
-        self._check_transitions()
+        # Lap Sequence Tracking
+        if self.traffic_light_state == 'green':
+            self.lap_1_complete = True
+            self.distance_past_light = 0.0
+        
+        if self.lap_1_complete and self.distance_past_light > self.get_parameter('dist_lap_complete').value:
+            if self.current_lap == 1:
+                self.get_logger().info('🏁 Lap 1 complete — starting Lap 2')
+                self.current_lap = 2
+                self.lap_1_complete = False
 
-        # ---- State-specific behavior ----
+        # --- Priority Evaluation Engine ---
+        
+        # Priority 2: Terminal Constraints (Finished)
+        if self.current_lap == 2 and self.parking_complete:
+            target_state = ChallengeState.FINISHED
+            self.stop_reason = 'COMPETITION FINISHED'
 
-        if self.state == ChallengeState.LANE_FOLLOW:
+        # Priority 3: Hard Safety Stops (immediate halt required)
+        elif self.traffic_light_state in ('red', 'yellow'):
+            target_state = ChallengeState.TRAFFIC_LIGHT
+            self.stop_reason = f'TRAFFIC LIGHT {self.traffic_light_state.upper()}'
+
+        elif not self.boom_gate_open:
+            target_state = ChallengeState.BOOM_GATE
+            self.stop_reason = 'BOOM GATE CLOSED'
+
+        # Priority 4: Active Maneuvers (Steering overriding normal driving)
+        elif self.obstruction_active:
+            target_state = ChallengeState.OBSTRUCTION
+            cmd = self.obstruction_cmd
+
+        # Priority 5: Contextual Overrides (Parking / Tunnel)
+        elif self.current_lap == 2 and self.signboard_detected and not self.parking_complete:
+            # We detected a parking signboard on lap 2, assuming we have entered a parking area
+            target_state = ChallengeState.PARALLEL_PARK
+            cmd = self.parking_cmd
+            # Send parking command for parallel (assume parallel for now based on lap 2 logic)
+            self.parking_cmd_pub.publish(String(data='parallel'))
+            
+        elif self.tunnel_detected:
+            target_state = ChallengeState.TUNNEL
+            cmd = self.tunnel_cmd
+
+        # Priority 6: Default Action
+        else:
+            target_state = ChallengeState.LANE_FOLLOW
             cmd = self._lane_follow_cmd()
-
-        elif self.state == ChallengeState.OBSTRUCTION:
-            if self.obstruction_active:
-                cmd = self.obstruction_cmd
-            else:
-                cmd = self._lane_follow_cmd()
-
-        elif self.state == ChallengeState.ROUNDABOUT:
-            cmd = self._lane_follow_cmd()
-
-        elif self.state == ChallengeState.BOOM_GATE_1:
-            # Lap 1: always open — lane follow through
-            if self.boom_gate_open:
-                cmd = self._lane_follow_cmd()
-            else:
-                self.stop_reason = 'BOOM GATE CLOSED'
-
-        elif self.state == ChallengeState.TUNNEL:
-            if self.tunnel_detected:
-                cmd = self.tunnel_cmd
-            else:
-                cmd = self._lane_follow_cmd()
-
-        elif self.state == ChallengeState.BOOM_GATE_2:
-            if not self.boom_gate_open:
-                self.stop_reason = 'BOOM GATE CLOSED'
-            else:
-                cmd = self._lane_follow_cmd()
-
-        elif self.state in (ChallengeState.HILL, ChallengeState.BUMPER):
-            cmd = self._lane_follow_cmd()
-
-        elif self.state == ChallengeState.TRAFFIC_LIGHT:
-            if self.traffic_light_state in ('red', 'yellow'):
-                self.stop_reason = f'TRAFFIC LIGHT {self.traffic_light_state.upper()}'
-            elif self.traffic_light_state == 'green':
-                cmd = self._lane_follow_cmd()
-            else:
-                # 'unknown' — proceed with caution
-                cmd = self._lane_follow_cmd()
+            
+            # Minor contextual tweak (e.g. unknown traffic light -> proceed with caution)
+            if self.traffic_light_state == 'unknown':
                 cmd.linear.x *= 0.5
 
-        elif self.state in (ChallengeState.PARALLEL_PARK, ChallengeState.PERPENDICULAR_PARK):
-            if not self.parking_complete:
-                cmd = self.parking_cmd
-
-        elif self.state == ChallengeState.DRIVE_TO_PERP:
-            # Lane follow from parallel parking to perpendicular parking area
-            cmd = self._lane_follow_cmd()
-
-        elif self.state == ChallengeState.FINISHED:
-            self.stop_reason = 'COMPETITION FINISHED'
+        # Update and publish
+        if self.state != target_state:
+            self.get_logger().info(f'🔄 Behavior Switch: {self.state.name} → {target_state.name}')
+            self.state = target_state
 
         self.cmd_vel_pub.publish(cmd)
         self._publish_dash_state()
 
         # Debug
-        state_name = self.state.name
-        t = self._time_in_state()
-        d = self._dist_in_state()
-        self.get_logger().debug(f"Lap{self.current_lap} | {state_name} | dist: {d:.2f}m | t: {t:.0f}s | err: {self.lane_error:.2f} | obs: {self.obstacle_active}")
+        self.get_logger().debug(f"Lap{self.current_lap} | {self.state.name} | err: {self.lane_error:.2f} | obs: {self.obstruction_active}")
 
     def update_combined_obstacle_state(self):
         new_obstacle_state = self.lidar_obstacle or self.camera_obstacle
@@ -455,11 +337,6 @@ class AutoDriver(Node):
             msg.data = new_obstacle_state
             self.obstacle_pub.publish(msg)
 
-            if new_obstacle_state:
-                self.get_logger().warn('🛑 Obstacle detected!')
-            else:
-                self.get_logger().info('✅ Obstacle cleared.')
-
     # ========== Odometry (from servo_controller) ==========
 
     def odom_callback(self, msg):
@@ -469,7 +346,10 @@ class AutoDriver(Node):
         self.last_odom_time = now
 
         v = msg.twist.twist.linear.x
-        self.distance += v * dt
+        d = v * dt
+        self.distance += d
+        if self.lap_1_complete:
+            self.distance_past_light += d
 
     # Serial reader removed (moved to servo_controller)
 

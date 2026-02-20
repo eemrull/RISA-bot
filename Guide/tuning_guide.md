@@ -190,35 +190,15 @@ ros2 topic pub --once /parking_command std_msgs/String "data: perpendicular"
 | Doesn't turn enough | increase `parallel_steer_angle` |
 | Too fast | decrease `drive_speed` and `reverse_speed` |
 
-## Step 9: State Transition Distances
-
-These control when the state machine auto-advances. Run a full lap and adjust:
-
-```bash
-ros2 param set /auto_driver dist_roundabout 2.0         # how far through roundabout
-ros2 param set /auto_driver dist_boom_gate_1_pass 0.5    # after boom gate 1
-ros2 param set /auto_driver dist_boom_gate_2_pass 0.5    # after boom gate 2
-ros2 param set /auto_driver dist_hill 1.0                # over the hill
-ros2 param set /auto_driver dist_bumper 0.8              # over bumpers
-ros2 param set /auto_driver dist_traffic_light_pass 0.5  # after green light
-ros2 param set /auto_driver dist_drive_to_perp 1.0       # parallel → perp parking
-```
-
-| Symptom | Fix |
-|---|---|
-| Transitions too early | Increase the relevant `dist_*` parameter |
-| Stuck in a state too long | Decrease the relevant `dist_*` parameter |
-| Doesn't move forward | `ros2 param set /auto_driver forward_speed 0.2` |
 
 ---
 
 ## Quick Cheat Sheet
 
 ```bash
-# The 6 most common params you'll adjust:
+# The 5 most common params you'll adjust:
 ros2 param set /auto_driver forward_speed 0.15
 ros2 param set /auto_driver steering_gain 0.5
-ros2 param set /auto_driver dist_roundabout 1.5
 ros2 param set /line_follower_camera smoothing_alpha 0.3
 ros2 param set /tunnel_wall_follower kp 1.2
 ros2 param set /parking_controller drive_speed 0.15

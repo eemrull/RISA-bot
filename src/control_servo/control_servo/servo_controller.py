@@ -63,7 +63,6 @@ class ServoControllerV9(Node):
 
         # Subscribers
         self.create_subscription(Joy, 'joy', self.joy_callback, 10)
-        self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_callback, 10)
         self.create_subscription(Twist, '/cmd_vel_auto', self.cmd_vel_auto_callback, 10)
 
         # State
@@ -216,7 +215,7 @@ class ServoControllerV9(Node):
         self.prev_buttons = list(msg.buttons)
         self.prev_axes = list(msg.axes)
 
-    def cmd_vel_callback(self, msg):
+    def cmd_vel_auto_callback(self, msg):
         if not self.manual_mode: self.process_twist(msg)
 
     def cmd_vel_auto_callback(self, msg):

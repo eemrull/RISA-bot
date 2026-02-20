@@ -1090,36 +1090,22 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   </div>
 </div>
 
-<!-- ===== COMPETITION FLOW TIMELINE ===== -->
+<!-- ===== BEHAVIOR PRIORITY VISUALIZER ===== -->
 <div class="flow-section">
   <div class="flow-card">
-    <h3>🏁 Competition Flow <span style="font-size:0.85em;color:#444;font-weight:400;text-transform:none;letter-spacing:0;"> — Lane following runs throughout all stages</span></h3>
+    <h3>🧠 Hybrid Action Priority <span style="font-size:0.85em;color:#444;font-weight:400;text-transform:none;letter-spacing:0;"> — Highlighted block is the currently active overriding behavior</span></h3>
     <div class="flow-bar" id="flowBar">
-      <span class="flow-lap-label lap1-label">LAP 1</span>
-      <div class="flow-node active" id="flow_OBSTRUCTION">Obstruction</div>
-      <span class="flow-arrow">▶</span>
-      <div class="flow-node" id="flow_ROUNDABOUT">Roundabout</div>
-      <span class="flow-arrow">▶</span>
-      <div class="flow-node" id="flow_BOOM_GATE_1">Gate 1</div>
-      <span class="flow-arrow">▶</span>
+      <div class="flow-node" id="flow_LANE_FOLLOW">Lane Follow</div>
+      <span class="flow-arrow">◀</span>
       <div class="flow-node" id="flow_TUNNEL">Tunnel</div>
-      <span class="flow-arrow">▶</span>
-      <div class="flow-node" id="flow_BOOM_GATE_2">Gate 2</div>
-      <span class="flow-arrow">▶</span>
-      <div class="flow-node" id="flow_HILL">Hill</div>
-      <span class="flow-arrow">▶</span>
-      <div class="flow-node" id="flow_BUMPER">Bumper</div>
-      <span class="flow-arrow">▶</span>
+      <span class="flow-arrow">◀</span>
+      <div class="flow-node" id="flow_OBSTRUCTION">Obstruction</div>
+      <span class="flow-arrow">◀</span>
+      <div class="flow-node" id="flow_BOOM_GATE">Boom Gate</div>
+      <span class="flow-arrow">◀</span>
       <div class="flow-node" id="flow_TRAFFIC_LIGHT">Traffic Light</div>
-      <span class="flow-arrow">▶</span>
-      <span class="flow-lap-label lap2-label">LAP 2</span>
-      <div class="flow-node" id="flow_PARALLEL_PARK">∥ Park</div>
-      <span class="flow-arrow">▶</span>
-      <div class="flow-node" id="flow_DRIVE_TO_PERP">Drive</div>
-      <span class="flow-arrow">▶</span>
-      <div class="flow-node" id="flow_PERPENDICULAR_PARK">⊥ Park</div>
-      <span class="flow-arrow">▶</span>
-      <div class="flow-node" id="flow_FINISHED">🏆 Done</div>
+      <span class="flow-arrow">◀</span>
+      <div class="flow-node" id="flow_MANUAL">Manual Control</div>
     </div>
   </div>
 </div>
@@ -1165,7 +1151,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
 <script>
 let eventLog = [];
-const FLOW_ORDER = ['OBSTRUCTION','ROUNDABOUT','BOOM_GATE_1','TUNNEL','BOOM_GATE_2','HILL','BUMPER','TRAFFIC_LIGHT','PARALLEL_PARK','DRIVE_TO_PERP','PERPENDICULAR_PARK','FINISHED'];
+const PRIORITY_ORDER = ['LANE_FOLLOW', 'TUNNEL', 'OBSTRUCTION', 'BOOM_GATE', 'TRAFFIC_LIGHT', 'MANUAL'];
 let lastState = '';
 let lastLap = 0;
 let lapStartTime = Date.now();
@@ -1207,16 +1193,27 @@ function addLogEntry(text) {
 }
 
 function updateFlow(currentState) {
-  const activeIdx = FLOW_ORDER.indexOf(currentState);
-  const arrows = document.querySelectorAll('.flow-arrow');
-  FLOW_ORDER.forEach((s, i) => {
+  const activeIdx = PRIORITY_ORDER.indexOf(currentState);
+  
+  PRIORITY_ORDER.forEach((s, i) => {
     const el = document.getElementById('flow_' + s);
     if (!el) return;
+    
     el.classList.remove('active', 'done');
-    if (i === activeIdx) el.classList.add('active');
-    else if (i < activeIdx) el.classList.add('done');
+    // If it's the active state, highlight it
+    if (i === activeIdx) {
+      el.classList.add('active');
+    } 
+    // If it's a lower priority state than current, mark it as "done" (overridden)
+    else if (i < activeIdx) {
+      el.classList.add('done');
+    }
   });
+
+  // Color arrows. Arrow i is between node i and i+1.
+  const arrows = document.querySelectorAll('.flow-arrow');
   arrows.forEach((a, i) => {
+    // If the active state is higher than i, the arrow is lit up implying flow of priority
     a.classList.toggle('passed', i < activeIdx);
   });
 }
@@ -1709,7 +1706,7 @@ class DashboardNode(Node):
                 self.data['axes'] = list(msg.axes)
 
     def _dash_state_cb(self, msg):
-        """Parse STATE|LAP|DIST|STOP_REASON format from auto_driver."""
+        """Parse STATE|LAP|TOTAL_DIST|STOP_REASON format from auto_driver."""
         try:
             parts = msg.data.split('|')
             with self.data_lock:
@@ -1719,7 +1716,7 @@ class DashboardNode(Node):
                 if len(parts) > 1:
                     self.data['lap'] = int(parts[1])
                 if len(parts) > 2:
-                    self.data['state_dist'] = parts[2]
+                    self.data['state_dist'] = parts[2]  # Now represents total distance
                 if len(parts) > 3:
                     self.data['stop_reason'] = parts[3]
                 else:

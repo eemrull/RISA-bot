@@ -49,17 +49,17 @@ Detailed documentation is in the [Guide/](Guide/) folder:
 
 ## 🖥️ Dashboard
 
-The `test` branch includes a real-time web dashboard at `http://<robot_ip>:8080`.
+The `refactor-test` branch includes a real-time web dashboard at `http://<robot_ip>:8080`.
 
 ### Features
-- **Live State Machine** — Current challenge, lap, mode (AUTO/MANUAL), and **stop reason** display
+- **Hybrid Priority Engine** — Current top-level priority, lap, mode (AUTO/MANUAL), and **stop reason** display
 - **Camera Feed** — Raw + debug overlays (Lane Lines, Traffic Light, Obstacle)
 - **Traffic Light Visualizer** — Animated red/yellow/green indicator
 - **Sensor Panel** — LiDAR, Camera, Fused obstacle, Boom Gate, Tunnel, Obstruction status
 - **Odometry** — Distance + speed readout
 - **Controller Visualizer** — Button map + live analog joystick visualization
 - **Lane Following** — Error bar, linear X, angular Z
-- **Competition Flow** — Visual timeline of all challenges with progress
+- **Behavior Priority** — Visual stack highlighting the highest-priority active maneuver
 - **Parameter Tuning** — Slide-out drawer with Get/Set for all tunable ROS parameters (dashboard slides right to accommodate)
 - **Session Uptime & Latency** — Live header indicators
 - **Lap Timer** — Auto-resets on lap change
