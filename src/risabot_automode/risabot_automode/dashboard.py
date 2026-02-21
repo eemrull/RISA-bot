@@ -129,9 +129,14 @@ class DashboardNode(Node):
         self._last_sim_t = now
         
         with self.data_lock:
-            # We assume speed is roughly equal to cmd_lin_x
-            vel_x = self.data['cmd_lin_x']
-            vel_z = self.data['cmd_ang_z']
+            # If no cmd_vel received in last 0.5s, assume robot is stopped
+            cmd_age = now - self.data.get('_cmd_time', 0)
+            if cmd_age > 0.5:
+                vel_x = 0.0
+                vel_z = 0.0
+            else:
+                vel_x = self.data['cmd_lin_x']
+                vel_z = self.data['cmd_ang_z']
             
             # Distance integration
             self.data['speed'] = vel_x
@@ -167,6 +172,7 @@ class DashboardNode(Node):
         with self.data_lock:
             self.data['cmd_lin_x'] = msg.linear.x
             self.data['cmd_ang_z'] = msg.angular.z
+            self.data['_cmd_time'] = time.time()
 
     def _odom_cb(self, msg):
         # We receive actual odometry! Use real data instead of dead reckoning.

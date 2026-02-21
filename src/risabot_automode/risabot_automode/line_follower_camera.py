@@ -139,8 +139,8 @@ class LineFollowerCamera(Node):
                 center_points.append((int(lane_center_x), lane_center_y))
 
             # Error calculation based on a weighted average of windows (bottom=more weight)
-            # We want an exponentially decaying weight array that sums to 1.0 for the n_windows
-            weights = np.exp(-np.arange(n_windows))
+            # Gentle decay (-0.3x) so upper windows (where curves appear) still contribute
+            weights = np.exp(-0.3 * np.arange(n_windows))
             weights = weights / weights.sum()
             
             weighted_center_x = sum(pt[0] * w_i for pt, w_i in zip(center_points, weights[:len(center_points)]))
