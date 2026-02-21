@@ -91,25 +91,39 @@ class LineFollowerCamera(Node):
                     
                 hist = np.sum(binary[win_y_low:win_y_high, :], axis=0)
                 
-                left_region = hist[:w//3]
-                right_region = hist[2*w//3:]
+                # Default regions
+                left_start, left_end = 0, w//3
+                right_start, right_end = 2*w//3, w
+                
+                # Apply bounding box constraints if we have a previous point
+                if window > 0 and len(left_points) > 0:
+                    prev_l = left_points[-1][0]
+                    left_start = max(0, prev_l - 60)
+                    left_end = min(w//2, prev_l + 60)
+                if window > 0 and len(right_points) > 0:
+                    prev_r = right_points[-1][0]
+                    right_start = max(w//2, prev_r - 60)
+                    right_end = min(w, prev_r + 60)
+                
+                left_region = hist[left_start:left_end]
+                right_region = hist[right_start:right_end]
                 
                 # Check validity
-                valid_left = np.max(left_region) >= 10
-                valid_right = np.max(right_region) >= 10
+                valid_left = np.max(left_region) >= 10 if len(left_region) > 0 else False
+                valid_right = np.max(right_region) >= 10 if len(right_region) > 0 else False
                 
                 if valid_left and valid_right:
                     valid_frames += 1
-                    left_peak = np.argmax(left_region)
-                    right_peak = np.argmax(right_region) + 2*w//3
+                    left_peak = np.argmax(left_region) + left_start
+                    right_peak = np.argmax(right_region) + right_start
                     # Update dynamic lane width estimation based on this view
                     estimated_lane_width = right_peak - left_peak
                 elif valid_left and not valid_right:
-                    left_peak = np.argmax(left_region)
+                    left_peak = np.argmax(left_region) + left_start
                     # Estimate right based on current left + established typical width
                     right_peak = left_peak + estimated_lane_width 
                 elif valid_right and not valid_left:
-                    right_peak = np.argmax(right_region) + 2*w//3
+                    right_peak = np.argmax(right_region) + right_start
                     # Estimate left based on current right - established typical width
                     left_peak = right_peak - estimated_lane_width
                 else:

@@ -74,6 +74,7 @@ class AutoDriver(Node):
 
         # Distance threshold (only for determining if a lap is complete after passing traffic light)
         self.declare_parameter('dist_lap_complete', 1.0)
+        self.declare_parameter('enable_subsumption_obstacle', False) 
         self.distance_past_light = 0.0
 
         # Module inputs (with timestamps for stale detection)
@@ -334,7 +335,11 @@ class AutoDriver(Node):
         self.get_logger().debug(f"Lap{self.current_lap} | {self.state.name} | err: {self.lane_error:.2f} | obs: {self.obstruction_active}")
 
     def update_combined_obstacle_state(self):
-        new_obstacle_state = self.lidar_obstacle or self.camera_obstacle
+        # Allow disabling standard obstacle subsumption for testing/recording
+        if not self.get_parameter('enable_subsumption_obstacle').value:
+            new_obstacle_state = False
+        else:
+            new_obstacle_state = self.lidar_obstacle or self.camera_obstacle
 
         if new_obstacle_state != self.obstacle_active:
             self.obstacle_active = new_obstacle_state
