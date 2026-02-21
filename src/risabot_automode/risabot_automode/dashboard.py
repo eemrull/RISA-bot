@@ -140,7 +140,7 @@ class DashboardNode(Node):
             
             # Odometry calibration: measured 1m real → scale to match
             # Residual error is from wheel slip/coasting (robot moves after cmd_vel=0)
-            odom_scale = 1.67
+            odom_scale = 1.55
             cal_vel_x = vel_x * odom_scale
             
             # Minimum velocity threshold: ignore tiny commanded speeds
