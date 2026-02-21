@@ -200,6 +200,14 @@ class LineFollowerCamera(Node):
                 text_color = (0, 255, 0) if abs(self.lane_error) < 0.05 else (0, 165, 255)
                 cv2.putText(debug, f"Err: {self.lane_error:.3f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, text_color, 2)
                 
+                # Furthest detected point info (top window = lookahead)
+                if len(center_points) > 0:
+                    far_pt = center_points[-1]  # topmost = furthest lookahead
+                    near_pt = center_points[0]   # bottom = nearest
+                    offset = far_pt[0] - near_pt[0]  # positive = curve to right
+                    cv2.putText(debug, f"LA: x={far_pt[0]} off={offset:+d}px W={estimated_lane_width}px",
+                                (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 0), 2)
+                
                 debug_msg = self.bridge.cv2_to_imgmsg(debug, encoding="bgr8")
                 self.debug_pub.publish(debug_msg)
 

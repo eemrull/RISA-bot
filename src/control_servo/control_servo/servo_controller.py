@@ -60,6 +60,7 @@ class ServoControllerV9(Node):
         self.dash_pub = self.create_publisher(String, '/dashboard_ctrl', 10)
         self.auto_mode_pub = self.create_publisher(Bool, '/auto_mode', 10)
         self.challenge_pub = self.create_publisher(String, '/set_challenge', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
 
         # Subscribers
         self.create_subscription(Joy, 'joy', self.joy_callback, 10)
@@ -211,6 +212,12 @@ class ServoControllerV9(Node):
             steer_angle = max(SERVO_CENTER - SERVO_RANGE, min(SERVO_CENTER + SERVO_RANGE, steer_angle))
 
             self.apply_hardware(motor_pwm, steer_angle)
+
+            # Publish to /cmd_vel so dashboard can track manual velocity for odom
+            cmd = Twist()
+            cmd.linear.x = throttle_raw * self.current_speed_limit / 100.0  # approximate m/s
+            cmd.angular.z = steer_raw  # normalized steering
+            self.cmd_vel_pub.publish(cmd)
 
         self.prev_buttons = list(msg.buttons)
         self.prev_axes = list(msg.axes)

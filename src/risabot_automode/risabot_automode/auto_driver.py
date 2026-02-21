@@ -68,7 +68,7 @@ class AutoDriver(Node):
         self.lane_error = 0.0
 
         # Tunable parameters
-        self.declare_parameter('steering_gain', 0.5)
+        self.declare_parameter('steering_gain', 1.0)
         self.declare_parameter('forward_speed', 0.15)  # m/s base forward speed
         self.declare_parameter('stale_timeout', 3.0)   # seconds before treating module data as stale
 
