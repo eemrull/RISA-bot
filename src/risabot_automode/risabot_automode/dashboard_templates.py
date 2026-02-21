@@ -1559,7 +1559,7 @@ TEACH_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RISA-Bot Educational View</title>
+<title>RISA-Bot Odometry &amp; Line Following</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -1691,7 +1691,7 @@ TEACH_HTML = """<!DOCTYPE html>
 <body>
 
 <header>
-  <h1>RISA-Bot / Numerical Methods Educational View</h1>
+  <h1>RISA-Bot / Odometry &amp; Line Following</h1>
   <div id="modeBadge" class="badge">WAITING</div>
 </header>
 

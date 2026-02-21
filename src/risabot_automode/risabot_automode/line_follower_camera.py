@@ -149,8 +149,24 @@ class LineFollowerCamera(Node):
             image_center = w / 2.0
             error = (image_center - weighted_center_x) / (w / 2.0)
 
-            # Clamp raw error
-            raw_error = float(np.clip(error, -1.0, 1.0))
+            # Curvature-based lookahead bias: even when centered, the curve
+            # ahead shifts the FAR center points relative to NEAR ones.
+            # Fit a 2nd-degree polynomial to center x vs window index to get curvature.
+            curvature_bias = 0.0
+            if len(center_points) >= 4:
+                cx = np.array([pt[0] for pt in center_points], dtype=float)
+                cy = np.arange(len(cx), dtype=float)
+                poly = np.polyfit(cy, cx, 2)
+                # poly[0] is the curvature (2nd order coeff in pixels/window²)
+                # Negative curvature = path curves LEFT, positive = RIGHT
+                # We want to steer into the curve, so add a proportional term
+                curvature = poly[0]
+                lookahead_gain = 0.008  # tunable: how aggressively to anticipate curves
+                curvature_bias = -curvature * lookahead_gain
+                curvature_bias = float(np.clip(curvature_bias, -0.3, 0.3))
+
+            # Clamp raw error (center + curvature anticipation)
+            raw_error = float(np.clip(error + curvature_bias, -1.0, 1.0))
 
             # Dead zone — ignore tiny errors to prevent jitter on straight roads
             dead_zone = self.get_parameter('dead_zone').value
@@ -205,7 +221,8 @@ class LineFollowerCamera(Node):
                     far_pt = center_points[-1]  # topmost = furthest lookahead
                     near_pt = center_points[0]   # bottom = nearest
                     offset = far_pt[0] - near_pt[0]  # positive = curve to right
-                    cv2.putText(debug, f"LA: x={far_pt[0]} off={offset:+d}px W={estimated_lane_width}px",
+                    curv_text = f" C={curvature_bias:+.3f}" if curvature_bias != 0.0 else ""
+                    cv2.putText(debug, f"LA: off={offset:+d}px{curv_text}",
                                 (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 0), 2)
                 
                 debug_msg = self.bridge.cv2_to_imgmsg(debug, encoding="bgr8")
