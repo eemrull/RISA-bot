@@ -138,16 +138,20 @@ class DashboardNode(Node):
                 vel_x = self.data['cmd_lin_x']
                 vel_z = self.data['cmd_ang_z']
             
+            # Odometry calibration: measured 1m real = 0.649m raw → scale by 1.54
+            odom_scale = 1.54
+            cal_vel_x = vel_x * odom_scale
+            
             # Distance integration
-            self.data['speed'] = vel_x
-            self.data['distance'] += abs(vel_x) * dt
+            self.data['speed'] = cal_vel_x
+            self.data['distance'] += abs(cal_vel_x) * dt
             
             # Position integration (dead reckoning)
             self.data['odom_yaw'] += vel_z * dt
             
             # X and Y based on current heading
-            self.data['odom_x'] += vel_x * math.cos(self.data['odom_yaw']) * dt
-            self.data['odom_y'] += vel_x * math.sin(self.data['odom_yaw']) * dt
+            self.data['odom_x'] += cal_vel_x * math.cos(self.data['odom_yaw']) * dt
+            self.data['odom_y'] += cal_vel_x * math.sin(self.data['odom_yaw']) * dt
 
     def _set(self, key, value):
         with self.data_lock:
@@ -457,7 +461,23 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(DASHBOARD_HTML.encode())
 
     def do_POST(self):
-        if self.path == '/api/set_param':
+        if self.path == '/api/reset_odom':
+            # Reset odometry counters
+            global _node_ref
+            if _node_ref:
+                with _node_ref.data_lock:
+                    _node_ref.data['distance'] = 0.0
+                    _node_ref.data['odom_x'] = 0.0
+                    _node_ref.data['odom_y'] = 0.0
+                    _node_ref.data['odom_yaw'] = 0.0
+                    _node_ref.data['speed'] = 0.0
+            resp = {'ok': True, 'msg': 'Odometry reset'}
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(resp).encode())
+        elif self.path == '/api/set_param':
             content_len = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_len)
             try:

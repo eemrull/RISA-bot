@@ -1714,6 +1714,7 @@ TEACH_HTML = """<!DOCTYPE html>
     <div class="data-card">
       <h2>Distance Travelled</h2>
       <div class="data-value val-blue"><span id="odomDist">0.00</span><span class="data-unit">meters</span></div>
+      <button onclick="fetch('/api/reset_odom',{method:'POST'}).then(()=>{document.getElementById('odomDist').textContent='0.00';document.getElementById('posX').textContent='0.00';document.getElementById('posY').textContent='0.00';})" style="margin-top:8px;padding:6px 20px;background:#333;color:#fff;border:1px solid #555;border-radius:20px;cursor:pointer;font-size:0.85em;font-weight:600;letter-spacing:0.5px;">⟲ RESET</button>
     </div>
     <div class="data-card">
       <h2>Current Speed</h2>

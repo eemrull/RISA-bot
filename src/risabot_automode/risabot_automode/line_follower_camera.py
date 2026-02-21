@@ -34,7 +34,7 @@ class LineFollowerCamera(Node):
 
         # --- Tunable parameters ---
         self.declare_parameter('smoothing_alpha', 0.3)   # EMA factor (0=very smooth, 1=no filter)
-        self.declare_parameter('dead_zone', 0.03)        # ignore errors below this
+        self.declare_parameter('dead_zone', 0.08)        # ignore errors below this (straight line stability)
         self.declare_parameter('white_threshold', 150)    # grayscale threshold for white lines
         self.declare_parameter('crop_ratio', 0.4)         # bottom portion of image to use
         self.declare_parameter('show_debug', False)       # set True to show debug window
