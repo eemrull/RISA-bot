@@ -1687,6 +1687,17 @@ TEACH_HTML = """<!DOCTYPE html>
     font-weight: 400;
     margin-left: 10px;
   }
+  .odom-logs {
+    margin-top: auto;
+    background: rgba(0,0,0,0.3);
+    padding: 15px;
+    border-radius: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9em;
+    color: #aaa;
+    border: 1px dashed rgba(255,255,255,0.1);
+  }
+  .odom-logs strong { color: #fff; margin-right: 10px; }
   .val-blue { color: var(--accent); }
   .val-green { color: var(--success); }
   .val-yellow { color: var(--warning); }
@@ -1741,6 +1752,13 @@ TEACH_HTML = """<!DOCTYPE html>
       <h2>Steering Error</h2>
       <div class="data-value val-yellow" id="steerValBlock"><span id="steerErr">0.000</span><span class="data-unit">ratio</span></div>
     </div>
+    
+    <div class="odom-logs">
+      <div style="text-align:center; margin-bottom:10px; color:#555; font-size: 0.8em; font-weight:700;">RAW ODOMETRY LOGS</div>
+      <div><strong>X:</strong> <span id="logX">0.000</span></div>
+      <div><strong>Y:</strong> <span id="logY">0.000</span></div>
+      <div><strong>Yaw:</strong> <span id="logYaw">0.000</span> rad</div>
+    </div>
   </div>
 </main>
 
@@ -1781,6 +1799,11 @@ function update() {
       } else {
         sb.className = 'data-value val-green';
       }
+      
+      // Raw Logs
+      document.getElementById('logX').textContent = (d.odom_x || 0).toFixed(3);
+      document.getElementById('logY').textContent = (d.odom_y || 0).toFixed(3);
+      document.getElementById('logYaw').textContent = (d.odom_yaw || 0).toFixed(3);
     })
     .catch(()=>{});
 }
@@ -1827,6 +1850,9 @@ class DashboardNode(Node):
             'cmd_ang_z': 0.0,
             'distance': 0.0,
             'speed': 0.0,
+            'odom_x': 0.0,
+            'odom_y': 0.0,
+            'odom_yaw': 0.0,
             'buttons': [],
             'axes': [],
             'speed_pct': 25,
@@ -1893,14 +1919,25 @@ class DashboardNode(Node):
             self.data['cmd_ang_z'] = msg.angular.z
 
     def _odom_cb(self, msg):
+        import math
         with self.data_lock:
+            # Velocity & Distance integration
             self.data['speed'] = msg.twist.twist.linear.x
-            # Integrate distance from velocity
             now = time.time()
             if hasattr(self, '_last_odom_t'):
                 dt = min(now - self._last_odom_t, 0.2)
                 self.data['distance'] += msg.twist.twist.linear.x * dt
             self._last_odom_t = now
+
+            # Raw Pose
+            self.data['odom_x'] = msg.pose.pose.position.x
+            self.data['odom_y'] = msg.pose.pose.position.y
+            
+            # Quaternion to Yaw (Euler Z)
+            q = msg.pose.pose.orientation
+            siny_cosp = 2 * (q.w * q.z + q.x * q.y)
+            cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
+            self.data['odom_yaw'] = math.atan2(siny_cosp, cosy_cosp)
 
     def _joy_cb(self, msg):
         with self.data_lock:

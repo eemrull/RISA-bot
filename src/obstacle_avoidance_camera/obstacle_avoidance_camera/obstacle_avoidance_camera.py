@@ -75,13 +75,18 @@ class ObstacleAvoidanceCamera(Node):
             # Convert ROS Image to OpenCV
             color_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
 
-            # Get center region (25% of image)
+            # Get center region (thin horizontal band just above center to avoid track lines)
             h, w = color_image.shape[:2]
             cx, cy = w // 2, h // 2
-            roi_size = min(h, w) // 4
+            roi_width = w // 2
+            roi_height = h // 8  # Thin strip
+            
+            # Shift the strip slightly up from true vertical center to look at the horizon
+            roi_y_center = cy - (h // 16)
+            
             roi = color_image[
-                cy - roi_size: cy + roi_size,
-                cx - roi_size: cx + roi_size
+                roi_y_center - roi_height: roi_y_center + roi_height,
+                cx - roi_width: cx + roi_width
             ]
 
             # Convert to grayscale and blur to reduce noise
@@ -124,8 +129,8 @@ class ObstacleAvoidanceCamera(Node):
 
                 # Draw ROI box
                 cv2.rectangle(debug,
-                              (cx - roi_size, cy - roi_size),
-                              (cx + roi_size, cy + roi_size),
+                              (cx - roi_width, roi_y_center - roi_height),
+                              (cx + roi_width, roi_y_center + roi_height),
                               color, 2)
 
                 # Overlay the edge map inside the ROI for visibility
@@ -135,12 +140,13 @@ class ObstacleAvoidanceCamera(Node):
                 edges_tinted[:, :] = color
                 edge_mask = edges > 0
                 edges_bgr[edge_mask] = edges_tinted[edge_mask]
+                
                 # Blend edges into the ROI area
-                roi_slice = debug[cy - roi_size: cy + roi_size,
-                                  cx - roi_size: cx + roi_size]
+                roi_slice = debug[roi_y_center - roi_height: roi_y_center + roi_height,
+                                  cx - roi_width: cx + roi_width]
                 blended = cv2.addWeighted(roi_slice, 0.6, edges_bgr, 0.4, 0)
-                debug[cy - roi_size: cy + roi_size,
-                      cx - roi_size: cx + roi_size] = blended
+                debug[roi_y_center - roi_height: roi_y_center + roi_height,
+                      cx - roi_width: cx + roi_width] = blended
 
                 # Add status text
                 status_text = "STOP" if self.obstacle_active else "CLEAR"

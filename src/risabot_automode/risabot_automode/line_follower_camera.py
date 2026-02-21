@@ -68,7 +68,7 @@ class LineFollowerCamera(Node):
             _, binary = cv2.threshold(blurred, white_thresh, 255, cv2.THRESH_BINARY)
 
             # Sliding Windows to trace curved lanes
-            n_windows = 4
+            n_windows = 10
             window_height = crop_h // n_windows
             
             left_points = []
@@ -77,6 +77,10 @@ class LineFollowerCamera(Node):
             
             # Start from the bottom window (closest to robot) and move up
             valid_frames = 0
+            
+            # Base lane width from the bottom-most valid frame
+            estimated_lane_width = w // 2 # reasonable default
+            
             for window in range(n_windows):
                 win_y_low = crop_h - (window + 1) * window_height
                 win_y_high = crop_h - window * window_height
@@ -93,12 +97,25 @@ class LineFollowerCamera(Node):
                 # Check validity
                 valid_left = np.max(left_region) >= 10
                 valid_right = np.max(right_region) >= 10
+                
                 if valid_left and valid_right:
                     valid_frames += 1
-                
-                # Estimate peak or use previous window / last valid memory
-                left_peak = np.argmax(left_region) if valid_left else (left_points[-1][0] if left_points else int(self.last_valid_error * w/2 + w/2))
-                right_peak = (np.argmax(right_region) + 2*w//3) if valid_right else (right_points[-1][0] if right_points else int(self.last_valid_error * w/2 + w/2))
+                    left_peak = np.argmax(left_region)
+                    right_peak = np.argmax(right_region) + 2*w//3
+                    # Update dynamic lane width estimation based on this view
+                    estimated_lane_width = right_peak - left_peak
+                elif valid_left and not valid_right:
+                    left_peak = np.argmax(left_region)
+                    # Estimate right based on current left + established typical width
+                    right_peak = left_peak + estimated_lane_width 
+                elif valid_right and not valid_left:
+                    right_peak = np.argmax(right_region) + 2*w//3
+                    # Estimate left based on current right - established typical width
+                    left_peak = right_peak - estimated_lane_width
+                else:
+                    # Neither valid in this frame. Use memory or center defaults.
+                    left_peak = left_points[-1][0] if left_points else int(self.last_valid_error * w/2 + w/2) - (estimated_lane_width // 2)
+                    right_peak = right_points[-1][0] if right_points else int(self.last_valid_error * w/2 + w/2) + (estimated_lane_width // 2)
                 
                 lane_center_x = (left_peak + right_peak) // 2
                 lane_center_y = int(h - crop_h + win_y_low + window_height / 2)
@@ -108,8 +125,10 @@ class LineFollowerCamera(Node):
                 center_points.append((int(lane_center_x), lane_center_y))
 
             # Error calculation based on a weighted average of windows (bottom=more weight)
-            # Weights for 4 windows: w0=0.5, w1=0.3, w2=0.15, w3=0.05
-            weights = [0.5, 0.3, 0.15, 0.05]
+            # We want an exponentially decaying weight array that sums to 1.0 for the n_windows
+            weights = np.exp(-np.arange(n_windows))
+            weights = weights / weights.sum()
+            
             weighted_center_x = sum(pt[0] * w_i for pt, w_i in zip(center_points, weights[:len(center_points)]))
             
             # Error: positive = lane center right of image center → robot should turn LEFT
@@ -140,18 +159,28 @@ class LineFollowerCamera(Node):
             if self.get_parameter('show_debug').value:
                 debug = bgr.copy()
                 
-                # Draw polys
-                pts_left = np.array(left_points, np.int32).reshape((-1, 1, 2))
-                pts_right = np.array(right_points, np.int32).reshape((-1, 1, 2))
-                pts_center = np.array(center_points, np.int32).reshape((-1, 1, 2))
+                def draw_polyfit_curve(pts_list, color):
+                    if len(pts_list) < 3: return
+                    pts = np.array(pts_list)
+                    x, y = pts[:, 0], pts[:, 1]
+                    # Fit polynomial: x = f(y) since y goes up the image
+                    # A 2nd degree polynomial is perfect for a perspective road curve
+                    poly = np.polyfit(y, x, 2)
+                    y_eval = np.linspace(min(y), max(y), 50)
+                    x_eval = np.polyval(poly, y_eval)
+                    
+                    curve_pts = np.vstack((x_eval, y_eval)).astype(np.int32).T
+                    cv2.polylines(debug, [curve_pts], isClosed=False, color=color, thickness=4)
                 
-                cv2.polylines(debug, [pts_left], isClosed=False, color=(255, 0, 0), thickness=2)
-                cv2.polylines(debug, [pts_right], isClosed=False, color=(0, 0, 255), thickness=2)
-                cv2.polylines(debug, [pts_center], isClosed=False, color=(0, 255, 0), thickness=2)
+                draw_polyfit_curve(left_points, (255, 0, 0))   # Blue left
+                draw_polyfit_curve(right_points, (0, 0, 255))  # Red right
+                draw_polyfit_curve(center_points, (0, 255, 0)) # Green center
                 
                 # Draw dots to show window sampling heights
-                for pt in center_points:
-                    cv2.circle(debug, pt, 4, (0, 255, 255), -1)
+                for l_pt, r_pt, c_pt in zip(left_points, right_points, center_points):
+                    cv2.circle(debug, l_pt, 4, (255, 0, 0), -1)
+                    cv2.circle(debug, r_pt, 4, (0, 0, 255), -1)
+                    cv2.circle(debug, c_pt, 5, (0, 255, 255), -1) # yellow center dots
                 
                 # Add status text
                 text_color = (0, 255, 0) if abs(self.lane_error) < 0.05 else (0, 165, 255)
