@@ -114,8 +114,16 @@ class ServoControllerV9(Node):
                     f"⚠️ Controller lost (no /joy for {elapsed:.1f}s) — STOPPING ROBOT")
                 self.joy_lost_reported = True
                 self.joy_unlocked = False  # Lock to ignore phantom inputs on next receive
-            if self.manual_mode:
-                self.stop_robot()
+                # Force back to manual mode so auto_driver stops publishing
+                if not self.manual_mode:
+                    self.manual_mode = True
+                    self.auto_mode_pub.publish(Bool(data=False))
+                    self.get_logger().warn("⚠️ Forced MANUAL mode (controller lost)")
+            # Always stop hardware (regardless of mode)
+            self.stop_robot()
+            # Publish zero cmd_vel to stop dashboard odometry
+            cmd = Twist()
+            self.cmd_vel_pub.publish(cmd)
 
     def joy_callback(self, msg):
         # Mark controller as alive

@@ -161,9 +161,17 @@ class LineFollowerCamera(Node):
                 # Negative curvature = path curves LEFT, positive = RIGHT
                 # We want to steer into the curve, so add a proportional term
                 curvature = poly[0]
-                lookahead_gain = 0.008  # tunable: how aggressively to anticipate curves
+                lookahead_gain = 0.025  # tunable: how aggressively to anticipate curves
                 curvature_bias = -curvature * lookahead_gain
-                curvature_bias = float(np.clip(curvature_bias, -0.3, 0.3))
+                curvature_bias = float(np.clip(curvature_bias, -0.4, 0.4))
+
+                # Inner-offset bias: robot is 19cm wide, so when on a curve we
+                # should aim slightly INSIDE the lane center to prevent the outer
+                # chassis edge from crossing the lane line.
+                # Shift target ~0.05 toward the inside of the curve (~5% of lane)
+                if abs(curvature) > 2.0:  # only on noticeable curves
+                    inner_bias = 0.05 if curvature > 0 else -0.05
+                    curvature_bias += inner_bias
 
             # Clamp raw error (center + curvature anticipation)
             raw_error = float(np.clip(error + curvature_bias, -1.0, 1.0))
