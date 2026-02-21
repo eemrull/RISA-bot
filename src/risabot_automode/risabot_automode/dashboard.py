@@ -138,10 +138,15 @@ class DashboardNode(Node):
                 vel_x = self.data['cmd_lin_x']
                 vel_z = self.data['cmd_ang_z']
             
-            # Odometry calibration: measured 1m real ≈ 0.87m at 1.54x → refined to 1.77x
+            # Odometry calibration: measured 1m real → scale to match
             # Residual error is from wheel slip/coasting (robot moves after cmd_vel=0)
             odom_scale = 1.67
             cal_vel_x = vel_x * odom_scale
+            
+            # Minimum velocity threshold: ignore tiny commanded speeds
+            # (prevents odometer drift when motor can't actually move)
+            if abs(cal_vel_x) < 0.03:
+                cal_vel_x = 0.0
             
             # Distance integration
             self.data['speed'] = cal_vel_x
