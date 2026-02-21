@@ -69,7 +69,7 @@ class ServoControllerV9(Node):
         # State
         self.manual_mode = True
         self.challenge_index = 0
-        self.speed_levels = [25, 40, 60, 100]
+        self.speed_levels = [15, 25, 40, 60, 100]
         self.speed_idx = 0 # Index 0 -> 25% Default
         self.current_speed_limit = self.speed_levels[self.speed_idx]
 

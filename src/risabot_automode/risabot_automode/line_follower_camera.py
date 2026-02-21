@@ -146,36 +146,27 @@ class LineFollowerCamera(Node):
                 right_points.append((int(right_peak), lane_center_y))
                 center_points.append((int(lane_center_x), lane_center_y))
 
-            # Error calculation based on a weighted average of windows (bottom=more weight)
-            # Gentle decay (-0.3x) so upper windows (where curves appear) still contribute
-            weights = np.exp(-0.3 * np.arange(n_windows))
-            weights = weights / weights.sum()
-            
-            weighted_center_x = sum(pt[0] * w_i for pt, w_i in zip(center_points, weights[:len(center_points)]))
+            # Error calculation: FLAT weights across all windows so the robot
+            # follows where the road GOES (upper windows = road ahead on curves)
+            # instead of just centering on the nearest lane position.
+            n_pts = len(center_points)
+            if n_pts > 0:
+                weighted_center_x = sum(pt[0] for pt in center_points) / n_pts
+            else:
+                weighted_center_x = w / 2.0
             
             # Error: positive = lane center left of image center → robot turns LEFT
+            #         negative = lane center right → robot turns RIGHT
             image_center = w / 2.0
             error = (image_center - weighted_center_x) / (w / 2.0)
 
-            # Curvature-based ANTICIPATION: only helps when centered (error~0)
-            # on an upcoming curve. Scales down when the center error is already
-            # correcting so it doesn't cause overshoot.
+            # Curvature bias is no longer needed — flat weights naturally
+            # follow the curve direction because upper windows shift the
+            # average toward where the road goes.
             curvature_bias = 0.0
-            if len(center_points) >= 4:
-                cx = np.array([pt[0] for pt in center_points], dtype=float)
-                cy = np.arange(len(cx), dtype=float)
-                poly = np.polyfit(cy, cx, 2)
-                curvature = poly[0]
-                lookahead_gain = 0.015
-                raw_bias = -curvature * lookahead_gain
-                raw_bias = float(np.clip(raw_bias, -0.3, 0.3))
-                # Scale down bias when center error is already significant
-                # (anticipation not needed when already reacting)
-                fade = max(0.0, 1.0 - abs(error) * 4.0)  # fades to 0 at |error|>0.25
-                curvature_bias = raw_bias * fade
 
-            # Clamp raw error (center + anticipation)
-            raw_error = float(np.clip(error + curvature_bias, -1.0, 1.0))
+            # Clamp
+            raw_error = float(np.clip(error, -1.0, 1.0))
 
             # Dead zone — ignore tiny errors to prevent jitter on straight roads
             dead_zone = self.get_parameter('dead_zone').value

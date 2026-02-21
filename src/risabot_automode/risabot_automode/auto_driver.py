@@ -69,7 +69,7 @@ class AutoDriver(Node):
 
         # Tunable parameters
         self.declare_parameter('steering_gain', 1.0)
-        self.declare_parameter('forward_speed', 0.10)  # m/s base forward speed (lower = more stable tracking)
+        self.declare_parameter('forward_speed', 0.07)  # m/s base forward speed (lower = more stable tracking)
         self.declare_parameter('stale_timeout', 3.0)   # seconds before treating module data as stale
 
         # Distance threshold (only for determining if a lap is complete after passing traffic light)
