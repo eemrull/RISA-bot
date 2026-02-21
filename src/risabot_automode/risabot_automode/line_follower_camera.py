@@ -145,35 +145,28 @@ class LineFollowerCamera(Node):
             
             weighted_center_x = sum(pt[0] * w_i for pt, w_i in zip(center_points, weights[:len(center_points)]))
             
-            # Error: positive = lane center right of image center → robot should turn LEFT
+            # Error: positive = lane center left of image center → robot turns LEFT
             image_center = w / 2.0
             error = (image_center - weighted_center_x) / (w / 2.0)
 
-            # Curvature-based lookahead bias: even when centered, the curve
-            # ahead shifts the FAR center points relative to NEAR ones.
-            # Fit a 2nd-degree polynomial to center x vs window index to get curvature.
+            # Curvature-based ANTICIPATION: only helps when centered (error~0)
+            # on an upcoming curve. Scales down when the center error is already
+            # correcting so it doesn't cause overshoot.
             curvature_bias = 0.0
             if len(center_points) >= 4:
                 cx = np.array([pt[0] for pt in center_points], dtype=float)
                 cy = np.arange(len(cx), dtype=float)
                 poly = np.polyfit(cy, cx, 2)
-                # poly[0] is the curvature (2nd order coeff in pixels/window²)
-                # Negative curvature = path curves LEFT, positive = RIGHT
-                # We want to steer into the curve, so add a proportional term
                 curvature = poly[0]
-                lookahead_gain = 0.025  # tunable: how aggressively to anticipate curves
-                curvature_bias = -curvature * lookahead_gain
-                curvature_bias = float(np.clip(curvature_bias, -0.4, 0.4))
+                lookahead_gain = 0.015
+                raw_bias = -curvature * lookahead_gain
+                raw_bias = float(np.clip(raw_bias, -0.3, 0.3))
+                # Scale down bias when center error is already significant
+                # (anticipation not needed when already reacting)
+                fade = max(0.0, 1.0 - abs(error) * 4.0)  # fades to 0 at |error|>0.25
+                curvature_bias = raw_bias * fade
 
-                # Inner-offset bias: robot is 19cm wide, so when on a curve we
-                # should aim slightly INSIDE the lane center to prevent the outer
-                # chassis edge from crossing the lane line.
-                # Shift target ~0.05 toward the inside of the curve (~5% of lane)
-                if abs(curvature) > 2.0:  # only on noticeable curves
-                    inner_bias = 0.05 if curvature > 0 else -0.05
-                    curvature_bias += inner_bias
-
-            # Clamp raw error (center + curvature anticipation)
+            # Clamp raw error (center + anticipation)
             raw_error = float(np.clip(error + curvature_bias, -1.0, 1.0))
 
             # Dead zone — ignore tiny errors to prevent jitter on straight roads
@@ -197,41 +190,52 @@ class LineFollowerCamera(Node):
             if self.get_parameter('show_debug').value:
                 debug = bgr.copy()
                 
+                crop_top = h - crop_h  # top of cropped region in full image coords
+                
                 def draw_polyfit_curve(pts_list, color):
                     if len(pts_list) < 3: return
                     pts = np.array(pts_list)
                     x, y = pts[:, 0], pts[:, 1]
-                    # Fit polynomial: x = f(y) since y goes up the image
-                    # A 2nd degree polynomial is perfect for a perspective road curve
-                    poly = np.polyfit(y, x, 2)
-                    y_eval = np.linspace(min(y), max(y), 50)
-                    x_eval = np.polyval(poly, y_eval)
-                    
+                    poly_fit = np.polyfit(y, x, 2)
+                    # Extend curve from crop top all the way to image bottom
+                    y_eval = np.linspace(crop_top, h - 1, 80)
+                    x_eval = np.polyval(poly_fit, y_eval)
+                    # Clamp x within image bounds
+                    x_eval = np.clip(x_eval, 0, w - 1)
                     curve_pts = np.vstack((x_eval, y_eval)).astype(np.int32).T
-                    cv2.polylines(debug, [curve_pts], isClosed=False, color=color, thickness=4)
+                    # Draw thick outline first for visibility
+                    cv2.polylines(debug, [curve_pts], isClosed=False, color=(0,0,0), thickness=6)
+                    cv2.polylines(debug, [curve_pts], isClosed=False, color=color, thickness=3)
                 
-                draw_polyfit_curve(left_points, (255, 0, 0))   # Blue left
-                draw_polyfit_curve(right_points, (0, 0, 255))  # Red right
-                draw_polyfit_curve(center_points, (0, 255, 0)) # Green center
+                draw_polyfit_curve(left_points, (255, 100, 100))   # Blue-white left
+                draw_polyfit_curve(right_points, (100, 100, 255))  # Red-white right
+                draw_polyfit_curve(center_points, (100, 255, 100)) # Green center
                 
-                # Draw dots to show window sampling heights
+                # Draw dots with black outline for visibility
                 for l_pt, r_pt, c_pt in zip(left_points, right_points, center_points):
-                    cv2.circle(debug, l_pt, 4, (255, 0, 0), -1)
-                    cv2.circle(debug, r_pt, 4, (0, 0, 255), -1)
-                    cv2.circle(debug, c_pt, 5, (0, 255, 255), -1) # yellow center dots
+                    cv2.circle(debug, l_pt, 7, (0, 0, 0), -1)
+                    cv2.circle(debug, l_pt, 5, (255, 100, 100), -1)
+                    cv2.circle(debug, r_pt, 7, (0, 0, 0), -1)
+                    cv2.circle(debug, r_pt, 5, (100, 100, 255), -1)
+                    cv2.circle(debug, c_pt, 8, (0, 0, 0), -1)
+                    cv2.circle(debug, c_pt, 6, (0, 255, 255), -1)
                 
-                # Add status text
+                # Helper: text with black outline for readability
+                def put_outlined_text(img, text, pos, scale, color):
+                    cv2.putText(img, text, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), 4)
+                    cv2.putText(img, text, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2)
+                
                 text_color = (0, 255, 0) if abs(self.lane_error) < 0.05 else (0, 165, 255)
-                cv2.putText(debug, f"Err: {self.lane_error:.3f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, text_color, 2)
+                put_outlined_text(debug, f"Err: {self.lane_error:.3f}", (10, 35), 0.9, text_color)
                 
-                # Furthest detected point info (top window = lookahead)
+                # Lookahead info
                 if len(center_points) > 0:
-                    far_pt = center_points[-1]  # topmost = furthest lookahead
-                    near_pt = center_points[0]   # bottom = nearest
-                    offset = far_pt[0] - near_pt[0]  # positive = curve to right
+                    far_pt = center_points[-1]
+                    near_pt = center_points[0]
+                    offset = far_pt[0] - near_pt[0]
                     curv_text = f" C={curvature_bias:+.3f}" if curvature_bias != 0.0 else ""
-                    cv2.putText(debug, f"LA: off={offset:+d}px{curv_text}",
-                                (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 0), 2)
+                    put_outlined_text(debug, f"LA: off={offset:+d}px{curv_text}",
+                                (10, 70), 0.65, (0, 255, 255))
                 
                 debug_msg = self.bridge.cv2_to_imgmsg(debug, encoding="bgr8")
                 self.debug_pub.publish(debug_msg)
