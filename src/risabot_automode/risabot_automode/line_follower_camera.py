@@ -112,22 +112,30 @@ class LineFollowerCamera(Node):
                 valid_left = np.max(left_region) >= 10 if len(left_region) > 0 else False
                 valid_right = np.max(right_region) >= 10 if len(right_region) > 0 else False
                 
+                # Minimum lane width in pixels — if detected width is less than
+                # this, both peaks are likely on the SAME white border line
+                min_lane_width = 80
+                
                 if valid_left and valid_right:
-                    valid_frames += 1
                     left_peak = np.argmax(left_region) + left_start
                     right_peak = np.argmax(right_region) + right_start
-                    # Update dynamic lane width estimation based on this view
-                    estimated_lane_width = right_peak - left_peak
+                    detected_width = right_peak - left_peak
+                    if detected_width >= min_lane_width:
+                        valid_frames += 1
+                        # Only update lane width when it's reasonable
+                        if detected_width < w * 2 // 3:
+                            estimated_lane_width = detected_width
+                    else:
+                        # Both peaks are on the same border line! Use memory.
+                        left_peak = left_points[-1][0] if left_points else w // 2 - estimated_lane_width // 2
+                        right_peak = left_peak + estimated_lane_width
                 elif valid_left and not valid_right:
                     left_peak = np.argmax(left_region) + left_start
-                    # Estimate right based on current left + established typical width
                     right_peak = left_peak + estimated_lane_width 
                 elif valid_right and not valid_left:
                     right_peak = np.argmax(right_region) + right_start
-                    # Estimate left based on current right - established typical width
                     left_peak = right_peak - estimated_lane_width
                 else:
-                    # Neither valid in this frame. Use memory or center defaults.
                     left_peak = left_points[-1][0] if left_points else int(self.last_valid_error * w/2 + w/2) - (estimated_lane_width // 2)
                     right_peak = right_points[-1][0] if right_points else int(self.last_valid_error * w/2 + w/2) + (estimated_lane_width // 2)
                 

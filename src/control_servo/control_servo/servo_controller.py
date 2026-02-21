@@ -136,18 +136,19 @@ class ServoControllerV9(Node):
             self.get_logger().info("🎮 Controller receiver connected (Awaiting sync...)")
             
         if self.joy_lost_reported:
-            self.get_logger().info("🎮 Controller module synced. Awaiting explicit input to unlock...")
+            self.get_logger().info("🎮 Controller module synced. Press any BUTTON to unlock...")
             self.joy_lost_reported = False
-            # Do NOT aggressively unlock here; rely on the deviation check below
 
-        # Ghost state protection: USB dongles often send a stream of [0, 1.0, 0...] when the gamepad is off.
-        # Ignore all commands until the state deviates from the initial generic signature.
+        # Ghost state protection: require an explicit BUTTON PRESS to unlock.
+        # Axis changes alone are not safe because controllers often have drift
+        # or non-zero default axis values (e.g. axis 1 = 1.0) on power-on.
         if not self.joy_unlocked:
-            if list(msg.axes) != self.initial_joy_axes or list(msg.buttons) != self.initial_joy_buttons:
+            any_button_pressed = any(b == 1 for b in msg.buttons)
+            if any_button_pressed:
                 self.joy_unlocked = True
-                self.get_logger().info("🎮 Controller unlocked (Valid human input detected)")
+                self.get_logger().info("🎮 Controller unlocked (Button press detected)")
             else:
-                return  # Return early, ignore phantom inputs
+                return  # Return early, ignore all input until a button is pressed
 
         # Helpers
         def btn(idx): return msg.buttons[idx] if idx < len(msg.buttons) else 0
