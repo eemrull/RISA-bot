@@ -200,50 +200,68 @@ class LineFollowerCamera(Node):
                 
                 crop_top = h - crop_h  # top of cropped region in full image coords
                 
-                def draw_polyfit_curve(pts_list, color):
-                    if len(pts_list) < 3: return
+                def draw_polyfit_curve(pts_list, color, thickness=2):
+                    if len(pts_list) < 3: return None
                     pts = np.array(pts_list)
                     x, y = pts[:, 0], pts[:, 1]
                     poly_fit = np.polyfit(y, x, 2)
-                    # Extend curve from crop top all the way to image bottom
+                    # Extend curve from crop top to image bottom
                     y_eval = np.linspace(crop_top, h - 1, 80)
                     x_eval = np.polyval(poly_fit, y_eval)
-                    # Clamp x within image bounds
                     x_eval = np.clip(x_eval, 0, w - 1)
                     curve_pts = np.vstack((x_eval, y_eval)).astype(np.int32).T
-                    # Draw thick outline first for visibility
-                    cv2.polylines(debug, [curve_pts], isClosed=False, color=(0,0,0), thickness=6)
-                    cv2.polylines(debug, [curve_pts], isClosed=False, color=color, thickness=3)
+                    cv2.polylines(debug, [curve_pts], isClosed=False, color=(0,0,0), thickness=thickness+2)
+                    cv2.polylines(debug, [curve_pts], isClosed=False, color=color, thickness=thickness)
+                    return poly_fit
                 
-                draw_polyfit_curve(left_points, (255, 100, 100))   # Blue-white left
-                draw_polyfit_curve(right_points, (100, 100, 255))  # Red-white right
-                draw_polyfit_curve(center_points, (100, 255, 100)) # Green center
+                # Draw thin left/right lane boundary curves
+                draw_polyfit_curve(left_points, (255, 130, 130), 2)   # Blue left
+                draw_polyfit_curve(right_points, (130, 130, 255), 2)  # Red right
                 
-                # Draw dots with black outline for visibility
-                for l_pt, r_pt, c_pt in zip(left_points, right_points, center_points):
-                    cv2.circle(debug, l_pt, 7, (0, 0, 0), -1)
-                    cv2.circle(debug, l_pt, 5, (255, 100, 100), -1)
-                    cv2.circle(debug, r_pt, 7, (0, 0, 0), -1)
-                    cv2.circle(debug, r_pt, 5, (100, 100, 255), -1)
-                    cv2.circle(debug, c_pt, 8, (0, 0, 0), -1)
-                    cv2.circle(debug, c_pt, 6, (0, 255, 255), -1)
+                # Draw prominent center PATH line (white + green, thicker)
+                center_poly = draw_polyfit_curve(center_points, (0, 255, 0), 3)
+                
+                # Small dot markers at window sampling heights only
+                for i, (l_pt, r_pt, c_pt) in enumerate(zip(left_points, right_points, center_points)):
+                    if i % 2 == 0:  # every other window for less clutter
+                        cv2.circle(debug, l_pt, 3, (255, 130, 130), -1)
+                        cv2.circle(debug, r_pt, 3, (130, 130, 255), -1)
+                    cv2.circle(debug, c_pt, 4, (0, 0, 0), -1)
+                    cv2.circle(debug, c_pt, 3, (0, 255, 0), -1)
                 
                 # Helper: text with black outline for readability
-                def put_outlined_text(img, text, pos, scale, color):
-                    cv2.putText(img, text, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), 4)
-                    cv2.putText(img, text, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2)
+                def put_outlined_text(img, text, pos, scale, color, thick=2):
+                    cv2.putText(img, text, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), thick+2)
+                    cv2.putText(img, text, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, color, thick)
                 
-                text_color = (0, 255, 0) if abs(self.lane_error) < 0.05 else (0, 165, 255)
-                put_outlined_text(debug, f"Err: {self.lane_error:.3f}", (10, 35), 0.9, text_color)
+                # --- Educational info for DR ---
+                # Line 1: Steering direction
+                if abs(self.lane_error) < 0.05:
+                    direction = "CENTERED"
+                    text_color = (0, 255, 0)
+                elif self.lane_error > 0:
+                    direction = "STEER LEFT"
+                    text_color = (0, 165, 255)
+                else:
+                    direction = "STEER RIGHT"
+                    text_color = (0, 165, 255)
+                    
+                steer_angle_deg = abs(self.lane_error) * 50.0  # approx servo degrees
+                put_outlined_text(debug, f"{direction} ({steer_angle_deg:.0f} deg)",
+                            (10, 30), 0.7, text_color)
                 
-                # Lookahead info
-                if len(center_points) > 0:
-                    far_pt = center_points[-1]
-                    near_pt = center_points[0]
-                    offset = far_pt[0] - near_pt[0]
-                    curv_text = f" C={curvature_bias:+.3f}" if curvature_bias != 0.0 else ""
-                    put_outlined_text(debug, f"LA: off={offset:+d}px{curv_text}",
-                                (10, 70), 0.65, (0, 255, 255))
+                # Line 2: Lane width & curve radius estimate
+                lane_w_cm = estimated_lane_width * 40.0 / (w * 0.4)  # rough cm scale
+                if center_poly is not None and abs(center_poly[0]) > 0.001:
+                    # Radius of curvature from polynomial: R = 1/|2a| (in pixels)
+                    R_px = abs(1.0 / (2.0 * center_poly[0]))
+                    R_cm = R_px * 40.0 / estimated_lane_width  # scale to real world
+                    curve_dir = "LEFT" if center_poly[0] < 0 else "RIGHT"
+                    put_outlined_text(debug, f"Curve: {curve_dir} R={R_cm:.0f}cm W={lane_w_cm:.0f}cm",
+                                (10, 60), 0.55, (0, 255, 255))
+                else:
+                    put_outlined_text(debug, f"Straight | W={lane_w_cm:.0f}cm",
+                                (10, 60), 0.55, (0, 255, 255))
                 
                 debug_msg = self.bridge.cv2_to_imgmsg(debug, encoding="bgr8")
                 self.debug_pub.publish(debug_msg)

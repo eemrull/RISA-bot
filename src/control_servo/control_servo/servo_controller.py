@@ -243,9 +243,6 @@ class ServoControllerV9(Node):
         pwm_val = int(msg.linear.x * 255.0)
         
         # Steering
-        # twist.angular.z > 0 is Left
-        # Main branch: joy > 0 -> Angle Decrease
-        # So Z > 0 -> Angle Decrease
         angle_offset = msg.angular.z * (50.0 / 1.0)
         steer_angle = int(SERVO_CENTER - angle_offset)
         
@@ -254,6 +251,9 @@ class ServoControllerV9(Node):
         steer_angle = max(SERVO_CENTER - SERVO_RANGE, min(SERVO_CENTER + SERVO_RANGE, steer_angle))
         
         self.apply_hardware(pwm_val, steer_angle)
+        
+        # Also publish to /cmd_vel so dashboard can track velocity/odometry
+        self.cmd_vel_pub.publish(msg)
 
     def apply_hardware(self, motor_pwm, steer_angle):
         """Update target hardware state; timer loop handles transmission."""

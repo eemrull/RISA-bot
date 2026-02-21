@@ -1712,22 +1712,30 @@ TEACH_HTML = """<!DOCTYPE html>
   
   <div class="data-panel">
     <div class="data-card">
-      <h2>Odometry / Distance</h2>
+      <h2>Distance Travelled</h2>
       <div class="data-value val-blue"><span id="odomDist">0.00</span><span class="data-unit">meters</span></div>
     </div>
     <div class="data-card">
-      <h2>Velocity / Speed</h2>
+      <h2>Current Speed</h2>
       <div class="data-value val-green"><span id="odomSpeed">0.000</span><span class="data-unit">m/s</span></div>
     </div>
     <div class="data-card">
-      <h2>Steering Error</h2>
+      <h2>Steering Correction</h2>
       <div class="data-value val-yellow" id="steerValBlock"><span id="steerErr">0.000</span><span class="data-unit">ratio</span></div>
+    </div>
+    <div class="data-card" style="flex-direction:row; gap:30px; align-items:center;">
+      <div style="flex:1; text-align:center;">
+        <h2 style="margin-bottom:4px;">X Position</h2>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:2.5em; font-weight:800; color:var(--accent);"><span id="posX">0.00</span><span style="font-size:0.35em; color:#aaa; margin-left:5px;">m</span></div>
+      </div>
+      <div style="flex:1; text-align:center;">
+        <h2 style="margin-bottom:4px;">Y Position</h2>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:2.5em; font-weight:800; color:var(--accent);"><span id="posY">0.00</span><span style="font-size:0.35em; color:#aaa; margin-left:5px;">m</span></div>
+      </div>
     </div>
     
     <div class="odom-logs">
-      <div style="text-align:center; margin-bottom:10px; color:#555; font-size: 0.8em; font-weight:700;">RAW ODOMETRY LOGS</div>
-      <div><strong>X:</strong> <span id="logX">0.000</span></div>
-      <div><strong>Y:</strong> <span id="logY">0.000</span></div>
+      <div style="text-align:center; margin-bottom:10px; color:#555; font-size: 0.8em; font-weight:700;">RAW ODOMETRY</div>
       <div><strong>Yaw:</strong> <span id="logYaw">0.000</span> rad</div>
     </div>
   </div>
@@ -1772,8 +1780,8 @@ function update() {
       }
       
       // Raw Logs
-      document.getElementById('logX').textContent = (d.odom_x || 0).toFixed(3);
-      document.getElementById('logY').textContent = (d.odom_y || 0).toFixed(3);
+      document.getElementById('posX').textContent = (d.odom_x || 0).toFixed(2);
+      document.getElementById('posY').textContent = (d.odom_y || 0).toFixed(2);
       document.getElementById('logYaw').textContent = (d.odom_yaw || 0).toFixed(3);
     })
     .catch(()=>{});
