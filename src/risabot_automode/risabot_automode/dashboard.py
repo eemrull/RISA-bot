@@ -1582,6 +1582,216 @@ update();
 </html>"""
 
 
+# ======================== TEACH HTML Dashboard ========================
+TEACH_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RISA-Bot Educational View</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0f13;
+    --surface: #1e1e24;
+    --text: #e6e9ef;
+    --accent: #42a5f5;
+    --success: #69f0ae;
+    --danger: #ff5252;
+    --warning: #ffd740;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  header {
+    padding: 20px 40px;
+    background: var(--surface);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid rgba(255,255,255,0.05);
+  }
+  header h1 { font-size: 2.2em; font-weight: 800; letter-spacing: -1px; }
+  .badge { padding: 8px 16px; border-radius: 8px; font-weight: 700; font-size: 1.2em; }
+  .badge.auto { background: rgba(105, 240, 174, 0.2); color: var(--success); }
+  .badge.manual { background: rgba(255, 82, 82, 0.2); color: var(--danger); }
+  
+  main {
+    flex: 1;
+    display: flex;
+    padding: 40px;
+    gap: 40px;
+  }
+  .cam-panel {
+    flex: 2;
+    background: #000;
+    border-radius: 20px;
+    border: 2px solid rgba(255,255,255,0.1);
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+  }
+  .cam-container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #050508;
+  }
+  .cam-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  
+  .data-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+  }
+  .data-card {
+    background: var(--surface);
+    border-radius: 20px;
+    padding: 30px;
+    border: 1px solid rgba(255,255,255,0.05);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .data-card h2 {
+    font-size: 1.2em;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: #888;
+    margin-bottom: 10px;
+  }
+  .data-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 4.5em;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+  .data-unit {
+    font-size: 0.3em;
+    color: #aaa;
+    font-weight: 400;
+    margin-left: 10px;
+  }
+  .val-blue { color: var(--accent); }
+  .val-green { color: var(--success); }
+  .val-yellow { color: var(--warning); }
+  .val-red { color: var(--danger); }
+  
+  /* Selectors */
+  .cam-controls {
+    display: flex; gap: 10px; padding: 15px; background: rgba(255,255,255,0.05);
+  }
+  .cam-btn {
+    flex: 1; padding: 12px; border-radius: 10px; font-size: 1.1em; font-weight: 700;
+    background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #aaa;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .cam-btn.active {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>RISA-Bot / Numerical Methods Educational View</h1>
+  <div id="modeBadge" class="badge">WAITING</div>
+</header>
+
+<main>
+  <div class="cam-panel">
+    <div class="cam-container">
+      <img id="camStream" src="/camera_feed?v=line_follower" alt="Camera Feed Offline" onerror="this.style.display='none'; document.getElementById('camOff').style.display='flex';" onload="this.style.display='block'; document.getElementById('camOff').style.display='none';"/>
+      <div id="camOff" style="display:none; color:#555; width:100%; height:100%; align-items:center; justify-content:center; flex-direction:column; font-size:1.5em; font-weight:700;">
+        <div>∅ NO SIGNAL</div>
+      </div>
+    </div>
+    <div class="cam-controls">
+      <button class="cam-btn" onclick="setCam('raw')" id="btn-raw">Raw Feed</button>
+      <button class="cam-btn active" onclick="setCam('line_follower')" id="btn-line_follower">Curve Tracking</button>
+      <button class="cam-btn" onclick="setCam('obstacle')" id="btn-obstacle">Obstacle Edge</button>
+    </div>
+  </div>
+  
+  <div class="data-panel">
+    <div class="data-card">
+      <h2>Odometry / Distance</h2>
+      <div class="data-value val-blue"><span id="odomDist">0.00</span><span class="data-unit">meters</span></div>
+    </div>
+    <div class="data-card">
+      <h2>Velocity / Speed</h2>
+      <div class="data-value val-green"><span id="odomSpeed">0.000</span><span class="data-unit">m/s</span></div>
+    </div>
+    <div class="data-card">
+      <h2>Steering Error</h2>
+      <div class="data-value val-yellow" id="steerValBlock"><span id="steerErr">0.000</span><span class="data-unit">ratio</span></div>
+    </div>
+  </div>
+</main>
+
+<script>
+function setCam(viewName) {
+  fetch('/api/set_cam_view?view=' + viewName);
+  document.getElementById('camStream').src = '/camera_feed?v=' + viewName + '&t=' + Date.now();
+  ['raw', 'line_follower', 'obstacle'].forEach(v => {
+    document.getElementById('btn-' + v).classList.toggle('active', v === viewName);
+  });
+}
+
+// Default to line follower debug on page load
+setCam('line_follower');
+
+function update() {
+  fetch('/data')
+    .then(r => r.json())
+    .then(d => {
+      // Mode
+      const mb = document.getElementById('modeBadge');
+      mb.textContent = d.auto_mode ? 'AUTO MODE' : 'MANUAL MODE';
+      mb.className = 'badge ' + (d.auto_mode ? 'auto' : 'manual');
+      
+      // Odom
+      document.getElementById('odomDist').textContent = d.distance.toFixed(2);
+      document.getElementById('odomSpeed').textContent = d.speed.toFixed(3);
+      
+      // Steering
+      const err = d.lane_error;
+      document.getElementById('steerErr').textContent = err > 0 ? '+' + err.toFixed(3) : err.toFixed(3);
+      
+      const sb = document.getElementById('steerValBlock');
+      if (Math.abs(err) > 0.3) {
+        sb.className = 'data-value val-red';
+      } else if (Math.abs(err) > 0.1) {
+        sb.className = 'data-value val-yellow';
+      } else {
+        sb.className = 'data-value val-green';
+      }
+    })
+    .catch(()=>{});
+}
+
+setInterval(update, 100);
+update();
+</script>
+</body>
+</html>"""
+
+
 # ======================== ROS2 Dashboard Node ========================
 
 class DashboardNode(Node):
@@ -1941,6 +2151,12 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(json.dumps(result).encode())
+        elif self.path.startswith('/teach'):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(TEACH_HTML.encode())
         else:
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')

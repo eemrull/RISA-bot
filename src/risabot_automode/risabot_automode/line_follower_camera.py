@@ -67,28 +67,54 @@ class LineFollowerCamera(Node):
             blurred = cv2.GaussianBlur(gray, (5, 5), 0)  # reduce noise before threshold
             _, binary = cv2.threshold(blurred, white_thresh, 255, cv2.THRESH_BINARY)
 
-            # Sum white pixels per column → histogram
-            hist = np.sum(binary, axis=0)
+            # Sliding Windows to trace curved lanes
+            n_windows = 4
+            window_height = crop_h // n_windows
+            
+            left_points = []
+            right_points = []
+            center_points = []
+            
+            # Start from the bottom window (closest to robot) and move up
+            valid_frames = 0
+            for window in range(n_windows):
+                win_y_low = crop_h - (window + 1) * window_height
+                win_y_high = crop_h - window * window_height
+                
+                # Protect against slicing issues if height isn't perfectly divisible
+                if win_y_high <= win_y_low:
+                    break
+                    
+                hist = np.sum(binary[win_y_low:win_y_high, :], axis=0)
+                
+                left_region = hist[:w//3]
+                right_region = hist[2*w//3:]
+                
+                # Check validity
+                valid_left = np.max(left_region) >= 10
+                valid_right = np.max(right_region) >= 10
+                if valid_left and valid_right:
+                    valid_frames += 1
+                
+                # Estimate peak or use previous window / last valid memory
+                left_peak = np.argmax(left_region) if valid_left else (left_points[-1][0] if left_points else int(self.last_valid_error * w/2 + w/2))
+                right_peak = (np.argmax(right_region) + 2*w//3) if valid_right else (right_points[-1][0] if right_points else int(self.last_valid_error * w/2 + w/2))
+                
+                lane_center_x = (left_peak + right_peak) // 2
+                lane_center_y = int(h - crop_h + win_y_low + window_height / 2)
+                
+                left_points.append((int(left_peak), lane_center_y))
+                right_points.append((int(right_peak), lane_center_y))
+                center_points.append((int(lane_center_x), lane_center_y))
 
-            # Find left and right peaks (simple: left 1/3, right 1/3 of image)
-            left_region = hist[:w//3]
-            right_region = hist[2*w//3:]
-
-            left_peak = np.argmax(left_region)  # x in left 1/3
-            right_peak = np.argmax(right_region) + 2*w//3  # x in right 1/3
-
-            # If either region is all zeros, use last valid value
-            if np.max(left_region) < 10:
-                left_peak = self.last_valid_error * w/2 + w/2  # rough estimate
-            if np.max(right_region) < 10:
-                right_peak = self.last_valid_error * w/2 + w/2
-
-            # Midline = average of two line positions
-            lane_center_x = (left_peak + right_peak) // 2
-
+            # Error calculation based on a weighted average of windows (bottom=more weight)
+            # Weights for 4 windows: w0=0.5, w1=0.3, w2=0.15, w3=0.05
+            weights = [0.5, 0.3, 0.15, 0.05]
+            weighted_center_x = sum(pt[0] * w_i for pt, w_i in zip(center_points, weights[:len(center_points)]))
+            
             # Error: positive = lane center right of image center → robot should turn LEFT
             image_center = w / 2.0
-            error = (image_center - lane_center_x) / (w / 2.0)  # NO negative sign!
+            error = (image_center - weighted_center_x) / (w / 2.0)
 
             # Clamp raw error
             raw_error = float(np.clip(error, -1.0, 1.0))
@@ -103,8 +129,8 @@ class LineFollowerCamera(Node):
             self.filtered_error = alpha * raw_error + (1 - alpha) * self.filtered_error
             self.lane_error = self.filtered_error
 
-            # Only update last_valid_error if we have real lines
-            if np.max(left_region) > 10 and np.max(right_region) > 10:
+            # Only update last_valid_error if we have real lines in the bottom frame
+            if valid_frames > 0:
                 self.last_valid_error = self.lane_error
 
             # Publish the smoothed error
@@ -113,19 +139,29 @@ class LineFollowerCamera(Node):
             # Debug visualization
             if self.get_parameter('show_debug').value:
                 debug = bgr.copy()
-                cv2.line(debug, (int(left_peak), h-crop_h), (int(left_peak), h), (255, 0, 0), 1)   # blue: left line
-                cv2.line(debug, (int(right_peak), h-crop_h), (int(right_peak), h), (0, 0, 255), 1) # red: right line
-                cv2.line(debug, (int(lane_center_x), h-crop_h), (int(lane_center_x), h), (0, 255, 0), 1) # green: center
+                
+                # Draw polys
+                pts_left = np.array(left_points, np.int32).reshape((-1, 1, 2))
+                pts_right = np.array(right_points, np.int32).reshape((-1, 1, 2))
+                pts_center = np.array(center_points, np.int32).reshape((-1, 1, 2))
+                
+                cv2.polylines(debug, [pts_left], isClosed=False, color=(255, 0, 0), thickness=2)
+                cv2.polylines(debug, [pts_right], isClosed=False, color=(0, 0, 255), thickness=2)
+                cv2.polylines(debug, [pts_center], isClosed=False, color=(0, 255, 0), thickness=2)
+                
+                # Draw dots to show window sampling heights
+                for pt in center_points:
+                    cv2.circle(debug, pt, 4, (0, 255, 255), -1)
                 
                 # Add status text
                 text_color = (0, 255, 0) if abs(self.lane_error) < 0.05 else (0, 165, 255)
-                cv2.putText(debug, f"Err: {self.lane_error:.3f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, text_color, 1)
+                cv2.putText(debug, f"Err: {self.lane_error:.3f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, text_color, 2)
                 
                 debug_msg = self.bridge.cv2_to_imgmsg(debug, encoding="bgr8")
                 self.debug_pub.publish(debug_msg)
 
             status = "CENTER" if abs(self.lane_error) < 0.05 else ("TURN RIGHT" if self.lane_error < 0 else "TURN LEFT")
-            print(f"\r[LF] C:{lane_center_x} | Err:{self.lane_error:.2f} | {status}", end='', flush=True)
+            print(f"\r[LF] C:{int(weighted_center_x)} | Err:{self.lane_error:.2f} | {status}", end='', flush=True)
 
         except Exception as e:
             self.get_logger().error(f'Line follower error: {e}')
