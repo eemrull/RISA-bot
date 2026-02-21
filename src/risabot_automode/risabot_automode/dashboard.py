@@ -138,8 +138,9 @@ class DashboardNode(Node):
                 vel_x = self.data['cmd_lin_x']
                 vel_z = self.data['cmd_ang_z']
             
-            # Odometry calibration: measured 1m real = 0.649m raw → scale by 1.54
-            odom_scale = 1.54
+            # Odometry calibration: measured 1m real ≈ 0.87m at 1.54x → refined to 1.77x
+            # Residual error is from wheel slip/coasting (robot moves after cmd_vel=0)
+            odom_scale = 1.67
             cal_vel_x = vel_x * odom_scale
             
             # Distance integration
