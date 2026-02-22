@@ -42,6 +42,8 @@ class DashboardNode(Node):
         super().__init__('dashboard')
         self.get_logger().info('Dashboard node starting on http://0.0.0.0:8080')
 
+        self.declare_parameter('use_hw_odom', False)
+
         # CV Bridge for camera
         self.bridge = CvBridge() if CvBridge else None
         self.latest_jpeg = None
@@ -120,6 +122,10 @@ class DashboardNode(Node):
     def _simulate_odom_loop(self):
         """Simulates odometry position based on commanded velocities.
         Useful when the hardware driver fails to publish /odom data."""
+        use_hw_odom = self.get_parameter('use_hw_odom').value
+        if use_hw_odom:
+            return # Let the hardware Odometry cb update the state completely
+
         now = time.time()
         if not hasattr(self, '_last_sim_t'):
             self._last_sim_t = now
@@ -185,8 +191,14 @@ class DashboardNode(Node):
             self.data['_cmd_time'] = time.time()
 
     def _odom_cb(self, msg):
+        use_hw_odom = self.get_parameter('use_hw_odom').value
+        if not use_hw_odom:
+            return  # Ignore real hardware if simulation failsafe is active
+            
         # We receive actual odometry! Use real data instead of dead reckoning.
         with self.data_lock:
+            # We must manually integrate distance. The odom message natively doesn't include "trip distance".
+            # It provides instantaneous speed (`twist.twist.linear.x`)
             self.data['speed'] = msg.twist.twist.linear.x
             now = time.time()
             if hasattr(self, '_last_real_odom_t'):

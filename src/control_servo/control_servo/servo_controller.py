@@ -26,6 +26,8 @@ from rclpy.node import Node
 from sensor_msgs.msg import Joy
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Bool, String
+from nav_msgs.msg import Odometry
+import math
 from Rosmaster_Lib import Rosmaster
 import time
 
@@ -61,6 +63,7 @@ class ServoControllerV9(Node):
         self.auto_mode_pub = self.create_publisher(Bool, '/auto_mode', 10)
         self.challenge_pub = self.create_publisher(String, '/set_challenge', 10)
         self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
 
         # Subscribers
         self.create_subscription(Joy, 'joy', self.joy_callback, 10)
@@ -77,6 +80,24 @@ class ServoControllerV9(Node):
         self.target_servo_val = SERVO_CENTER
         # Hardware continuous update loop (10 Hz)
         self.create_timer(0.1, self._hardware_update_loop)
+
+        # Odometry Odometry properties
+        # Ackermann kinematics parameters for RISA-Bot 
+        # Ticks to meters needs calibration based on exact gear ratio and wheel diameter
+        # Using a default scaling factor for now
+        self.wheel_diameter = 0.065 # m
+        self.wheel_base = 0.14 # m
+        self.ticks_per_meter = 1050 
+
+        self.last_odom_time = time.time()
+        self.odom_x = 0.0
+        self.odom_y = 0.0
+        self.odom_yaw = 0.0
+        self.last_encoder_ticks = [0, 0, 0, 0] # FL, FR, RL, RR
+        self.encoder_first_read = True
+
+        # Fast encoder loop (20 Hz)
+        self.create_timer(0.05, self._encoder_read_loop)
 
         # Debounce
         self.prev_buttons = [0] * 15
@@ -276,6 +297,91 @@ class ServoControllerV9(Node):
                 self.last_hw_send_time = now
             except Exception:
                 pass
+
+    def _encoder_read_loop(self):
+        """Read hardware encoders and compute/publish /odom"""
+        now = time.time()
+        dt = now - self.last_odom_time
+        
+        # Don't divide by zero if timer fires too fast
+        if dt <= 0.001:
+            return
+
+        try:
+            # Reads 4 motors: FL, FR, RL, RR 
+            ticks = self.bot.get_motor_encoder()
+            
+            # First initialization
+            if self.encoder_first_read or ticks is None or len(ticks) < 4:
+                if ticks and len(ticks) == 4:
+                    self.last_encoder_ticks = list(ticks)
+                    self.encoder_first_read = False
+                self.last_odom_time = now
+                return
+            
+            # Calculate delta ticks
+            d_ticks = [
+                ticks[0] - self.last_encoder_ticks[0],
+                ticks[1] - self.last_encoder_ticks[1],
+                ticks[2] - self.last_encoder_ticks[2],
+                ticks[3] - self.last_encoder_ticks[3]
+            ]
+            self.last_encoder_ticks = list(ticks)
+            self.last_odom_time = now
+
+            # RISA-Bot uses a single motor driving all wheels, or separate motors
+            # Usually left/right speed is averaged.
+            # Assuming standard Ackermann driving, rear wheels are driven, front steer.
+            # If all 4 are driven (4WD), average left and right side
+            left_ticks = (d_ticks[0] + d_ticks[2]) / 2.0
+            right_ticks = (d_ticks[1] + d_ticks[3]) / 2.0
+            avg_ticks = (left_ticks + right_ticks) / 2.0
+
+            # Convert to distance
+            distance = avg_ticks / self.ticks_per_meter
+            linear_velocity = distance / dt
+
+            # Calculate steering angle from servo command (for Ackermann kinematics)
+            # Servo range [40, 140], center 90
+            steering_angle_deg = (SERVO_CENTER - self.target_servo_val) * (50.0 / SERVO_RANGE) # Approximate
+            steering_angle_rad = math.radians(steering_angle_deg)
+            
+            # Ackermann kinematics: w = v / R, where R = L / tan(delta)
+            # L is wheel base, delta is steering angle
+            if abs(steering_angle_rad) > 0.01:
+                turning_radius = self.wheel_base / math.tan(steering_angle_rad)
+                angular_velocity = linear_velocity / turning_radius
+            else:
+                angular_velocity = 0.0
+
+            yaw_delta = angular_velocity * dt
+
+            # Update pose
+            self.odom_yaw += yaw_delta
+            self.odom_x += distance * math.cos(self.odom_yaw)
+            self.odom_y += distance * math.sin(self.odom_yaw)
+
+            # Build and publish Odometry message
+            odom = Odometry()
+            odom.header.stamp = self.get_clock().now().to_msg()
+            odom.header.frame_id = 'odom'
+            odom.child_frame_id = 'base_link'
+
+            odom.pose.pose.position.x = self.odom_x
+            odom.pose.pose.position.y = self.odom_y
+            odom.pose.pose.position.z = 0.0
+            
+            # Quaternion from yaw
+            odom.pose.pose.orientation.z = math.sin(self.odom_yaw / 2.0)
+            odom.pose.pose.orientation.w = math.cos(self.odom_yaw / 2.0)
+
+            odom.twist.twist.linear.x = linear_velocity
+            odom.twist.twist.angular.z = angular_velocity
+
+            self.odom_pub.publish(odom)
+
+        except Exception as e:
+            self.get_logger().error(f"Failed to read encoders: {e}")
 
     def stop_robot(self):
         self.target_motor_val = 0

@@ -1422,6 +1422,8 @@ const PARAM_TIPS = {
   canny_high:'Canny upper threshold',  blur_kernel:'Gaussian blur kernel (odd number)',
   hysteresis_on:'Frames to confirm obstacle',  hysteresis_off:'Frames to confirm clear',
   show_debug:'Publish annotated debug frame',
+  // Dashboard
+  use_hw_odom:'Use hardware encoder odometry (bool)',
 };
 const PARAM_GROUPS = [
   { node: 'traffic_light_detector', label: '🚦 Traffic Light', params: [
@@ -1456,6 +1458,9 @@ const PARAM_GROUPS = [
   { node: 'obstacle_avoidance_camera', label: '📷 Camera Obstacle', params: [
     'edge_threshold','canny_low','canny_high','blur_kernel',
     'hysteresis_on','hysteresis_off', 'show_debug'
+  ]},
+  { node: 'dashboard', label: '📊 Dashboard Settings', params: [
+    'use_hw_odom'
   ]},
 ];
 
