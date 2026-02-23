@@ -15,14 +15,14 @@ run_risabot
 
 Opens 6 separate xfce4-terminal tabs (or tmux windows with `run_trisabot`):
 
-| Order | Tab Name | Node |
-|---|---|---|
-| 1 | Astra Camera | `ros2 launch astra_camera astra_mini.launch.py` |
-| 2 | YDLiDAR | `ydlidar_ros2_driver_node` (2s delay after camera) |
-| 3 | Servo Ctrl | `servo_controller` (joystick driving) |
-| 4 | Obstacle Avoid | `obstacle_avoidance` (LiDAR) |
-| 5 | Auto Driver | `auto_driver` (motor control + odometry) |
-| 6 | Line Follower | `line_follower_camera` |
+| Order | Tab Name       | Node                                               |
+| ----- | -------------- | -------------------------------------------------- |
+| 1     | Astra Camera   | `ros2 launch astra_camera astra_mini.launch.py`    |
+| 2     | YDLiDAR        | `ydlidar_ros2_driver_node` (2s delay after camera) |
+| 3     | Servo Ctrl     | `servo_controller` (joystick driving)              |
+| 4     | Obstacle Avoid | `obstacle_avoidance` (LiDAR)                       |
+| 5     | Auto Driver    | `auto_driver` (state machine + motor control)      |
+| 6     | Line Follower  | `line_follower_camera`                             |
 
 > **Note:** For SSH sessions, use `run_trisabot` instead — same nodes but in tmux.
 
@@ -52,13 +52,13 @@ The main branch uses the **original monolithic controller** at:
 
 ### Controls
 
-| Input | Action |
-|---|---|
-| Left Stick Up/Down | Drive forward/reverse |
-| Right Stick Left/Right | Ackermann steering (servo 4) |
-| D-Pad Up/Down | Gear shift (4 levels: 25, 50, 75, 100) |
-| Y Button | Toggle AUTO / MANUAL mode |
-| X Button | Trigger parking (stop + center for N seconds) |
+| Input                  | Action                                        |
+| ---------------------- | --------------------------------------------- |
+| Left Stick Up/Down     | Drive forward/reverse                         |
+| Right Stick Left/Right | Ackermann steering (servo 4)                  |
+| D-Pad Up/Down          | Gear shift (5 levels: 15, 25, 40, 60, 100)    |
+| Y Button               | Toggle AUTO / MANUAL mode                     |
+| X Button               | Trigger parking (stop + center for N seconds) |
 
 ### Auto Mode Behavior
 
@@ -88,18 +88,18 @@ The controller opens `Rosmaster()` which uses the same serial port as `auto_driv
 
 ## Key Topics (Main Branch)
 
-| Topic | Type | Published By |
-|---|---|---|
-| `/scan` | LaserScan | ydlidar_ros2_driver |
-| `/odom` | Odometry | auto_driver |
-| `/cmd_vel` | Twist | auto_driver |
-| `/auto_mode` | Bool | servo_controller |
-| `/lane_error` | Float32 | line_follower_camera |
-| `/obstacle_front` | Bool | obstacle_avoidance |
-| `/obstacle_detected_fused` | Bool | auto_driver |
-| `/joy` | Joy | joy_node |
-| `/dashboard_state` | String | auto_driver |
-| `/dashboard_ctrl` | String | servo_controller |
-| `/camera/debug/line_follower` | Image | line_follower_camera |
-| `/camera/debug/traffic_light` | Image | traffic_light_detector |
-| `/camera/debug/obstacle` | Image | obstacle_avoidance_camera |
+| Topic                         | Type      | Published By              |
+| ----------------------------- | --------- | ------------------------- |
+| `/scan`                       | LaserScan | ydlidar_ros2_driver       |
+| `/odom`                       | Odometry  | servo_controller          |
+| `/cmd_vel`                    | Twist     | auto_driver               |
+| `/auto_mode`                  | Bool      | servo_controller          |
+| `/lane_error`                 | Float32   | line_follower_camera      |
+| `/obstacle_front`             | Bool      | obstacle_avoidance        |
+| `/obstacle_detected_fused`    | Bool      | auto_driver               |
+| `/joy`                        | Joy       | joy_node                  |
+| `/dashboard_state`            | String    | auto_driver               |
+| `/dashboard_ctrl`             | String    | servo_controller          |
+| `/camera/debug/line_follower` | Image     | line_follower_camera      |
+| `/camera/debug/traffic_light` | Image     | traffic_light_detector    |
+| `/camera/debug/obstacle`      | Image     | obstacle_avoidance_camera |

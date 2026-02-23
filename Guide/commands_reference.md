@@ -10,38 +10,39 @@ These are set up in `~/.bashrc` on the robot (user `sunrise`).
 
 ### Node Shortcuts
 
-| Alias | Runs |
-|---|---|
-| `astra` | Astra Mini camera launch |
-| `ydlidar` | YDLiDAR Tmini Plus driver |
-| `servoc` | Servo controller (joystick) |
-| `obstav` | LiDAR obstacle avoidance |
-| `autod` | Auto driver node |
-| `linefollow` | Line follower camera |
-| `risabot` | **Competition launch** (`competition.launch.py`) |
-| `sos` | Source the workspace |
-| `s` | Source `~/.bashrc` |
+| Alias        | Runs                                             |
+| ------------ | ------------------------------------------------ |
+| `astra`      | Astra Mini camera launch                         |
+| `ydlidar`    | YDLiDAR Tmini Plus driver                        |
+| `servoc`     | Servo controller (joystick)                      |
+| `obstav`     | LiDAR obstacle avoidance                         |
+| `autod`      | Auto driver node                                 |
+| `linefollow` | Line follower camera                             |
+| `risabot`    | **Competition launch** (`competition.launch.py`) |
+| `sos`        | Source the workspace                             |
+| `s`          | Source `~/.bashrc`                               |
 
 ### Build Shortcuts
 
-| Alias | What it does |
-|---|---|
-| `cb` | `colcon build --symlink-install` (full rebuild) |
-| `cbp <pkg>` | Build one package only (fastest) |
-| `cbc` | Clean build (deletes build/, install/, log/) |
+| Alias       | What it does                                    |
+| ----------- | ----------------------------------------------- |
+| `cb`        | `colcon build --symlink-install` (full rebuild) |
+| `cbp <pkg>` | Build one package only (fastest)                |
+| `cbc`       | Clean build (deletes build/, install/, log/)    |
 
 ### Git Shortcuts
 
-| Alias | What it does |
-|---|---|
-| `gs` | `git status` |
-| `gp` | `git pull` |
+| Alias      | What it does                       |
+| ---------- | ---------------------------------- |
+| `gs`       | `git status`                       |
+| `gp`       | `git pull`                         |
 | `gc "msg"` | `git add . && git commit -m "msg"` |
-| `gpu` | `git push` |
+| `gpu`      | `git push`                         |
 
 ### Multi-Node Launchers
 
 **`run_risabot`** — Opens each node in a separate **xfce4-terminal** tab:
+
 1. Astra Camera
 2. YDLiDAR (2s delay after camera)
 3. Servo Controller
@@ -50,6 +51,7 @@ These are set up in `~/.bashrc` on the robot (user `sunrise`).
 6. Line Follower
 
 **`run_trisabot`** — Same as above but in **tmux** windows (for SSH sessions):
+
 ```bash
 run_trisabot    # starts all nodes in tmux session "risabot"
 tmux attach -t risabot   # reattach if disconnected
@@ -58,8 +60,8 @@ tmux kill-session -t risabot   # kill everything
 
 ### Utility
 
-| Alias | What it does |
-|---|---|
+| Alias       | What it does                                     |
+| ----------- | ------------------------------------------------ |
 | `fix_astra` | Restores `openni2_redist` from backup if missing |
 
 ---
@@ -73,7 +75,7 @@ git add . && git commit -m "message" && git push
 # On the robot — pull and build
 ssh risabot
 cd ~/risabotcar_ws/src/risabot_automode
-git checkout new-control-code && git pull     # or: main
+git checkout test && git pull     # or: main
 cd ~/risabotcar_ws && cb && sos
 ```
 

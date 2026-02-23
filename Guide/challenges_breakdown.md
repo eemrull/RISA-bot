@@ -4,28 +4,28 @@ This guide explains how each competition challenge is implemented in the code (`
 
 ## Competition Layout
 
-![Competition Course Layout](competition_layout.jpeg)
+![Competition Course Layout](competition_layout_overview.jpeg)
 
 **Course dimensions:** 6.4m × 4m. The robot starts at the bottom-right and follows the lane counter-clockwise.
 
 ### Challenge Order (Lap 1)
 
-| # | Challenge | Location | Sensor Used |
-|---|---|---|---|
-| 1 | Obstruction | Bottom-center lane (0.8m × 0.4m block) | LiDAR |
-| 2 | Roundabout | Bottom-left circle | Camera (lane follow) |
-| 3 | Tunnel | Far-left corridor | LiDAR (wall follow) |
-| 4 | Boom Gate | Top-left, after tunnel exit | LiDAR |
-| 5 | Hill | Top-center ramp | Camera (lane follow) |
-| 6 | Bumper | Top-right section | Camera (lane follow) |
-| 7 | Traffic Light | Right side, before start | Camera (HSV) |
+| #   | Challenge     | Location                               | Sensor Used          |
+| --- | ------------- | -------------------------------------- | -------------------- |
+| 1   | Obstruction   | Bottom-center lane (0.8m × 0.4m block) | LiDAR                |
+| 2   | Roundabout    | Bottom-left circle                     | Camera (lane follow) |
+| 3   | Tunnel        | Far-left corridor                      | LiDAR (wall follow)  |
+| 4   | Boom Gate     | Top-left, after tunnel exit            | LiDAR                |
+| 5   | Hill          | Top-center ramp                        | Camera (lane follow) |
+| 6   | Bumper        | Top-right section                      | Camera (lane follow) |
+| 7   | Traffic Light | Right side, before start               | Camera (HSV)         |
 
 ### Challenge Order (Lap 2 — Parking Path)
 
-| # | Challenge | Location | Sensor Used |
-|---|---|---|---|
-| 8 | Parallel Parking | Inner top-left (0.75m slot) | Odometry + LiDAR |
-| 9 | Perpendicular Parking | Inner top-center (0.4m slot) | Odometry + LiDAR |
+| #   | Challenge             | Location                     | Sensor Used      |
+| --- | --------------------- | ---------------------------- | ---------------- |
+| 8   | Parallel Parking      | Inner top-left (0.75m slot)  | Odometry + LiDAR |
+| 9   | Perpendicular Parking | Inner top-center (0.4m slot) | Odometry + LiDAR |
 
 > On Lap 2, the boom gate at the roundabout closes, forcing the robot into the inner parking area.
 
@@ -148,6 +148,7 @@ graph LR
 4. **Hysteresis:** Must see "open" for N consecutive frames before publishing `True` — prevents flickering
 
 > There are **two boom gates** on the course:
+>
 > - **Boom Gate 1** (`BOOM_GATE_1`): After roundabout exit 1. Always open on Lap 1, closed on Lap 2
 > - **Boom Gate 2** (`BOOM_GATE_2`): After the tunnel. Randomly open or closed — robot stops if closed, proceeds when open
 

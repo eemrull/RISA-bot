@@ -4,8 +4,3 @@ log/
 .vscode/
 **/*.pyc
 __pycache__/
-
-# Third-party ROS packages (managed separately on robot)
-src/ros2_astra_camera/
-src/YDLidar-SDK/
-src/ydlidar_ros2_driver/

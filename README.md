@@ -20,17 +20,13 @@ For setting up a **new robot** (RDK X5 / Ubuntu 22.04 / ROS 2 Humble or TROS):
 
 ### Prerequisites
 
-1. Ubuntu 22.04 with ROS 2 Humble (or Horizon TROS) installed
-2. Copy the 4 modified dependency folders to `~/backups/` on the robot:
-   - `ros2_astra_camera`
-   - `openni2_redist`
-   - `ydlidar_ros2_driver`
-   - `YDLidar-SDK`
+- Ubuntu 22.04 with ROS 2 Humble (or Horizon TROS) installed
+- Git installed (`sudo apt install git`)
 
 ### Steps
 
 ```bash
-# 1. Create workspace and clone
+# 1. Create workspace and clone (includes all dependencies)
 mkdir -p ~/risabotcar_ws/src
 cd ~/risabotcar_ws/src
 git clone https://github.com/eemrull/RISA-bot.git .
@@ -38,8 +34,6 @@ git clone https://github.com/eemrull/RISA-bot.git .
 # 2. Run the automated installer
 cd ~/risabotcar_ws
 bash tools/install.sh
-# Or specify a custom backup path:
-# bash tools/install.sh /path/to/backups
 
 # 3. Reboot to apply udev rules and group permissions
 sudo reboot
@@ -48,7 +42,7 @@ sudo reboot
 sudo bash tools/setup_autostart.sh
 ```
 
-The installer handles: copying dependencies, udev rules, YDLidar SDK build, rosdep, colcon build, and bashrc setup.
+The installer handles: udev rules, YDLidar SDK build, rosdep, colcon build, and bashrc setup. All third-party dependencies (Astra Camera, YDLidar SDK, YDLidar ROS2 driver) are **included in the repo** — no need to copy anything manually.
 
 ---
 
@@ -122,8 +116,9 @@ The `refactor-test` branch includes a real-time web dashboard at `http://<robot_
 
 ### astra_camera fails with `openni2_redist` missing
 
+The `openni2_redist` folder should already be at `src/ros2_astra_camera/astra_camera/openni2_redist/` since it's tracked in the repo. If somehow missing, rebuild:
+
 ```bash
-cp -r ~/backups/openni2_redist ~/risabotcar_ws/src/ros2_astra_camera/astra_camera/
 colcon build --symlink-install --packages-select astra_camera
 ```
 
@@ -133,12 +128,7 @@ colcon build --symlink-install --packages-select astra_camera
 unset AMENT_PREFIX_PATH && unset CMAKE_PREFIX_PATH && source /opt/ros/humble/setup.bash
 ```
 
-### Third-party packages disappear
-
-These are gitignored and don't change with branch switching. Re-copy from `~/backups/` if lost.
-
 ## Key Rules
 
 1. Only `git checkout/pull` inside your package dir — never from workspace root
-2. Third-party packages (astra, YDLiDAR) are gitignored and separate
-3. All documentation changes go on the `main` branch only
+2. All documentation changes go on the `main` branch only

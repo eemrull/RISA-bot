@@ -54,7 +54,7 @@ graph LR
     SC -->|/cmd_vel| AD
 
     AD -->|/cmd_vel| ROBOT[Motors]
-    AD -->|/odom| ODOM[Odometry]
+    SC -->|/odom| ODOM[Odometry]
 ```
 
 ## Data Flow
@@ -93,11 +93,9 @@ RISA-bot/src/
 │   │   └── competition.launch.py ← Test branch launcher (all nodes)
 │   └── config/
 │       └── ydlidar.yaml
-├── control_servo/             ← Joystick controller
-│   ├── control_servo/
-│   │   └── servo_controller.py   ← OLD: basic servo-only (not used)
-│   └── servo_controller/
-│       └── servo_controller.py   ← ACTIVE: mode toggle + manual driving
+├── control_servo/             ← Joystick + hardware interface
+│   └── control_servo/
+│       └── servo_controller.py   ← Mode toggle, manual driving, hardware odometry
 ├── obstacle_avoidance/        ← LiDAR front obstacle detection
 ├── obstacle_avoidance_camera/ ← Camera obstacle detection
 ├── ros2_astra_camera/         ← Camera driver (third-party)
