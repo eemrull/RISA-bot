@@ -1,7 +1,5 @@
 # RISA-Bot Odometry Guide
 
-**Prepared for Dr. Zul (Roboteam)**
-
 This guide explains how Odometry (Distance and Position tracking) is implemented on the RISA-Bot in ROS 2. We use two methods:
 
 1. **Hardware Odometry (Active):** Reads physical encoder ticks from the Rosmaster motor board.
