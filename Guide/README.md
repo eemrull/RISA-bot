@@ -2,7 +2,7 @@
 
 Quick reference documentation for operating and tuning the robot.
 
-![Competition Course Layout](competition_layout.jpeg)
+![Competition Course Layout](competition_layout_overview.jpeg)
 
 ## Contents
 
