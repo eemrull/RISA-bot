@@ -253,10 +253,9 @@ class ServoControllerV9(Node):
         self.prev_axes = list(msg.axes)
 
     def cmd_vel_auto_callback(self, msg):
-        if not self.manual_mode: self.process_twist(msg)
-
-    def cmd_vel_auto_callback(self, msg):
-        if not self.manual_mode: self.process_twist(msg)
+        """Forward auto commands to hardware when in auto mode."""
+        if not self.manual_mode:
+            self.process_twist(msg)
 
     def process_twist(self, msg):
         """Convert Twist message to hardware PWM + servo angle."""
@@ -295,8 +294,8 @@ class ServoControllerV9(Node):
                 self.sent_motor_val = self.target_motor_val
                 self.sent_servo_val = self.target_servo_val
                 self.last_hw_send_time = now
-            except Exception:
-                pass
+            except Exception as e:
+                self.get_logger().warn(f'Hardware send failed: {e}')
 
     def _encoder_read_loop(self):
         """Read hardware encoders and compute/publish /odom"""

@@ -23,6 +23,10 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     # --- Package paths ---
     astra_pkg = get_package_share_directory('astra_camera')
+    risabot_pkg = get_package_share_directory('risabot_automode')
+
+    # Centralized parameter file for all risabot nodes
+    params_file = os.path.join(risabot_pkg, 'config', 'params.yaml')
 
     # --- Serial port mapping ---
     lidar_port = '/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0'
@@ -76,7 +80,8 @@ def generate_launch_description():
             package='obstacle_avoidance',
             executable='obstacle_avoidance',
             name='obstacle_avoidance_node',
-            output='screen'
+            output='screen',
+            parameters=[params_file]
         ),
 
         # E. Camera obstacle detection (existing)
@@ -84,7 +89,8 @@ def generate_launch_description():
             package='obstacle_avoidance_camera',
             executable='obstacle_avoidance_camera',
             name='obstacle_avoidance_camera',
-            output='screen'
+            output='screen',
+            parameters=[params_file]
         ),
 
         # F. Line follower camera (existing)
@@ -92,7 +98,8 @@ def generate_launch_description():
             package='risabot_automode',
             executable='line_follower_camera',
             name='line_follower_camera',
-            output='screen'
+            output='screen',
+            parameters=[params_file]
         ),
 
         # G. Traffic light detector (NEW)
@@ -100,7 +107,8 @@ def generate_launch_description():
             package='risabot_automode',
             executable='traffic_light_detector',
             name='traffic_light_detector',
-            output='screen'
+            output='screen',
+            parameters=[params_file]
         ),
 
         # H. Boom gate detector (NEW)
@@ -108,7 +116,8 @@ def generate_launch_description():
             package='risabot_automode',
             executable='boom_gate_detector',
             name='boom_gate_detector',
-            output='screen'
+            output='screen',
+            parameters=[params_file]
         ),
 
         # I. Tunnel wall follower (NEW)
@@ -116,7 +125,8 @@ def generate_launch_description():
             package='risabot_automode',
             executable='tunnel_wall_follower',
             name='tunnel_wall_follower',
-            output='screen'
+            output='screen',
+            parameters=[params_file]
         ),
 
         # J. Obstruction avoidance (NEW)
@@ -124,7 +134,8 @@ def generate_launch_description():
             package='risabot_automode',
             executable='obstruction_avoidance',
             name='obstruction_avoidance',
-            output='screen'
+            output='screen',
+            parameters=[params_file]
         ),
 
         # K. Parking controller (NEW)
@@ -132,7 +143,8 @@ def generate_launch_description():
             package='risabot_automode',
             executable='parking_controller',
             name='parking_controller',
-            output='screen'
+            output='screen',
+            parameters=[params_file]
         ),
 
         # ==================== CONTROL ====================
@@ -145,7 +157,8 @@ def generate_launch_description():
                     package='risabot_automode',
                     executable='auto_driver',
                     name='auto_driver',
-                    output='screen'
+                    output='screen',
+                    parameters=[params_file]
                 )
             ]
         ),
@@ -169,6 +182,7 @@ def generate_launch_description():
             package='risabot_automode',
             executable='dashboard',
             name='dashboard',
-            output='screen'
+            output='screen',
+            parameters=[params_file]
         ),
     ])

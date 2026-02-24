@@ -220,7 +220,9 @@ class AutoDriver(Node):
         """Manual state override: ros2 topic pub /set_challenge std_msgs/String 'data: TUNNEL'"""
         try:
             new_state = ChallengeState[msg.data.upper()]
-            self._transition_to(new_state)
+            if self.state != new_state:
+                self.get_logger().info(f'🔄 Manual override: {self.state.name} → {new_state.name}')
+                self.state = new_state
         except KeyError:
             self.get_logger().error(f'Unknown challenge: {msg.data}')
 

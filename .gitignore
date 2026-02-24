@@ -4,3 +4,8 @@ log/
 .vscode/
 **/*.pyc
 __pycache__/
+*.egg-info/
+dist/
+.eggs/
+*.DS_Store
+FYP2_README.md

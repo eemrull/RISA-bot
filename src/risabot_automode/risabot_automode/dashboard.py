@@ -412,12 +412,11 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                     while True:
                         jpeg1 = _node_ref.get_jpeg()
                         if jpeg1:
-                            self.wfile.write(b'--frame\r\n')
-                            self.send_header('Content-Type', 'image/jpeg')
-                            self.send_header('Content-Length', str(len(jpeg1)))
-                            self.end_headers()
-                            self.wfile.write(jpeg1)
-                            self.wfile.write(b'\r\n')
+                            frame = (b'--frame\r\n'
+                                     b'Content-Type: image/jpeg\r\n'
+                                     b'Content-Length: ' + str(len(jpeg1)).encode() + b'\r\n'
+                                     b'\r\n' + jpeg1 + b'\r\n')
+                            self.wfile.write(frame)
                         time.sleep(0.05)
                 except Exception:
                     pass
@@ -430,6 +429,9 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             view = qs.get('view', ['raw'])[0]
             if _node_ref:
                 _node_ref.active_camera_view = view
+                # Clear stale frame buffer so the new view starts fresh
+                with _node_ref.jpeg_lock:
+                    _node_ref.latest_jpeg = None
             
             # Auto-toggle show_debug for performance 
             def auto_toggle_debug(selected_view):

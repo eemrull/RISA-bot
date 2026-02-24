@@ -1,0 +1,123 @@
+# ============================================================
+# RISA-Bot Centralized Parameters
+# All tunable parameters in one place for easy competition-day tuning.
+# Load via launch file: parameters=[params_file]
+# ============================================================
+
+# --- Auto Driver (brain) ---
+auto_driver:
+  ros__parameters:
+    steering_gain: 1.0
+    forward_speed: 0.12
+    stale_timeout: 3.0
+    dist_lap_complete: 1.0
+    enable_subsumption_obstacle: false
+
+# --- Line Follower Camera ---
+line_follower_camera:
+  ros__parameters:
+    smoothing_alpha: 0.3
+    dead_zone: 0.08
+    white_threshold: 150
+    crop_ratio: 0.4
+    show_debug: false
+
+# --- Traffic Light Detector ---
+traffic_light_detector:
+  ros__parameters:
+    red_h_low1: 0
+    red_h_high1: 10
+    red_h_low2: 170
+    red_h_high2: 180
+    red_s_low: 100
+    red_s_high: 255
+    red_v_low: 100
+    red_v_high: 255
+    yellow_h_low: 20
+    yellow_h_high: 35
+    yellow_s_low: 100
+    yellow_s_high: 255
+    yellow_v_low: 100
+    yellow_v_high: 255
+    green_h_low: 40
+    green_h_high: 90
+    green_s_low: 60
+    green_s_high: 255
+    green_v_low: 60
+    green_v_high: 255
+    show_debug: false
+
+# --- Boom Gate Detector ---
+boom_gate_detector:
+  ros__parameters:
+    min_detect_dist: 0.15
+    max_detect_dist: 0.80
+    angle_window: 0.35
+    min_gate_points: 5
+    distance_variance_max: 0.05
+    lidar_angle_offset: 1.5708
+    hysteresis: 3
+
+# --- Tunnel Wall Follower ---
+tunnel_wall_follower:
+  ros__parameters:
+    target_center_dist: 0.0
+    forward_speed: 0.15
+    kp: 1.2
+    kd: 0.3
+    max_angular: 0.8
+    left_angle_min: 0.52
+    left_angle_max: 1.57
+    right_angle_min: -1.57
+    right_angle_max: -0.52
+    lidar_angle_offset: 1.5708
+    min_wall_points: 3
+    max_wall_dist: 0.60
+
+# --- Obstruction Avoidance ---
+obstruction_avoidance:
+  ros__parameters:
+    detect_dist: 0.50
+    clear_dist: 0.60
+    front_angle: 0.35
+    side_angle_min: 0.35
+    side_angle_max: 1.20
+    steer_speed: 0.10
+    steer_angular: 0.6
+    pass_speed: 0.15
+    pass_duration: 2.0
+    steer_back_duration: 1.5
+    steer_away_duration: 1.0
+    lidar_angle_offset: 1.5708
+
+# --- Parking Controller ---
+parking_controller:
+  ros__parameters:
+    parallel_forward_dist: 0.30
+    parallel_steer_angle: 0.8
+    parallel_steer_dist: 0.25
+    parallel_wait_time: 3.0
+    perp_turn_angle: 1.57
+    perp_forward_dist: 0.40
+    perp_wait_time: 3.0
+
+# --- Camera Obstacle Detection ---
+obstacle_avoidance_camera:
+  ros__parameters:
+    edge_threshold: 0.02
+    canny_low: 50
+    canny_high: 150
+    blur_kernel: 5
+    hysteresis_on: 3
+    hysteresis_off: 5
+    show_debug: false
+
+# --- LiDAR Obstacle Detection ---
+obstacle_avoidance_node:
+  ros__parameters:
+    min_obstacle_distance: 0.48
+
+# --- Dashboard ---
+dashboard:
+  ros__parameters:
+    use_hw_odom: false

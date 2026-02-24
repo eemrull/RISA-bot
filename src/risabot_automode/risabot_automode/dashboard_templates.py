@@ -18,10 +18,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     --surface2: #ccd0da;
     --text: #4c4f69;
     --accent: #1e66f5; /* Sapphire */
+    --accent2: rgba(30, 102, 245, 0.12);
     --danger: #d20f39; /* Red */
     --success: #40a02b; /* Green */
     --warning: #df8e1d; /* Yellow */
     --muted: #8c8fa1;
+    --card: #e6e9ef;
+    --card-border: rgba(0, 0, 0, 0.06);
     --radius: 16px;
     --glow: rgba(30, 102, 245, 0.15);
   }
@@ -1210,13 +1213,21 @@ function toggleCam() {
     off.style.display = 'none';
     img.style.display = 'block';
     img.src = '/camera_feed?' + new Date().getTime();
+    // Trigger auto_toggle_debug on initial enable (default view is 'raw')
+    fetch('/api/set_cam_view?view=raw');
   }
 }
 
 function setCamView(view, btn) {
   document.querySelectorAll('.cam-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  fetch('/api/set_cam_view?view=' + encodeURIComponent(view));
+  fetch('/api/set_cam_view?view=' + encodeURIComponent(view)).then(() => {
+    // Reload MJPEG stream to pick up the new view immediately
+    const img = document.getElementById('camImg');
+    if (img && img.style.display !== 'none') {
+      img.src = '/camera_feed?' + Date.now();
+    }
+  });
 }
 
 let last_data_time = 0;
