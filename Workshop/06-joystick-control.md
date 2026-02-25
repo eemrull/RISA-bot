@@ -3,6 +3,7 @@
 ## Learning Objectives
 
 By the end of this module, you will:
+
 - Read joystick data from the `/joy` topic
 - Map joystick axes to robot movement
 - Understand the `Twist` message format for motor control
@@ -126,8 +127,9 @@ Add to `setup.py` entry_points:
 ```
 
 ```bash
-colcon build --packages-select my_first_pkg
-source install/setup.bash
+cd ~/risabotcar_ws
+cbp my_first_pkg
+sos
 ```
 
 ### Run it
@@ -150,6 +152,7 @@ Move the left stick — you should see `/cmd_vel` values change!
 ## How RISA-bot Does It
 
 The real servo controller (`control_servo`) does the same thing but adds:
+
 - Gear shifting (D-pad changes speed limits)
 - Auto/manual toggle (Start button)
 - Challenge state cycling (LB/RB)

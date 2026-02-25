@@ -3,6 +3,7 @@
 ## Learning Objectives
 
 By the end of this module, you will:
+
 - Create a ROS 2 Python package from scratch
 - Write a simple node that runs and prints output
 - Understand `setup.py`, `package.xml`, and entry points
@@ -114,15 +115,15 @@ entry_points={
 
 ```bash
 cd ~/risabotcar_ws
-colcon build --packages-select my_first_pkg
-source install/setup.bash
+cbp my_first_pkg
+sos
 
 ros2 run my_first_pkg hello_node
 ```
 
 You should see:
 
-```
+```text
 [INFO] [hello_node]: Hello Node started!
 [INFO] [hello_node]: Hello #1 from RISA-bot!
 [INFO] [hello_node]: Hello #2 from RISA-bot!

@@ -3,6 +3,7 @@
 ## Learning Objectives
 
 By the end of this module, you will:
+
 - Understand why launch files exist
 - Write a Python launch file that starts multiple nodes
 - Pass parameters to nodes via launch files
@@ -83,8 +84,8 @@ data_files=[
 
 ```bash
 cd ~/risabotcar_ws
-colcon build --packages-select my_first_pkg
-source install/setup.bash
+cbp my_first_pkg
+sos
 
 ros2 launch my_first_pkg demo.launch.py
 ```

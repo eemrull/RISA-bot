@@ -3,6 +3,7 @@
 ## Learning Objectives
 
 By the end of this module, you will:
+
 - Understand what ROS 2 is and why robots use it
 - Know the key concepts: nodes, topics, messages, services
 - Set up and build a ROS 2 workspace
@@ -13,18 +14,19 @@ By the end of this module, you will:
 **ROS** (Robot Operating System) is not an operating system — it's a **framework** that helps robot software components talk to each other.
 
 Think of it like a messaging system:
+
 - Each piece of your robot (camera, motor, AI brain) runs as a **separate program** called a **node**
 - Nodes communicate by sending **messages** through named channels called **topics**
 - This modular design means you can develop, test, and replace parts independently
 
 ### Why ROS 2?
 
-| Without ROS | With ROS |
-|---|---|
-| One giant program does everything | Each function is a separate node |
+| Without ROS                        | With ROS                             |
+| ---------------------------------- | ------------------------------------ |
+| One giant program does everything  | Each function is a separate node     |
 | Change one thing, break everything | Change one node, others keep working |
-| Hard to reuse code across robots | Packages can be shared and reused |
-| Must write your own communication | Built-in messaging system |
+| Hard to reuse code across robots   | Packages can be shared and reused    |
+| Must write your own communication  | Built-in messaging system            |
 
 ## Key Concepts
 
@@ -35,13 +37,13 @@ Think of it like a messaging system:
 └──────────┘                     └──────────┘
 ```
 
-| Concept | What It Is | Example on RISA-bot |
-|---|---|---|
-| **Node** | A running program | `line_follower_camera` |
-| **Topic** | A named message channel | `/lane_error` |
-| **Message** | Data sent on a topic | `Float32` (a number like 0.15) |
-| **Package** | A folder of related nodes | `risabot_automode` |
-| **Workspace** | A folder containing packages | `~/risabotcar_ws` |
+| Concept       | What It Is                   | Example on RISA-bot            |
+| ------------- | ---------------------------- | ------------------------------ |
+| **Node**      | A running program            | `line_follower_camera`         |
+| **Topic**     | A named message channel      | `/lane_error`                  |
+| **Message**   | Data sent on a topic         | `Float32` (a number like 0.15) |
+| **Package**   | A folder of related nodes    | `risabot_automode`             |
+| **Workspace** | A folder containing packages | `~/risabotcar_ws`              |
 
 ## Hands-On: Your First ROS 2 Commands
 
@@ -64,14 +66,14 @@ ls src/
 
 ```bash
 cd ~/risabotcar_ws
-colcon build --symlink-install
-source install/setup.bash
+cb
+sos
 ```
 
 > **What just happened?**
-> - `colcon build` compiles all packages in `src/`
-> - `--symlink-install` lets you edit Python files without rebuilding
-> - `source install/setup.bash` tells your terminal where to find the built packages
+>
+> - `cb` compiles all packages in `src/` (alias for `colcon build --symlink-install`)
+> - `sos` adds the compiled packages to your environment (alias for `source install/setup.bash`)
 
 ### 4. Run a demo node
 
@@ -110,7 +112,7 @@ ros2 topic hz /chatter
 
 - ROS 2 is a framework for robot software communication
 - **Nodes** are programs, **topics** are channels, **messages** are data
-- `colcon build` compiles, `source install/setup.bash` loads packages
+- `cb` compiles, `sos` loads the environment
 - Nodes can start and stop independently — the system is resilient
 
 ---

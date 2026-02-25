@@ -3,6 +3,7 @@
 ## Learning Objectives
 
 By the end of this module, you will:
+
 - Understand what topics and messages are
 - Write a **publisher** node that sends data
 - Write a **subscriber** node that receives data
@@ -26,14 +27,14 @@ Publisher Node                              Subscriber Node
 
 ### Message Types
 
-| Type | Package | What It Holds | Used For |
-|---|---|---|---|
-| `Bool` | std_msgs | True / False | Obstacle detected? |
-| `Float32` | std_msgs | A decimal number | Lane error |
-| `String` | std_msgs | Text | Traffic light state |
-| `Twist` | geometry_msgs | Linear + angular velocity | Motor commands |
-| `LaserScan` | sensor_msgs | Array of distances | LiDAR data |
-| `Joy` | sensor_msgs | Buttons + axes | Joystick input |
+| Type        | Package       | What It Holds             | Used For            |
+| ----------- | ------------- | ------------------------- | ------------------- |
+| `Bool`      | std_msgs      | True / False              | Obstacle detected?  |
+| `Float32`   | std_msgs      | A decimal number          | Lane error          |
+| `String`    | std_msgs      | Text                      | Traffic light state |
+| `Twist`     | geometry_msgs | Linear + angular velocity | Motor commands      |
+| `LaserScan` | sensor_msgs   | Array of distances        | LiDAR data          |
+| `Joy`       | sensor_msgs   | Buttons + axes            | Joystick input      |
 
 ## Hands-On: Write a Publisher
 
@@ -132,8 +133,8 @@ Add to `setup.py` entry_points:
 
 ```bash
 cd ~/risabotcar_ws
-colcon build --packages-select my_first_pkg
-source install/setup.bash
+cbp my_first_pkg
+sos
 
 # Terminal 1
 ros2 run my_first_pkg number_publisher

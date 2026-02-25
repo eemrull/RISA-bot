@@ -3,6 +3,7 @@
 ## Learning Objectives
 
 By the end of this module, you will:
+
 - Combine multiple nodes into a working robot system
 - Create a launch file that starts everything
 - Understand how the RISA-bot's full system works
@@ -12,14 +13,15 @@ By the end of this module, you will:
 
 Over the previous modules, you've built individual pieces:
 
-| Module | What You Built | Topic |
-|---|---|---|
-| 3 | Publisher + Subscriber | `/my_number` |
-| 6 | Joystick driver | `/cmd_vel` |
-| 7 | Color detector | `/detected_color` |
-| 8 | Obstacle detector | `/my_obstacle` |
+| Module | What You Built         | Topic             |
+| ------ | ---------------------- | ----------------- |
+| 3      | Publisher + Subscriber | `/my_number`      |
+| 6      | Joystick driver        | `/cmd_vel`        |
+| 7      | Color detector         | `/detected_color` |
+| 8      | Obstacle detector      | `/my_obstacle`    |
 
 Now let's combine them into a **simple autonomous robot** that:
+
 1. Follows a lane (using camera)
 2. Stops when obstacle detected (using LiDAR)
 3. Can be overridden by joystick (manual mode)
@@ -175,8 +177,9 @@ def generate_launch_description():
 ## Run It
 
 ```bash
-colcon build --packages-select my_first_pkg
-source install/setup.bash
+cd ~/risabotcar_ws
+cbp my_first_pkg
+sos
 
 # Terminal 1: Sensors
 ros2 launch astra_camera astra_mini.launch.py
@@ -196,6 +199,7 @@ Press **Y** on the controller to toggle between manual and auto mode.
 ## Compare With RISA-bot
 
 Your `simple_brain` is a simplified version of `auto_driver.py`. The real one adds:
+
 - State machine for 9 different challenges
 - Multiple velocity sources (tunnel, parking, obstruction)
 - Distance-based state transitions
@@ -216,12 +220,12 @@ But the core pattern is the same: **subscribe to sensors → decide → publish 
 
 You've completed the workshop! Here's where to go from here:
 
-| Want to... | Read |
-|---|---|
-| Understand the competition system | [Guide/Test/](../Guide/Test/) |
-| Tune parameters on the course | [Guide/tuning_guide.md](../Guide/tuning_guide.md) |
-| See all available commands | [Guide/commands_reference.md](../Guide/commands_reference.md) |
-| Dive into challenge code | [Guide/challenges_breakdown.md](../Guide/challenges_breakdown.md) |
+| Want to...                        | Read                                                              |
+| --------------------------------- | ----------------------------------------------------------------- |
+| Understand the competition system | [Guide/Test/](../Guide/Test/)                                     |
+| Tune parameters on the course     | [Guide/tuning_guide.md](../Guide/tuning_guide.md)                 |
+| See all available commands        | [Guide/commands_reference.md](../Guide/commands_reference.md)     |
+| Dive into challenge code          | [Guide/challenges_breakdown.md](../Guide/challenges_breakdown.md) |
 
 ---
 

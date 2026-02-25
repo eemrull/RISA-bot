@@ -3,6 +3,7 @@
 ## Learning Objectives
 
 By the end of this module, you will:
+
 - Process LiDAR scan data to detect obstacles
 - Write a simple obstacle detection node
 - Understand how detection distance and angle affect behavior
@@ -102,24 +103,28 @@ if __name__ == '__main__':
 
 ### Register, build, run
 
-```python
+````python
 # In setup.py
 'obstacle_detector = my_first_pkg.obstacle_detector:main',
-```
-
 ```bash
-colcon build --packages-select my_first_pkg
-source install/setup.bash
+cd ~/risabotcar_ws
+cbp my_first_pkg
+sos
+````
 
-# Terminal 1: LiDAR
+### Terminal 1: LiDAR
+
 ros2 run ydlidar_ros2_driver ydlidar_ros2_driver_node
 
-# Terminal 2: Your detector
+### Terminal 2: Your detector
+
 ros2 run my_first_pkg obstacle_detector
 
-# Terminal 3: Watch
+### Terminal 3: Watch
+
 ros2 topic echo /my_obstacle
-```
+
+````
 
 Walk in front of the LiDAR — you should see `data: true` when you're closer than 0.4m!
 
@@ -143,7 +148,7 @@ def publish_velocity(self):
         twist.linear.x = self.desired_speed
         twist.angular.z = self.desired_turn
     self.cmd_pub.publish(twist)
-```
+````
 
 ## Tuning Parameters
 
@@ -155,10 +160,10 @@ ros2 param set /obstacle_detector min_distance 0.30
 ros2 param set /obstacle_detector scan_angle 45.0
 ```
 
-| Parameter | Effect of Increasing | Effect of Decreasing |
-|---|---|---|
-| `min_distance` | Detects earlier (safer) | Detects later (closer pass) |
-| `scan_angle` | Wider detection (safer) | Narrower (only straight ahead) |
+| Parameter      | Effect of Increasing    | Effect of Decreasing           |
+| -------------- | ----------------------- | ------------------------------ |
+| `min_distance` | Detects earlier (safer) | Detects later (closer pass)    |
+| `scan_angle`   | Wider detection (safer) | Narrower (only straight ahead) |
 
 ## How RISA-bot Does It
 

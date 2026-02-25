@@ -5,9 +5,9 @@ The `main` branch is for **individual node development and testing**.
 ## How to Run
 
 ```bash
-ssh risabot
-cd ~/risabotcar_ws/src/risabot_automode && git checkout main && git pull
-cd ~/risabotcar_ws && cb && sos
+cd ~/risabotcar_ws/src/RISA-bot
+git checkout main && gp
+cb && sos
 run_risabot
 ```
 

@@ -24,11 +24,11 @@ These are set up in `~/.bashrc` on the robot (user `sunrise`).
 
 ### Build Shortcuts
 
-| Alias       | What it does                                    |
-| ----------- | ----------------------------------------------- |
-| `cb`        | `colcon build --symlink-install` (full rebuild) |
-| `cbp <pkg>` | Build one package only (fastest)                |
-| `cbc`       | Clean build (deletes build/, install/, log/)    |
+| Alias       | What it does                                                                                                                                                                              |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cb`        | `colcon build --symlink-install` (standard full rebuild). Use this 95% of the time after changing Python/C++ files.                                                                       |
+| `cbp <pkg>` | Build one package only (fastest)                                                                                                                                                          |
+| `cbc`       | `rm -rf build install` + `colcon build` (clean rebuild). Use this **ONLY** when `cb` throws weird `CMake` or `ament_prefix_path` errors. It deletes cache and forces a fresh compilation. |
 
 ### Git Shortcuts
 
@@ -74,9 +74,9 @@ git add . && git commit -m "message" && git push
 
 # On the robot — pull and build
 ssh risabot
-cd ~/risabotcar_ws/src/risabot_automode
-git checkout test && git pull     # or: main
-cd ~/risabotcar_ws && cb && sos
+cd ~/risabotcar_ws/src/RISA-bot
+git checkout test && gp     # or: main
+cb && sos
 ```
 
 ---
