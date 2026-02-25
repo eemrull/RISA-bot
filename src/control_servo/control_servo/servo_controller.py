@@ -51,6 +51,8 @@ class ServoControllerV9(Node):
         self.bot = None
         try:
             self.bot = Rosmaster()
+            self.bot.create_receive_threading()
+            
             self.bot.set_motor(0, 0, 0, 0)
             self.bot.set_pwm_servo(SERVO_STEER_ID, SERVO_CENTER)
             self.get_logger().info("✅ Rosmaster Connected (V9 Competition)")
