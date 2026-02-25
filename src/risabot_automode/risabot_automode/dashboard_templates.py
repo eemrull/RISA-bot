@@ -1337,6 +1337,9 @@ function update() {
       // Odom
       document.getElementById('odomDist').textContent = d.distance.toFixed(2);
       document.getElementById('odomSpeed').textContent = d.speed.toFixed(3)+' m/s';
+      document.getElementById('odomX').textContent = (d.odom_x || 0).toFixed(2) + ' m';
+      document.getElementById('odomY').textContent = (d.odom_y || 0).toFixed(2) + ' m';
+      document.getElementById('odomYaw').textContent = ((d.odom_yaw || 0) * 180 / Math.PI).toFixed(1) + '°';
 
       // Speed & Selector
       document.getElementById('speedPct').textContent = d.speed_pct+'%';
@@ -1779,12 +1782,10 @@ function update() {
       const mb = document.getElementById('modeBadge');
       mb.textContent = d.auto_mode ? 'AUTO MODE' : 'MANUAL MODE';
       mb.className = 'badge ' + (d.auto_mode ? 'auto' : 'manual');
-            // --- Odom ---
-          document.getElementById('odomSpeed').textContent = d.speed.toFixed(3) + ' m/s';
-          document.getElementById('odomDist').textContent = d.distance.toFixed(2);
-          document.getElementById('odomX').textContent = d.odom_x.toFixed(2) + ' m';
-          document.getElementById('odomY').textContent = d.odom_y.toFixed(2) + ' m';
-          document.getElementById('odomYaw').textContent = (d.odom_yaw * 180 / Math.PI).toFixed(1) + '°';
+      
+      // Odom
+      document.getElementById('odomDist').textContent = d.distance.toFixed(2);
+      document.getElementById('odomSpeed').textContent = d.speed.toFixed(3);
       
       // Steering
       const err = d.lane_error;
