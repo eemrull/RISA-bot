@@ -60,3 +60,40 @@ A utility script used to place the robot into an automatic run state upon boot.
 cd ~/risabotcar_ws
 sudo bash tools/setup_autostart.sh
 ```
+
+---
+
+### 4. `setup_mdns.sh`
+
+A one-time setup script to enable mDNS (Avahi) access to the RISA-bot.
+
+**What it does:**
+
+- Installs `avahi-daemon` if it is not already present.
+- Changes the system hostname to `risabot` so it can be resolved on the local network.
+- Restarts the daemon so that any device on the same WiFi network can access the dashboard via `http://risabot.local:8080`.
+
+**Usage:**
+
+```bash
+cd ~/risabotcar_ws
+bash tools/setup_mdns.sh
+```
+
+---
+
+### 5. `setup_wifi.sh`
+
+A utility to pre-configure the robot to automatically connect to a known WiFi network (like a phone hotspot) on boot, making it fully headless.
+
+**What it does:**
+
+- Authenticates and saves the provided SSID and Password to the robot's network manager (`nmcli` or `wpa_supplicant`).
+- Sets the connection priority so the robot auto-connects to this network whenever it is in range.
+- Also runs the mDNS setup automatically so `risabot.local` works over the new network.
+
+**Usage:**
+
+```bash
+sudo bash tools/setup_wifi.sh "DR_HOTSPOT_NAME" "HOTSPOT_PASSWORD"
+```
