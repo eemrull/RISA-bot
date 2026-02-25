@@ -12,6 +12,10 @@
 
 #pragma once
 #include <functional>
+#include <vector>
+#include <string>
+#include <ostream>
+#include <cstdint>
 
 #include <rclcpp/rclcpp.hpp>
 #include <Eigen/Dense>
@@ -29,12 +33,6 @@
 #include "dynamic_params.h"
 
 namespace astra_camera {
-
-bool operator==(const openni::VideoMode& lhs, const openni::VideoMode& rhs);
-
-bool operator!=(const openni::VideoMode& lhs, const openni::VideoMode& rhs);
-
-std::ostream& operator<<(std::ostream& os, const openni::VideoMode& video_mode);
 
 tf2::Quaternion rotationMatrixToQuaternion(const float rotation[9]);
 
