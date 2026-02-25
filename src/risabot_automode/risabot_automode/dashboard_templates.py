@@ -1022,11 +1022,11 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <!-- Odometry -->
     <div class="card">
       <h3>Odometry</h3>
-      <div class="odom-big"><span id="odomDist">0.00</span><span class="odom-unit">m</span></div>
-      <div class="s-row" style="margin-top:6px;">
-        <span class="s-label">Speed</span>
-        <span class="s-val" id="odomSpeed">0.000 m/s</span>
-      </div>
+      <div class="s-row"><span class="s-label">Total Dist</span><span class="s-val" style="font-weight:bold;"><span id="odomDist">0.00</span> m</span></div>
+      <div class="s-row"><span class="s-label">Speed</span><span class="s-val" id="odomSpeed">0.000 m/s</span></div>
+      <div class="s-row"><span class="s-label">Pos X</span><span class="s-val" id="odomX">0.00 m</span></div>
+      <div class="s-row"><span class="s-label">Pos Y</span><span class="s-val" id="odomY">0.00 m</span></div>
+      <div class="s-row"><span class="s-label">Heading</span><span class="s-val" id="odomYaw">0°</span></div>
     </div>
 
     <!-- Controller -->
@@ -1778,10 +1778,12 @@ function update() {
       const mb = document.getElementById('modeBadge');
       mb.textContent = d.auto_mode ? 'AUTO MODE' : 'MANUAL MODE';
       mb.className = 'badge ' + (d.auto_mode ? 'auto' : 'manual');
-      
-      // Odom
-      document.getElementById('odomDist').textContent = d.distance.toFixed(2);
-      document.getElementById('odomSpeed').textContent = d.speed.toFixed(3);
+            // --- Odom ---
+          document.getElementById('odomSpeed').textContent = d.speed.toFixed(3) + ' m/s';
+          document.getElementById('odomDist').textContent = d.distance.toFixed(2);
+          document.getElementById('odomX').textContent = d.odom_x.toFixed(2) + ' m';
+          document.getElementById('odomY').textContent = d.odom_y.toFixed(2) + ' m';
+          document.getElementById('odomYaw').textContent = (d.odom_yaw * 180 / Math.PI).toFixed(1) + '°';
       
       // Steering
       const err = d.lane_error;
