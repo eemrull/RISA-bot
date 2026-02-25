@@ -10,3 +10,4 @@ dist/
 *.DS_Store
 FYP2_README.md
 /src/ros2_astra_camera/COLCON_IGNORE
+/src/ydlidar_ros2_driver/COLCON_IGNORE

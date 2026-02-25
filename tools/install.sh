@@ -192,7 +192,8 @@ echo "✅ Workspace built successfully!"
 
 echo "  -> Adding COLCON_IGNORE to core C++ packages to speed up future builds..."
 touch "$SRC_DIR/ros2_astra_camera/COLCON_IGNORE"
-echo "✅ Added COLCON_IGNORE to ros2_astra_camera"
+touch "$SRC_DIR/ydlidar_ros2_driver/COLCON_IGNORE"
+echo "✅ Added COLCON_IGNORE to ros2_astra_camera and ydlidar_ros2_driver"
 sleep 1
 
 echo ""
