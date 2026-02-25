@@ -1,12 +1,12 @@
 #!/bin/bash
 # ============================================================
 # RISA-Bot Fresh Installation Script
-# Automates the setup of a new robot from a fresh clone.
-# All third-party dependencies are included in the repo.
+# This script automates the setup of a new robot, including
+# udev rules, building 3rd-party dependencies, and colcon build.
 #
-# Usage (run on the robot after cloning):
-#   cd ~/risabotcar_ws
-#   bash tools/install.sh
+# Usage:
+#   cd ~/risabot_ws
+#   bash tools/install.sh [path_to_backups_folder]
 # ============================================================
 
 set -e # Exit on error
@@ -15,25 +15,49 @@ echo "============================================================"
 echo "🤖 RISA-Bot Fresh Installation Script"
 echo "============================================================"
 
-WS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# Default backup path is ~/backups unless specified
+BACKUP_DIR=${1:-"$HOME/backups"}
+WS_DIR="$HOME/risabot_ws"
 SRC_DIR="$WS_DIR/src"
 
-echo "[1/6] Initial Checks..."
-if [ ! -d "$SRC_DIR/risabot_automode" ] && [ ! -d "$SRC_DIR/control_servo" ]; then
-    echo "❌ ERROR: Cannot find RISA-bot source packages."
-    echo "Make sure you run this from the workspace root: bash tools/install.sh"
+echo "[1/8] Initial Checks..."
+if [ ! -d "$BACKUP_DIR" ]; then
+    echo "❌ ERROR: Backup directory not found at: $BACKUP_DIR"
+    echo "Please copy the 4 modified dependency folders to this location first:"
+    echo "  - ros2_astra_camera"
+    echo "  - openni2_redist"
+    echo "  - ydlidar_ros2_driver"
+    echo "  - YDLidar-SDK"
+    echo "Usage: bash tools/install.sh /path/to/backups"
     exit 1
 fi
 
-if [ ! -d "$SRC_DIR/YDLidar-SDK" ]; then
-    echo "❌ ERROR: YDLidar-SDK not found. Did the clone complete properly?"
+if [ ! -d "$SRC_DIR/RISA-bot" ] && [ ! -d "$SRC_DIR/risabot_automode" ]; then
+    echo "❌ ERROR: Run this script from the workspace root (e.g. ~/risabot_ws)"
     exit 1
 fi
-echo "✅ Workspace found at $WS_DIR"
+
+echo "✅ Backup directory found at $BACKUP_DIR"
 sleep 1
 
 echo ""
-echo "[2/6] Setting up udev rules..."
+echo "[2/8] Copying 3rd-party dependencies..."
+# Copy the modified packages into the workspace src directory
+cp -r "$BACKUP_DIR/ros2_astra_camera" "$SRC_DIR/" 2>/dev/null || echo "⚠️  ros2_astra_camera not found in backup (maybe already copied?)"
+cp -r "$BACKUP_DIR/ydlidar_ros2_driver" "$SRC_DIR/" 2>/dev/null || echo "⚠️  ydlidar_ros2_driver not found in backup"
+cp -r "$BACKUP_DIR/YDLidar-SDK" "$SRC_DIR/" 2>/dev/null || echo "⚠️  YDLidar-SDK not found in backup"
+
+# Orbbec requires openni2_redist inside its folder
+if [ -d "$BACKUP_DIR/openni2_redist" ]; then
+    cp -r "$BACKUP_DIR/openni2_redist" "$SRC_DIR/ros2_astra_camera/astra_camera/"
+    echo "✅ Copied openni2_redist"
+fi
+echo "✅ Dependencies copied"
+sleep 1
+
+echo ""
+echo "[3/8] Setting up udev rules..."
+# Request sudo once
 sudo -v
 
 # YDLidar Rules
@@ -49,24 +73,21 @@ if [ -f "$SRC_DIR/ros2_astra_camera/astra_camera/scripts/56-orbbec-usb.rules" ];
     echo "✅ Copied 56-orbbec-usb.rules"
 fi
 
-sudo udevadm control --reload-rules
-sudo udevadm trigger
+sudo service udev reload
+sudo service udev restart
 sudo usermod -a -G dialout $USER
 sudo usermod -a -G video $USER
 echo "✅ Udev rules applied. (Note: group changes require logout/login to fully apply)"
 sleep 1
 
 echo ""
-echo "[3/6] Sourcing ROS 2 Environment..."
-if [ -f "/opt/tros/humble/setup.bash" ]; then
-    echo "✅ Found Horizon TROS Humble"
-    source /opt/tros/humble/setup.bash
+echo "[4/8] Sourcing ROS 2 Environment..."
+if [ -f "/opt/ros/humble/setup.bash" ]; then
+    echo "✅ Found standard ROS 2 Humble"
+    source /opt/ros/humble/setup.bash
 elif [ -f "/opt/tros/setup.bash" ]; then
     echo "✅ Found Horizon TROS"
     source /opt/tros/setup.bash
-elif [ -f "/opt/ros/humble/setup.bash" ]; then
-    echo "✅ Found standard ROS 2 Humble"
-    source /opt/ros/humble/setup.bash
 else
     echo "❌ ERROR: Neither /opt/ros/humble nor /opt/tros setups were found!"
     exit 1
@@ -74,7 +95,37 @@ fi
 sleep 1
 
 echo ""
-echo "[4/6] Building YDLidar-SDK..."
+echo "[5/8] Installing system dependencies and pulling LFS..."
+echo "  -> Adding ROS 2 keys and repositories..."
+sudo apt update
+sudo apt install -y software-properties-common curl
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+
+echo "  -> Installing APT dependencies..."
+sudo apt update
+sudo apt install -y git-lfs libgflags-dev ros-$ROS_DISTRO-image-geometry \
+    ros-$ROS_DISTRO-camera-info-manager ros-$ROS_DISTRO-image-transport \
+    ros-$ROS_DISTRO-image-publisher libgoogle-glog-dev libusb-1.0-0-dev \
+    libeigen3-dev ros-$ROS_DISTRO-magic-enum
+
+echo "  -> Setting up Git LFS and pulling..."
+if [ -d "$SRC_DIR/RISA-bot" ]; then
+    cd "$SRC_DIR/RISA-bot"
+    git lfs install
+    git lfs pull
+elif [ -d "$SRC_DIR/risabot_automode" ]; then
+    cd "$SRC_DIR/risabot_automode"
+    git lfs install
+    git lfs pull
+fi
+
+cd "$WS_DIR"
+echo "✅ System dependencies installed and Git LFS pulled."
+sleep 1
+
+echo ""
+echo "[6/8] Building YDLidar-SDK..."
 if [ -d "$SRC_DIR/YDLidar-SDK" ]; then
     cd "$SRC_DIR/YDLidar-SDK"
     mkdir -p build
@@ -90,7 +141,7 @@ fi
 sleep 1
 
 echo ""
-echo "[5/6] Building ROS 2 Workspace..."
+echo "[7/8] Building ROS 2 Workspace..."
 cd "$WS_DIR"
 echo "  -> Installing rosdep dependencies..."
 sudo apt update
@@ -103,9 +154,9 @@ echo "✅ Workspace built successfully!"
 sleep 1
 
 echo ""
-echo "[6/6] Sourcing workspace into ~/.bashrc..."
-if ! grep -q "risabotcar_ws/install/setup.bash" ~/.bashrc; then
-    echo "source ~/risabotcar_ws/install/setup.bash" >> ~/.bashrc
+echo "[8/8] Sourcing workspace into ~/.bashrc..."
+if ! grep -q "risabot_ws/install/setup.bash" ~/.bashrc; then
+    echo "source ~/risabot_ws/install/setup.bash" >> ~/.bashrc
     echo "✅ Added workspace source to ~/.bashrc"
 else
     echo "✅ Workspace already sourced in ~/.bashrc"
@@ -116,6 +167,6 @@ echo "============================================================"
 echo "🎉 INSTALLATION COMPLETE! 🎉"
 echo "============================================================"
 echo "Next steps:"
-echo "1. REBOOT to apply udev rules and group permissions."
-echo "2. (Optional) Run 'sudo bash tools/setup_autostart.sh' for auto-launch on boot."
+echo "1. Run 'bash tools/setup_autostart.sh' if you want the robot to launch on boot."
+echo "2. REBOOT YOUR ROBOT to apply udev rules and group permissions!"
 echo "============================================================"
