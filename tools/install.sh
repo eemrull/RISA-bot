@@ -117,10 +117,28 @@ sudo apt update
 sudo apt install -y git-lfs libgflags-dev ros-$ROS_DISTRO-image-geometry \
     ros-$ROS_DISTRO-camera-info-manager ros-$ROS_DISTRO-image-transport \
     ros-$ROS_DISTRO-image-publisher libgoogle-glog-dev libusb-1.0-0-dev \
-    libeigen3-dev ros-$ROS_DISTRO-magic-enum
+    libeigen3-dev ros-$ROS_DISTRO-magic-enum python3-pip
+
+echo "  -> Installing Python PIP dependencies (Rosmaster_Lib)..."
+if [ -d "$WS_DIR/tools/rosmaster_lib" ]; then
+    cd "$WS_DIR/tools/rosmaster_lib"
+    sudo python3 setup.py install
+    cd "$WS_DIR"
+elif [ -d "$SRC_DIR/RISA-bot/tools/rosmaster_lib" ]; then
+    cd "$SRC_DIR/RISA-bot/tools/rosmaster_lib"
+    sudo python3 setup.py install
+    cd "$WS_DIR"
+else
+    echo "⚠️  rosmaster_lib folder not found. Attempting pip install..."
+    pip3 install Rosmaster_Lib || pip3 install --break-system-packages Rosmaster_Lib || true
+fi
 
 echo "  -> Setting up Git LFS and pulling..."
-if [ -d "$SRC_DIR/RISA-bot" ]; then
+if [ -d "$WS_DIR/.git" ]; then
+    cd "$WS_DIR"
+    git lfs install
+    git lfs pull
+elif [ -d "$SRC_DIR/RISA-bot" ]; then
     cd "$SRC_DIR/RISA-bot"
     git lfs install
     git lfs pull

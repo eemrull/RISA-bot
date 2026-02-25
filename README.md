@@ -27,9 +27,7 @@ For setting up a **new robot** (RDK X5 / Ubuntu 22.04 / ROS 2 Humble or TROS):
 
 ```bash
 # 1. Create workspace and clone (includes all dependencies)
-mkdir -p ~/risabotcar_ws/src
-cd ~/risabotcar_ws/src
-git clone https://github.com/eemrull/RISA-bot.git .
+git clone https://github.com/eemrull/RISA-bot.git ~/risabotcar_ws
 
 # 2. Run the automated installer
 cd ~/risabotcar_ws
