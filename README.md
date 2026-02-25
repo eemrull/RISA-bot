@@ -73,6 +73,24 @@ ros2 launch risabot_automode bringup.launch.py       # refactor-test branch
 
 ---
 
+## ⚡ Speeding up `colcon build`
+
+After your first successful full build on the robot, the C++ packages (like `ros2_astra_camera`) do not need to be rebuilt unless you update their source code. You can tell `colcon` to ignore them to vastly speed up your build times when working on Python nodes.
+
+The `tools/install.sh` script does this automatically. If you ever need to do it manually or revert it:
+
+```bash
+# Ignore the package (fast builds)
+touch ~/risabotcar_ws/src/ros2_astra_camera/COLCON_IGNORE
+
+# Re-enable the package (slow builds)
+rm ~/risabotcar_ws/src/ros2_astra_camera/COLCON_IGNORE
+```
+
+> **Note:** `rosmaster_lib` does not build with `colcon` at all (it installs via `pip`/`setup.py`), so it is naturally ignored and adds zero time to your `colcon build`.
+
+---
+
 ## 📖 Guide
 
 Detailed documentation is in the [Guide/](Guide/) folder:
