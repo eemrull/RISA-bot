@@ -299,6 +299,12 @@ class DashboardNode(Node):
         with self.data_lock:
             d = dict(self.data)
         d['state_time'] = int(time.time() - self._state_entry_time)
+        
+        # Ensure odometry types are standard python floats for JSON serialization
+        for k in ['distance', 'speed', 'odom_x', 'odom_y', 'odom_yaw']:
+            if k in d and d[k] is not None:
+                d[k] = float(d[k])
+                
         return json.dumps(d)
 
     def get_jpeg(self):
