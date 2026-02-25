@@ -33,7 +33,7 @@ if [ ! -d "$BACKUP_DIR" ]; then
 fi
 
 if [ ! -d "$SRC_DIR/RISA-bot" ] && [ ! -d "$SRC_DIR/risabot_automode" ]; then
-    echo "❌ ERROR: Run this script from the workspace root (e.g. ~/risabot_ws)"
+    echo "❌ ERROR: Run this script from the workspace root (e.g. ~/risabotcar_ws)"
     exit 1
 fi
 
@@ -49,8 +49,18 @@ cp -r "$BACKUP_DIR/YDLidar-SDK" "$SRC_DIR/" 2>/dev/null || echo "⚠️  YDLidar
 
 # Orbbec requires openni2_redist inside its folder
 if [ -d "$BACKUP_DIR/openni2_redist" ]; then
+    mkdir -p "$SRC_DIR/ros2_astra_camera/astra_camera/"
     cp -r "$BACKUP_DIR/openni2_redist" "$SRC_DIR/ros2_astra_camera/astra_camera/"
-    echo "✅ Copied openni2_redist"
+    echo "✅ Copied openni2_redist from backup"
+elif [ -f "$SRC_DIR/ros2_astra_camera/astra_camera/scripts/install.sh" ]; then
+    echo "⚠️  openni2_redist not found in backup. Running Astra Camera install script..."
+    cd "$SRC_DIR/ros2_astra_camera/astra_camera/scripts"
+    bash install.sh
+    cd "$WS_DIR"
+    echo "✅ Downloaded openni2_redist"
+else
+    echo "❌ ERROR: openni2_redist missing from $BACKUP_DIR and astra_camera install.sh not found!"
+    exit 1
 fi
 echo "✅ Dependencies copied"
 sleep 1
@@ -155,7 +165,7 @@ sleep 1
 
 echo ""
 echo "[8/8] Sourcing workspace into ~/.bashrc..."
-if ! grep -q "risabotcar_ws/install/setup.bash" ~/.bashrc; then
+if ! grep -q "risabot_ws/install/setup.bash" ~/.bashrc; then
     echo "source ~/risabotcar_ws/install/setup.bash" >> ~/.bashrc
     echo "✅ Added workspace source to ~/.bashrc"
 else
