@@ -168,7 +168,8 @@ rosdep update || true
 rosdep install --from-paths src --ignore-src -r -y || echo "⚠️  Some rosdep installations may have been skipped."
 
 echo "  -> colcon build..."
-colcon build --symlink-install
+# Use --parallel-workers 1 or 2 and set MAKEFLAGS to avoid OOM killer on low-RAM SBCs
+MAKEFLAGS="-j2" colcon build --symlink-install --executor sequential
 echo "✅ Workspace built successfully!"
 sleep 1
 
