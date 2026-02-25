@@ -202,24 +202,39 @@ class DashboardNode(Node):
             
         # We receive actual odometry! Use real data instead of dead reckoning.
         with self.data_lock:
-            # We must manually integrate distance. The odom message natively doesn't include "trip distance".
-            # It provides instantaneous speed (`twist.twist.linear.x`)
-            self.data['speed'] = msg.twist.twist.linear.x
+            # Natively, many basic firmwares only populate Twist (speeds) and leave Pose (X, Y, Yaw) as exactly 0.0
+            vel_x = msg.twist.twist.linear.x
+            self.data['speed'] = vel_x
+            
             now = time.time()
             if hasattr(self, '_last_real_odom_t'):
                 dt = min(now - self._last_real_odom_t, 0.2)
-                self.data['distance'] += abs(msg.twist.twist.linear.x) * dt
+                self.data['distance'] += abs(vel_x) * dt
+            else:
+                dt = 0.0
             self._last_real_odom_t = now
 
-            # Raw Pose
-            self.data['odom_x'] = msg.pose.pose.position.x
-            self.data['odom_y'] = msg.pose.pose.position.y
-            
-            # Quaternion to Yaw (Euler Z)
+            # Check if Firmware is actually publishing Pose Quaternions
             q = msg.pose.pose.orientation
-            siny_cosp = 2 * (q.w * q.z + q.x * q.y)
-            cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
-            self.data['odom_yaw'] = math.atan2(siny_cosp, cosy_cosp)
+            if q.w == 0.0 and q.x == 0.0 and q.y == 0.0 and q.z == 0.0:
+                # Dead reckon yaw from twist angular Z
+                self.data['odom_yaw'] += msg.twist.twist.angular.z * dt
+            else:
+                siny_cosp = 2 * (q.w * q.z + q.x * q.y)
+                cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
+                self.data['odom_yaw'] = math.atan2(siny_cosp, cosy_cosp)
+            
+            # Check if Firmware is actually publishing Pose X/Y
+            hw_x = msg.pose.pose.position.x
+            hw_y = msg.pose.pose.position.y
+            
+            if abs(hw_x) < 0.0001 and abs(hw_y) < 0.0001 and self.data['distance'] > 0.0:
+                # Firmware omitted Pose but shipped Speeds. Dead reckon the speeds using current Yaw!
+                self.data['odom_x'] += vel_x * math.cos(self.data['odom_yaw']) * dt
+                self.data['odom_y'] += vel_x * math.sin(self.data['odom_yaw']) * dt
+            else:
+                self.data['odom_x'] = hw_x
+                self.data['odom_y'] = hw_y
 
     def _joy_cb(self, msg):
         with self.data_lock:
