@@ -87,7 +87,7 @@ touch ~/risabotcar_ws/src/ros2_astra_camera/COLCON_IGNORE
 rm ~/risabotcar_ws/src/ros2_astra_camera/COLCON_IGNORE
 ```
 
-> **Note:** `rosmaster_lib` does not build with `colcon` at all (it installs via `pip`/`setup.py`), so it is naturally ignored and adds zero time to your `colcon build`.
+> **Note:** `rosmaster_lib` is installed natively via `pip`/`setup.py` so it does not need to be built by ROS. To prevent it from showing up in your `colcon build` output and wasting time, its `COLCON_IGNORE` is permanently tracked in the Git repository under `tools/rosmaster_lib/`.
 
 ---
 
