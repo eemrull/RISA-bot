@@ -49,8 +49,18 @@ cp -r "$BACKUP_DIR/YDLidar-SDK" "$SRC_DIR/" 2>/dev/null || echo "⚠️  YDLidar
 
 # Orbbec requires openni2_redist inside its folder
 if [ -d "$BACKUP_DIR/openni2_redist" ]; then
+    mkdir -p "$SRC_DIR/ros2_astra_camera/astra_camera/"
     cp -r "$BACKUP_DIR/openni2_redist" "$SRC_DIR/ros2_astra_camera/astra_camera/"
-    echo "✅ Copied openni2_redist"
+    echo "✅ Copied openni2_redist from backup"
+elif [ -f "$SRC_DIR/ros2_astra_camera/astra_camera/scripts/install.sh" ]; then
+    echo "⚠️  openni2_redist not found in backup. Running Astra Camera install script..."
+    cd "$SRC_DIR/ros2_astra_camera/astra_camera/scripts"
+    bash install.sh
+    cd "$WS_DIR"
+    echo "✅ Downloaded openni2_redist"
+else
+    echo "❌ ERROR: openni2_redist missing from $BACKUP_DIR and astra_camera install.sh not found!"
+    exit 1
 fi
 echo "✅ Dependencies copied"
 sleep 1
