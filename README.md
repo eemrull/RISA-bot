@@ -42,7 +42,7 @@ sudo reboot
 sudo bash tools/setup_autostart.sh
 ```
 
-The installer handles: udev rules, YDLidar SDK build, rosdep, colcon build, and bashrc setup. All third-party dependencies (Astra Camera, YDLidar SDK, YDLidar ROS2 driver) are **included in the repo** — no need to copy anything manually.
+> **Note:** The main installer (`install.sh`) handles everything: udev rules, YDLidar SDK build, rosdep, colcon build, and bashrc setup. If you ever want to _only_ regenerate your aliases and bash functions without rebuilding the workspace, you can run `bash tools/install_bashalias.sh` independently. All third-party dependencies (Astra Camera, YDLidar SDK, YDLidar ROS2 driver) are **included in the repo** — no need to copy anything manually.
 
 ---
 
