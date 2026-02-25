@@ -20,7 +20,7 @@ BACKUP_DIR=${1:-"$HOME/backups"}
 WS_DIR="$HOME/risabotcar_ws"
 SRC_DIR="$WS_DIR/src"
 
-echo "[1/7] Initial Checks..."
+echo "[1/8] Initial Checks..."
 if [ ! -d "$BACKUP_DIR" ]; then
     echo "❌ ERROR: Backup directory not found at: $BACKUP_DIR"
     echo "Please copy the 4 modified dependency folders to this location first:"
@@ -33,7 +33,7 @@ if [ ! -d "$BACKUP_DIR" ]; then
 fi
 
 if [ ! -d "$SRC_DIR/RISA-bot" ] && [ ! -d "$SRC_DIR/risabot_automode" ]; then
-    echo "❌ ERROR: Run this script from the workspace root (e.g. ~/risabotcar_ws)"
+    echo "❌ ERROR: Run this script from the workspace root (e.g. ~/risabot_ws)"
     exit 1
 fi
 
@@ -41,7 +41,7 @@ echo "✅ Backup directory found at $BACKUP_DIR"
 sleep 1
 
 echo ""
-echo "[2/7] Copying 3rd-party dependencies..."
+echo "[2/8] Copying 3rd-party dependencies..."
 # Copy the modified packages into the workspace src directory
 cp -r "$BACKUP_DIR/ros2_astra_camera" "$SRC_DIR/" 2>/dev/null || echo "⚠️  ros2_astra_camera not found in backup (maybe already copied?)"
 cp -r "$BACKUP_DIR/ydlidar_ros2_driver" "$SRC_DIR/" 2>/dev/null || echo "⚠️  ydlidar_ros2_driver not found in backup"
@@ -56,7 +56,7 @@ echo "✅ Dependencies copied"
 sleep 1
 
 echo ""
-echo "[3/7] Setting up udev rules..."
+echo "[3/8] Setting up udev rules..."
 # Request sudo once
 sudo -v
 
@@ -81,7 +81,7 @@ echo "✅ Udev rules applied. (Note: group changes require logout/login to fully
 sleep 1
 
 echo ""
-echo "[4/7] Sourcing ROS 2 Environment..."
+echo "[4/8] Sourcing ROS 2 Environment..."
 if [ -f "/opt/ros/humble/setup.bash" ]; then
     echo "✅ Found standard ROS 2 Humble"
     source /opt/ros/humble/setup.bash
@@ -95,7 +95,37 @@ fi
 sleep 1
 
 echo ""
-echo "[5/7] Building YDLidar-SDK..."
+echo "[5/8] Installing system dependencies and pulling LFS..."
+echo "  -> Adding ROS 2 keys and repositories..."
+sudo apt update
+sudo apt install -y software-properties-common curl
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+
+echo "  -> Installing APT dependencies..."
+sudo apt update
+sudo apt install -y git-lfs libgflags-dev ros-$ROS_DISTRO-image-geometry \
+    ros-$ROS_DISTRO-camera-info-manager ros-$ROS_DISTRO-image-transport \
+    ros-$ROS_DISTRO-image-publisher libgoogle-glog-dev libusb-1.0-0-dev \
+    libeigen3-dev ros-$ROS_DISTRO-magic-enum
+
+echo "  -> Setting up Git LFS and pulling..."
+if [ -d "$SRC_DIR/RISA-bot" ]; then
+    cd "$SRC_DIR/RISA-bot"
+    git lfs install
+    git lfs pull
+elif [ -d "$SRC_DIR/risabot_automode" ]; then
+    cd "$SRC_DIR/risabot_automode"
+    git lfs install
+    git lfs pull
+fi
+
+cd "$WS_DIR"
+echo "✅ System dependencies installed and Git LFS pulled."
+sleep 1
+
+echo ""
+echo "[6/8] Building YDLidar-SDK..."
 if [ -d "$SRC_DIR/YDLidar-SDK" ]; then
     cd "$SRC_DIR/YDLidar-SDK"
     mkdir -p build
@@ -111,7 +141,7 @@ fi
 sleep 1
 
 echo ""
-echo "[6/7] Building ROS 2 Workspace..."
+echo "[7/8] Building ROS 2 Workspace..."
 cd "$WS_DIR"
 echo "  -> Installing rosdep dependencies..."
 sudo apt update
@@ -124,7 +154,7 @@ echo "✅ Workspace built successfully!"
 sleep 1
 
 echo ""
-echo "[7/7] Sourcing workspace into ~/.bashrc..."
+echo "[8/8] Sourcing workspace into ~/.bashrc..."
 if ! grep -q "risabotcar_ws/install/setup.bash" ~/.bashrc; then
     echo "source ~/risabotcar_ws/install/setup.bash" >> ~/.bashrc
     echo "✅ Added workspace source to ~/.bashrc"
