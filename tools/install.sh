@@ -5,7 +5,7 @@
 # udev rules, building 3rd-party dependencies, and colcon build.
 #
 # Usage:
-#   cd ~/risabot_ws
+#   cd ~/risabotcar_ws
 #   bash tools/install.sh [path_to_backups_folder]
 # ============================================================
 
@@ -17,7 +17,7 @@ echo "============================================================"
 
 # Default backup path is ~/backups unless specified
 BACKUP_DIR=${1:-"$HOME/backups"}
-WS_DIR="$HOME/risabot_ws"
+WS_DIR="$HOME/risabotcar_ws"
 SRC_DIR="$WS_DIR/src"
 
 echo "[1/8] Initial Checks..."
@@ -33,7 +33,7 @@ if [ ! -d "$BACKUP_DIR" ]; then
 fi
 
 if [ ! -d "$SRC_DIR/RISA-bot" ] && [ ! -d "$SRC_DIR/risabot_automode" ]; then
-    echo "❌ ERROR: Run this script from the workspace root (e.g. ~/risabot_ws)"
+    echo "❌ ERROR: Run this script from the workspace root (e.g. ~/risabotcar_ws)"
     exit 1
 fi
 
@@ -156,7 +156,7 @@ sleep 1
 echo ""
 echo "[8/8] Sourcing workspace into ~/.bashrc..."
 if ! grep -q "risabot_ws/install/setup.bash" ~/.bashrc; then
-    echo "source ~/risabot_ws/install/setup.bash" >> ~/.bashrc
+    echo "source ~/risabotcar_ws/install/setup.bash" >> ~/.bashrc
     echo "✅ Added workspace source to ~/.bashrc"
 else
     echo "✅ Workspace already sourced in ~/.bashrc"
