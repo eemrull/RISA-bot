@@ -74,9 +74,13 @@ class ParkingController(Node):
             self.camera_callback,
             QoSPresetProfiles.SENSOR_DATA.value
         )
+        self.dash_state_sub = self.create_subscription(
+            String, '/dashboard_state', self.dash_state_callback, 10
+        )
 
         # State
         self.phase = ParkingPhase.IDLE
+        self.current_lap = 1
         self.phase_start_time = self.get_clock().now()
         self.phase_start_dist = 0.0
         self.cumulative_yaw = 0.0
@@ -99,8 +103,23 @@ class ParkingController(Node):
         self.current_speed = speed
         self.distance_traveled += abs(speed) * dt
 
+    def dash_state_callback(self, msg):
+        """Listen to auto_driver state to know which lap we are on."""
+        try:
+            parts = msg.data.split('|')
+            if len(parts) > 1:
+                self.current_lap = int(parts[1])
+        except Exception:
+            pass
+
     def camera_callback(self, msg):
         """Detect triangle signboard to identify parking zone."""
+        # --- PERFORMANCE OPTIMIZATION ---
+        # Do not waste CPU parsing the camera image if we are not on Lap 2 
+        # or if parking is already finished.
+        if self.current_lap < 2 or self.phase == ParkingPhase.DONE:
+            return
+            
         try:
             bgr = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
             h, w = bgr.shape[:2]

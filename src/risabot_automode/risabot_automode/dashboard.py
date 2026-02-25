@@ -47,9 +47,14 @@ class DashboardNode(Node):
         # CV Bridge for camera
         self.bridge = CvBridge() if CvBridge else None
         self.latest_jpeg = None
-        self.jpeg_lock = threading.Lock()
+        self.jpeg_condition = threading.Condition()
+        self.frame_id = 0
         self.active_camera_view = 'raw'
         self.initial_joy_axes = None
+        
+        # Client tracking for performance
+        self.num_camera_clients = 0
+        self.camera_clients_lock = threading.Lock()
 
         # Shared state (read by HTTP handler)
         self.data = {
@@ -266,19 +271,27 @@ class DashboardNode(Node):
         self._set('ctrl_state_name', name)
 
     def _image_cb(self, msg, view_name):
-        """Convert ROS Image to JPEG for the web feed, tracking which view is active."""
+        """Convert ROS Image to JPEG conditionally, tracking active view and clients."""
         if self.bridge is None or view_name != self.active_camera_view:
             return
+            
+        with self.camera_clients_lock:
+            if self.num_camera_clients == 0:
+                return  # Skip processing entirely if nobody is watching
+                
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-            # Resize to save bandwidth
+            # Resize
             h, w = cv_image.shape[:2]
             scale = min(640 / w, 480 / h)
             if scale < 1.0:
                 cv_image = cv2.resize(cv_image, (int(w * scale), int(h * scale)))
             _, jpeg = cv2.imencode('.jpg', cv_image, [cv2.IMWRITE_JPEG_QUALITY, 60])
-            with self.jpeg_lock:
+            
+            with self.jpeg_condition:
                 self.latest_jpeg = jpeg.tobytes()
+                self.frame_id += 1
+                self.jpeg_condition.notify_all()
         except Exception:
             pass
 
@@ -289,8 +302,9 @@ class DashboardNode(Node):
         return json.dumps(d)
 
     def get_jpeg(self):
-        with self.jpeg_lock:
-            return self.latest_jpeg
+        # We no longer use this standalone method because do_GET
+        # manages the condition variable directly to block until new frame.
+        pass
 
 
 # ======================== HTTP Server ========================
@@ -409,18 +423,40 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Connection', 'close')
             self.send_header('Pragma', 'no-cache')
             self.end_headers()
+            
+            if not _node_ref:
+                return
+                
+            with _node_ref.camera_clients_lock:
+                _node_ref.num_camera_clients += 1
+                
             try:
+                last_frame_id = -1
                 while True:
-                    jpeg1 = _node_ref.get_jpeg() if _node_ref else None
-                    if jpeg1:
+                    jpeg_bytes = None
+                    with _node_ref.jpeg_condition:
+                        # Wait until a new frame has been generated (up to 1s to keep conn alive)
+                        if _node_ref.frame_id == last_frame_id:
+                            _node_ref.jpeg_condition.wait(timeout=1.0)
+                        
+                        if _node_ref.frame_id != last_frame_id and _node_ref.latest_jpeg:
+                            last_frame_id = _node_ref.frame_id
+                            jpeg_bytes = _node_ref.latest_jpeg
+                            
+                    if jpeg_bytes:
                         frame = (b'--frame\r\n'
                                  b'Content-Type: image/jpeg\r\n'
-                                 b'Content-Length: ' + str(len(jpeg1)).encode() + b'\r\n'
-                                 b'\r\n' + jpeg1 + b'\r\n')
+                                 b'Content-Length: ' + str(len(jpeg_bytes)).encode() + b'\r\n'
+                                 b'\r\n' + jpeg_bytes + b'\r\n')
                         self.wfile.write(frame)
-                    time.sleep(0.05)
+                    else:
+                        # Timeout fired but no new frame
+                        pass
             except Exception:
                 pass
+            finally:
+                with _node_ref.camera_clients_lock:
+                    _node_ref.num_camera_clients = max(0, _node_ref.num_camera_clients - 1)
         elif self.path.startswith('/api/set_cam_view'):
             from urllib.parse import urlparse, parse_qs
             import threading
@@ -428,9 +464,11 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             view = qs.get('view', ['raw'])[0]
             if _node_ref:
                 _node_ref.active_camera_view = view
-                # Clear stale frame buffer so the new view starts fresh
-                with _node_ref.jpeg_lock:
+                with _node_ref.jpeg_condition:
                     _node_ref.latest_jpeg = None
+                    # Force the condition to wake any blocked clients
+                    _node_ref.frame_id += 1
+                    _node_ref.jpeg_condition.notify_all()
             
             # Auto-toggle show_debug for performance 
             def auto_toggle_debug(selected_view):
