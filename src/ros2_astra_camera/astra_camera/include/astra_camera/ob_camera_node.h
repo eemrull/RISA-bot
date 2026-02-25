@@ -12,6 +12,15 @@
 
 #pragma once
 
+#include <map>
+#include <vector>
+#include <string>
+#include <atomic>
+#include <memory>
+#include <optional>
+#include <thread>
+#include <iostream>
+
 #include <rclcpp/rclcpp.hpp>
 
 #include <magic_enum.hpp>

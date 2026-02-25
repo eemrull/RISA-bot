@@ -15,7 +15,7 @@
 
 #include <sensor_msgs/distortion_models.hpp>
 
-namespace astra_camera {
+namespace openni {
 
 bool operator==(const openni::VideoMode& lhs, const openni::VideoMode& rhs) {
   return lhs.getResolutionY() == rhs.getResolutionY() &&
@@ -33,6 +33,10 @@ std::ostream& operator<<(std::ostream& os, const openni::VideoMode& video_mode) 
      << "format " << magic_enum::enum_name(video_mode.getPixelFormat());
   return os;
 }
+
+}
+
+namespace astra_camera {
 
 tf2::Quaternion rotationMatrixToQuaternion(const float rotation[9]) {
   Eigen::Matrix3f m;
