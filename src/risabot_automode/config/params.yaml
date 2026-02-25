@@ -120,4 +120,4 @@ obstacle_avoidance_node:
 # --- Dashboard ---
 dashboard:
   ros__parameters:
-    use_hw_odom: false
+    use_hw_odom: true
