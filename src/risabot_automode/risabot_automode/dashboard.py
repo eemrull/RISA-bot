@@ -403,25 +403,24 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data.encode())
         elif self.path.startswith('/camera_feed'):
-            jpeg = _node_ref.get_jpeg() if _node_ref else None
-            if jpeg:
-                self.send_response(200)
-                self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
-                self.end_headers()
-                try:
-                    while True:
-                        jpeg1 = _node_ref.get_jpeg()
-                        if jpeg1:
-                            frame = (b'--frame\r\n'
-                                     b'Content-Type: image/jpeg\r\n'
-                                     b'Content-Length: ' + str(len(jpeg1)).encode() + b'\r\n'
-                                     b'\r\n' + jpeg1 + b'\r\n')
-                            self.wfile.write(frame)
-                        time.sleep(0.05)
-                except Exception:
-                    pass
-            else:
-                self.send_error(404)
+            self.send_response(200)
+            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
+            self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
+            self.send_header('Connection', 'close')
+            self.send_header('Pragma', 'no-cache')
+            self.end_headers()
+            try:
+                while True:
+                    jpeg1 = _node_ref.get_jpeg() if _node_ref else None
+                    if jpeg1:
+                        frame = (b'--frame\r\n'
+                                 b'Content-Type: image/jpeg\r\n'
+                                 b'Content-Length: ' + str(len(jpeg1)).encode() + b'\r\n'
+                                 b'\r\n' + jpeg1 + b'\r\n')
+                        self.wfile.write(frame)
+                    time.sleep(0.05)
+            except Exception:
+                pass
         elif self.path.startswith('/api/set_cam_view'):
             from urllib.parse import urlparse, parse_qs
             import threading
