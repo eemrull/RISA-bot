@@ -153,6 +153,15 @@ sleep 1
 echo ""
 echo "[7/8] Building ROS 2 Workspace..."
 cd "$WS_DIR"
+
+if [ -d "build" ] || [ -d "install" ]; then
+    echo "⚠️  Existing build/install folders detected."
+    echo "   If colcon fails, cancel this script (Ctrl+C), clean the workspace:"
+    echo "   rm -rf ~/risabot_ws/build ~/risabot_ws/install ~/risabot_ws/log"
+    echo "   and run this install script again."
+    sleep 3
+fi
+
 echo "  -> Installing rosdep dependencies..."
 sudo apt update
 rosdep update || true
