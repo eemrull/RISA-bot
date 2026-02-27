@@ -33,6 +33,7 @@ setup(
             'tunnel_wall_follower = risabot_automode.tunnel_wall_follower:main',
             'obstruction_avoidance = risabot_automode.obstruction_avoidance:main',
             'dashboard = risabot_automode.dashboard:main',
+            'health_monitor = risabot_automode.health_monitor:main',
         ],
     },
 )

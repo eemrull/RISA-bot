@@ -5,11 +5,16 @@ Camera, joystick, and line follower must be launched separately.
   Usage: ros2 launch risabot_automode bringup.launch.py
 """
 
+import os
+
 from launch import LaunchDescription
 from launch.actions import TimerAction
 from launch_ros.actions import Node
+from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
+    risabot_pkg = get_package_share_directory('risabot_automode')
+    params_file = os.path.join(risabot_pkg, 'config', 'params.yaml')
     # --- Serial port mapping ---
     lidar_port = '/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0'
 
@@ -53,9 +58,17 @@ def generate_launch_description():
                     package='risabot_automode',
                     executable='auto_driver',
                     name='auto_driver',
-                    output='screen'
+                    output='screen',
+                    parameters=[params_file]
                 )
             ]
+        ),
+        Node(
+            package='risabot_automode',
+            executable='health_monitor',
+            name='health_monitor',
+            output='screen',
+            parameters=[params_file]
         ),
 
         # Note: Camera (astra_camera), joystick (joy_node), and line_follower_camera

@@ -7,13 +7,15 @@ Publishes boolean flags if an obstacle is closer than the configured minimum dis
 Applies temporal smoothing to avoid false positives.
 """
 
+import math
+from typing import Dict
+
 import rclpy
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
+from rclpy.qos import QoSPresetProfiles
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool
-from rclpy.qos import QoSPresetProfiles
-import math
-import numpy as np
 
 class ObstacleAvoidanceNode(Node):
     """
@@ -25,6 +27,10 @@ class ObstacleAvoidanceNode(Node):
 
         # Parameters (tunable at runtime)
         self.declare_parameter('min_obstacle_distance', 0.48)
+        self.declare_parameter('heartbeat_sec', 0.5)
+        self._param_cache: Dict[str, object] = {}
+        self._update_param_cache()
+        self.add_on_set_parameters_callback(self._on_params)
 
         # Publishers
         self.obstacle_all_pub = self.create_publisher(Bool, '/obstacle_detected', 10)
@@ -42,10 +48,33 @@ class ObstacleAvoidanceNode(Node):
         self.obstacle_active_any = False
         self.distance_buffer = []
         self.buffer_size = 5
+        self._heartbeat_timer = self.create_timer(
+            float(self._param_cache['heartbeat_sec']),
+            self._heartbeat_publish
+        )
 
         self.get_logger().info('Obstacle Avoidance Node Started (Precise Directional Detection)')
 
-    def scan_callback(self, msg):
+    def _update_param_cache(self) -> None:
+        """Cache frequently used parameters to avoid per-scan lookups."""
+        self._param_cache = {
+            'min_obstacle_distance': float(self.get_parameter('min_obstacle_distance').value),
+            'heartbeat_sec': float(self.get_parameter('heartbeat_sec').value),
+        }
+
+    def _on_params(self, params) -> SetParametersResult:
+        """Update cached parameters when set via CLI or services."""
+        for p in params:
+            if p.name in self._param_cache:
+                self._param_cache[p.name] = p.value
+        return SetParametersResult(successful=True)
+
+    def _heartbeat_publish(self) -> None:
+        """Publish last obstacle state on a fixed heartbeat."""
+        self.obstacle_front_pub.publish(Bool(data=self.obstacle_active_any))
+        self.obstacle_all_pub.publish(Bool(data=self.obstacle_active_any))
+
+    def scan_callback(self, msg: LaserScan) -> None:
         angle_min = msg.angle_min
         angle_increment = msg.angle_increment
         ranges = msg.ranges
@@ -53,7 +82,7 @@ class ObstacleAvoidanceNode(Node):
         min_front = float('inf')
 
         # Read parameter once per callback
-        min_dist = self.get_parameter('min_obstacle_distance').value
+        min_dist = self._param_cache['min_obstacle_distance']
 
         for i, r in enumerate(ranges):
             if not (msg.range_min <= r <= msg.range_max) or math.isnan(r) or math.isinf(r):
@@ -84,7 +113,7 @@ class ObstacleAvoidanceNode(Node):
 
         # Debug: log only when obstacle detected
         if front_obstacle:
-            self.get_logger().warn(f'🛑 FRONT obstacle! min_front = {smoothed_min:.2f} m')
+            self.get_logger().warn(f'FRONT obstacle. min_front = {smoothed_min:.2f} m')
 
         # Publish
         msg_front = Bool()
@@ -93,8 +122,9 @@ class ObstacleAvoidanceNode(Node):
 
         # Also publish any-obstacle
         self.obstacle_all_pub.publish(Bool(data=front_obstacle))
+        self.obstacle_active_any = front_obstacle
 
-def main(args=None):
+def main(args=None) -> None:
     rclpy.init(args=args)
     node = ObstacleAvoidanceNode()
     try:

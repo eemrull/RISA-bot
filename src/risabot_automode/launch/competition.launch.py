@@ -174,7 +174,8 @@ def generate_launch_description():
             package='control_servo',
             executable='servo_controller',
             name='servo_controller',
-            output='screen'
+            output='screen',
+            parameters=[params_file]
         ),
 
         # N. Dashboard (web-based status monitor at http://<robot_ip>:8080)
@@ -182,6 +183,13 @@ def generate_launch_description():
             package='risabot_automode',
             executable='dashboard',
             name='dashboard',
+            output='screen',
+            parameters=[params_file]
+        ),
+        Node(
+            package='risabot_automode',
+            executable='health_monitor',
+            name='health_monitor',
             output='screen',
             parameters=[params_file]
         ),

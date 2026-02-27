@@ -10,15 +10,19 @@ steering commands to navigate around it while maintaining forward progress.
 Publishes: /obstruction_cmd_vel (Twist), /obstruction_active (Bool)
 """
 
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import Twist
-from std_msgs.msg import Bool
-from rclpy.qos import QoSPresetProfiles
 import math
-import numpy as np
 from enum import Enum
+from typing import Dict
+
+import rclpy
+from geometry_msgs.msg import Twist
+from rcl_interfaces.msg import SetParametersResult
+from rclpy.node import Node
+from rclpy.qos import QoSPresetProfiles
+from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Bool
+
+from .topics import OBSTRUCTION_ACTIVE_TOPIC, OBSTRUCTION_CMD_TOPIC
 
 
 class AvoidPhase(Enum):
@@ -29,6 +33,8 @@ class AvoidPhase(Enum):
 
 
 class ObstructionAvoidance(Node):
+    """Steers around an obstruction detected via LiDAR."""
+
     def __init__(self):
         super().__init__('obstruction_avoidance')
 
@@ -45,10 +51,13 @@ class ObstructionAvoidance(Node):
         self.declare_parameter('steer_back_duration', 1.5)   # seconds to return to center
         self.declare_parameter('steer_away_duration', 1.0)   # seconds to steer away from obstacle
         self.declare_parameter('lidar_angle_offset', 1.5708) # 90° mount correction
+        self._param_cache: Dict[str, object] = {}
+        self._update_param_cache()
+        self.add_on_set_parameters_callback(self._on_params)
 
         # Publishers
-        self.cmd_vel_pub = self.create_publisher(Twist, '/obstruction_cmd_vel', 10)
-        self.active_pub = self.create_publisher(Bool, '/obstruction_active', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, OBSTRUCTION_CMD_TOPIC, 10)
+        self.active_pub = self.create_publisher(Bool, OBSTRUCTION_ACTIVE_TOPIC, 10)
 
         # Subscriber
         self.scan_sub = self.create_subscription(
@@ -67,14 +76,38 @@ class ObstructionAvoidance(Node):
 
         self.get_logger().info('Obstruction Avoidance (lateral) started')
 
-    def scan_callback(self, msg):
+    def _update_param_cache(self) -> None:
+        """Cache frequently used parameters to avoid per-scan lookups."""
+        self._param_cache = {
+            'detect_dist': float(self.get_parameter('detect_dist').value),
+            'clear_dist': float(self.get_parameter('clear_dist').value),
+            'front_angle': float(self.get_parameter('front_angle').value),
+            'side_angle_min': float(self.get_parameter('side_angle_min').value),
+            'side_angle_max': float(self.get_parameter('side_angle_max').value),
+            'steer_speed': float(self.get_parameter('steer_speed').value),
+            'steer_angular': float(self.get_parameter('steer_angular').value),
+            'pass_speed': float(self.get_parameter('pass_speed').value),
+            'pass_duration': float(self.get_parameter('pass_duration').value),
+            'steer_back_duration': float(self.get_parameter('steer_back_duration').value),
+            'steer_away_duration': float(self.get_parameter('steer_away_duration').value),
+            'lidar_angle_offset': float(self.get_parameter('lidar_angle_offset').value),
+        }
+
+    def _on_params(self, params) -> SetParametersResult:
+        """Update cached parameters when set via CLI or services."""
+        for p in params:
+            if p.name in self._param_cache:
+                self._param_cache[p.name] = p.value
+        return SetParametersResult(successful=True)
+
+    def scan_callback(self, msg: LaserScan) -> None:
         """Analyze LiDAR to detect obstruction and determine avoid direction."""
         if self.phase != AvoidPhase.CLEAR:
             return  # Already in avoidance maneuver
 
-        angle_offset = self.get_parameter('lidar_angle_offset').value
-        detect_dist = self.get_parameter('detect_dist').value
-        front_angle = self.get_parameter('front_angle').value
+        angle_offset = self._param_cache['lidar_angle_offset']
+        detect_dist = self._param_cache['detect_dist']
+        front_angle = self._param_cache['front_angle']
 
         front_left_dists = []
         front_right_dists = []
@@ -107,47 +140,47 @@ class ObstructionAvoidance(Node):
             if left_blocked > right_blocked:
                 # More points on left → steer RIGHT to avoid
                 self.avoid_direction = -1
-                self.get_logger().info('🔶 Obstruction detected! Steering RIGHT to avoid.')
+                self.get_logger().info('Obstruction detected: steering RIGHT to avoid')
             else:
                 # More points on right → steer LEFT to avoid
                 self.avoid_direction = 1
-                self.get_logger().info('🔶 Obstruction detected! Steering LEFT to avoid.')
+                self.get_logger().info('Obstruction detected: steering LEFT to avoid')
 
             self._start_phase(AvoidPhase.STEER_AWAY)
 
-    def _start_phase(self, phase):
+    def _start_phase(self, phase: AvoidPhase) -> None:
         self.phase = phase
         self.phase_start_time = self.get_clock().now().nanoseconds / 1e9
-        self.get_logger().info(f'  → Avoid phase: {phase.name}')
+        self.get_logger().info(f'  -> Avoid phase: {phase.name}')
 
-    def _time_in_phase(self):
+    def _time_in_phase(self) -> float:
         now = self.get_clock().now().nanoseconds / 1e9
         return now - self.phase_start_time
 
-    def control_loop(self):
+    def control_loop(self) -> None:
         """Execute avoidance maneuver phases."""
         cmd = Twist()
         is_active = self.phase != AvoidPhase.CLEAR
 
         if self.phase == AvoidPhase.STEER_AWAY:
             # Steer away from obstruction
-            cmd.linear.x = self.get_parameter('steer_speed').value
-            cmd.angular.z = self.avoid_direction * self.get_parameter('steer_angular').value
-            if self._time_in_phase() >= self.get_parameter('steer_away_duration').value:
+            cmd.linear.x = self._param_cache['steer_speed']
+            cmd.angular.z = self.avoid_direction * self._param_cache['steer_angular']
+            if self._time_in_phase() >= self._param_cache['steer_away_duration']:
                 self._start_phase(AvoidPhase.PASS_ALONGSIDE)
 
         elif self.phase == AvoidPhase.PASS_ALONGSIDE:
             # Drive straight past the obstruction
-            cmd.linear.x = self.get_parameter('pass_speed').value
-            if self._time_in_phase() >= self.get_parameter('pass_duration').value:
+            cmd.linear.x = self._param_cache['pass_speed']
+            if self._time_in_phase() >= self._param_cache['pass_duration']:
                 self._start_phase(AvoidPhase.STEER_BACK)
 
         elif self.phase == AvoidPhase.STEER_BACK:
             # Steer back to lane center
-            cmd.linear.x = self.get_parameter('steer_speed').value
-            cmd.angular.z = -self.avoid_direction * self.get_parameter('steer_angular').value * 0.7
-            if self._time_in_phase() >= self.get_parameter('steer_back_duration').value:
-                self.get_logger().info('✅ Obstruction cleared, resuming lane following.')
+            cmd.linear.x = self._param_cache['steer_speed']
+            cmd.angular.z = -self.avoid_direction * self._param_cache['steer_angular'] * 0.7
+            if self._time_in_phase() >= self._param_cache['steer_back_duration']:
+                self.get_logger().info('Obstruction cleared, resuming lane following')
                 self.phase = AvoidPhase.CLEAR
                 self.avoid_direction = 0
                 is_active = False
@@ -161,10 +194,10 @@ class ObstructionAvoidance(Node):
 
         if is_active:
             direction = "LEFT" if self.avoid_direction > 0 else "RIGHT"
-            self.get_logger().debug(f"{self.phase.name} → steering {direction} | t: {self._time_in_phase():.1f}s")
+            self.get_logger().debug(f"{self.phase.name} -> steering {direction} | t: {self._time_in_phase():.1f}s")
 
 
-def main(args=None):
+def main(args=None) -> None:
     rclpy.init(args=args)
     node = ObstructionAvoidance()
     try:

@@ -8,16 +8,23 @@ forward arc at a specific distance.
 Publishes Bool on /boom_gate_open (True = open/clear, False = blocked).
 """
 
+import math
+from typing import Dict
+
+import numpy as np
 import rclpy
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
+from rclpy.qos import QoSPresetProfiles
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool
-from rclpy.qos import QoSPresetProfiles
-import math
-import numpy as np
+
+from .topics import BOOM_GATE_TOPIC
 
 
 class BoomGateDetector(Node):
+    """Detects boom gate presence from LiDAR scans."""
+
     def __init__(self):
         super().__init__('boom_gate_detector')
 
@@ -33,9 +40,14 @@ class BoomGateDetector(Node):
         self.declare_parameter('distance_variance_max', 0.05)  # points must be at similar dist
         # Lidar mount offset (same 90° correction as obstacle_avoidance)
         self.declare_parameter('lidar_angle_offset', 1.5708)  # pi/2
+        self.declare_parameter('hysteresis', 3)
+        self.declare_parameter('heartbeat_sec', 0.5)
+        self._param_cache: Dict[str, object] = {}
+        self._update_param_cache()
+        self.add_on_set_parameters_callback(self._on_params)
 
         # Publisher
-        self.gate_pub = self.create_publisher(Bool, '/boom_gate_open', 10)
+        self.gate_pub = self.create_publisher(Bool, BOOM_GATE_TOPIC, 10)
 
         # Subscriber
         self.scan_sub = self.create_subscription(
@@ -44,23 +56,51 @@ class BoomGateDetector(Node):
             self.scan_callback,
             QoSPresetProfiles.SENSOR_DATA.value
         )
-        # Hysteresis (require N consecutive readings to change state)
-        self.declare_parameter('hysteresis', 3)
 
         # State
         self.gate_blocked = False
         self.blocked_count = 0
         self.clear_count = 0
+        self._heartbeat_timer = self.create_timer(
+            float(self._param_cache['heartbeat_sec']),
+            self._heartbeat_publish
+        )
 
         self.get_logger().info('Boom Gate Detector started')
 
-    def scan_callback(self, msg):
-        min_dist = self.get_parameter('min_detect_dist').value
-        max_dist = self.get_parameter('max_detect_dist').value
-        angle_win = self.get_parameter('angle_window').value
-        min_pts = self.get_parameter('min_gate_points').value
-        dist_var_max = self.get_parameter('distance_variance_max').value
-        angle_offset = self.get_parameter('lidar_angle_offset').value
+    def _update_param_cache(self) -> None:
+        """Cache frequently used parameters to avoid per-scan lookups."""
+        self._param_cache = {
+            'min_detect_dist': float(self.get_parameter('min_detect_dist').value),
+            'max_detect_dist': float(self.get_parameter('max_detect_dist').value),
+            'angle_window': float(self.get_parameter('angle_window').value),
+            'min_gate_points': int(self.get_parameter('min_gate_points').value),
+            'distance_variance_max': float(self.get_parameter('distance_variance_max').value),
+            'lidar_angle_offset': float(self.get_parameter('lidar_angle_offset').value),
+            'hysteresis': int(self.get_parameter('hysteresis').value),
+            'heartbeat_sec': float(self.get_parameter('heartbeat_sec').value),
+        }
+
+    def _on_params(self, params) -> SetParametersResult:
+        """Update cached parameters when set via CLI or services."""
+        for p in params:
+            if p.name in self._param_cache:
+                self._param_cache[p.name] = p.value
+        return SetParametersResult(successful=True)
+
+    def _heartbeat_publish(self) -> None:
+        """Publish last gate state on a fixed heartbeat."""
+        gate_msg = Bool()
+        gate_msg.data = not self.gate_blocked
+        self.gate_pub.publish(gate_msg)
+
+    def scan_callback(self, msg: LaserScan) -> None:
+        min_dist = self._param_cache['min_detect_dist']
+        max_dist = self._param_cache['max_detect_dist']
+        angle_win = self._param_cache['angle_window']
+        min_pts = self._param_cache['min_gate_points']
+        dist_var_max = self._param_cache['distance_variance_max']
+        angle_offset = self._param_cache['lidar_angle_offset']
 
         # Collect points in the forward detection zone
         forward_distances = []
@@ -103,13 +143,13 @@ class BoomGateDetector(Node):
             self.clear_count += 1
             self.blocked_count = 0
 
-        hysteresis = self.get_parameter('hysteresis').value
+        hysteresis = self._param_cache['hysteresis']
         if self.blocked_count >= hysteresis and not self.gate_blocked:
             self.gate_blocked = True
-            self.get_logger().warn('🚧 Boom gate CLOSED — barrier detected!')
+            self.get_logger().warn('Boom gate CLOSED - barrier detected')
         elif self.clear_count >= hysteresis and self.gate_blocked:
             self.gate_blocked = False
-            self.get_logger().info('✅ Boom gate OPEN — path clear.')
+            self.get_logger().info('Boom gate OPEN - path clear')
 
         # Publish
         gate_msg = Bool()
@@ -117,12 +157,12 @@ class BoomGateDetector(Node):
         self.gate_pub.publish(gate_msg)
 
         # Debug
-        status = "🚧 CLOSED" if self.gate_blocked else "✅ OPEN"
+        status = "CLOSED" if self.gate_blocked else "OPEN"
         pts = len(forward_distances)
         self.get_logger().debug(f"{status} | fwd points: {pts} | blocked_cnt: {self.blocked_count} | clear_cnt: {self.clear_count}")
 
 
-def main(args=None):
+def main(args=None) -> None:
     rclpy.init(args=args)
     node = BoomGateDetector()
     try:

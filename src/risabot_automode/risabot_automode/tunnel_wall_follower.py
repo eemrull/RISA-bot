@@ -8,17 +8,24 @@ Maintains equal distance from left and right walls using a PD controller.
 Publishes Twist on /tunnel_cmd_vel for auto_driver to use when in TUNNEL state.
 """
 
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import Twist
-from std_msgs.msg import Bool
-from rclpy.qos import QoSPresetProfiles
 import math
+from typing import Dict
+
 import numpy as np
+import rclpy
+from geometry_msgs.msg import Twist
+from rcl_interfaces.msg import SetParametersResult
+from rclpy.node import Node
+from rclpy.qos import QoSPresetProfiles
+from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Bool
+
+from .topics import TUNNEL_CMD_TOPIC, TUNNEL_DETECTED_TOPIC
 
 
 class TunnelWallFollower(Node):
+    """LiDAR-based wall following for tunnel sections."""
+
     def __init__(self):
         super().__init__('tunnel_wall_follower')
 
@@ -35,10 +42,14 @@ class TunnelWallFollower(Node):
         self.declare_parameter('lidar_angle_offset', 1.5708)  # 90° mount correction
         self.declare_parameter('min_wall_points', 3)          # minimum points to consider a wall
         self.declare_parameter('max_wall_dist', 0.60)         # ignore points beyond this
+        self.declare_parameter('heartbeat_sec', 0.2)
+        self._param_cache: Dict[str, object] = {}
+        self._update_param_cache()
+        self.add_on_set_parameters_callback(self._on_params)
 
         # Publishers
-        self.cmd_vel_pub = self.create_publisher(Twist, '/tunnel_cmd_vel', 10)
-        self.in_tunnel_pub = self.create_publisher(Bool, '/tunnel_detected', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, TUNNEL_CMD_TOPIC, 10)
+        self.in_tunnel_pub = self.create_publisher(Bool, TUNNEL_DETECTED_TOPIC, 10)
 
         # Subscriber
         self.scan_sub = self.create_subscription(
@@ -50,17 +61,53 @@ class TunnelWallFollower(Node):
         # State
         self.last_error = 0.0
         self.last_time = self.get_clock().now()
+        self.last_cmd = Twist()
+        self.last_in_tunnel = False
+        self._heartbeat_timer = self.create_timer(
+            float(self._param_cache['heartbeat_sec']),
+            self._heartbeat_publish
+        )
 
         self.get_logger().info('Tunnel Wall Follower started')
 
-    def scan_callback(self, msg):
-        angle_offset = self.get_parameter('lidar_angle_offset').value
-        left_min = self.get_parameter('left_angle_min').value
-        left_max = self.get_parameter('left_angle_max').value
-        right_min = self.get_parameter('right_angle_min').value
-        right_max = self.get_parameter('right_angle_max').value
-        max_wall = self.get_parameter('max_wall_dist').value
-        min_pts = self.get_parameter('min_wall_points').value
+    def _update_param_cache(self) -> None:
+        """Cache frequently used parameters to avoid per-scan lookups."""
+        self._param_cache = {
+            'target_center_dist': float(self.get_parameter('target_center_dist').value),
+            'forward_speed': float(self.get_parameter('forward_speed').value),
+            'kp': float(self.get_parameter('kp').value),
+            'kd': float(self.get_parameter('kd').value),
+            'max_angular': float(self.get_parameter('max_angular').value),
+            'left_angle_min': float(self.get_parameter('left_angle_min').value),
+            'left_angle_max': float(self.get_parameter('left_angle_max').value),
+            'right_angle_min': float(self.get_parameter('right_angle_min').value),
+            'right_angle_max': float(self.get_parameter('right_angle_max').value),
+            'lidar_angle_offset': float(self.get_parameter('lidar_angle_offset').value),
+            'min_wall_points': int(self.get_parameter('min_wall_points').value),
+            'max_wall_dist': float(self.get_parameter('max_wall_dist').value),
+            'heartbeat_sec': float(self.get_parameter('heartbeat_sec').value),
+        }
+
+    def _on_params(self, params) -> SetParametersResult:
+        """Update cached parameters when set via CLI or services."""
+        for p in params:
+            if p.name in self._param_cache:
+                self._param_cache[p.name] = p.value
+        return SetParametersResult(successful=True)
+
+    def _heartbeat_publish(self) -> None:
+        """Republish last state on a fixed heartbeat."""
+        self.in_tunnel_pub.publish(Bool(data=self.last_in_tunnel))
+        self.cmd_vel_pub.publish(self.last_cmd)
+
+    def scan_callback(self, msg: LaserScan) -> None:
+        angle_offset = self._param_cache['lidar_angle_offset']
+        left_min = self._param_cache['left_angle_min']
+        left_max = self._param_cache['left_angle_max']
+        right_min = self._param_cache['right_angle_min']
+        right_max = self._param_cache['right_angle_max']
+        max_wall = self._param_cache['max_wall_dist']
+        min_pts = self._param_cache['min_wall_points']
 
         left_dists = []
         right_dists = []
@@ -89,6 +136,7 @@ class TunnelWallFollower(Node):
         tunnel_msg = Bool()
         tunnel_msg.data = in_tunnel
         self.in_tunnel_pub.publish(tunnel_msg)
+        self.last_in_tunnel = in_tunnel
 
         cmd = Twist()
 
@@ -100,7 +148,7 @@ class TunnelWallFollower(Node):
             # Error = difference between left and right wall distances
             # Positive error = closer to right wall → steer left
             # Negative error = closer to left wall → steer right
-            target = self.get_parameter('target_center_dist').value
+            target = self._param_cache['target_center_dist']
             error = (right_avg - left_avg) + target
 
             # PD controller
@@ -111,14 +159,14 @@ class TunnelWallFollower(Node):
             else:
                 derivative = 0.0
 
-            kp = self.get_parameter('kp').value
-            kd = self.get_parameter('kd').value
-            max_ang = self.get_parameter('max_angular').value
+            kp = self._param_cache['kp']
+            kd = self._param_cache['kd']
+            max_ang = self._param_cache['max_angular']
 
             angular_z = kp * error + kd * derivative
             angular_z = max(-max_ang, min(max_ang, angular_z))
 
-            cmd.linear.x = self.get_parameter('forward_speed').value
+            cmd.linear.x = self._param_cache['forward_speed']
             cmd.angular.z = angular_z
 
             self.last_error = error
@@ -131,9 +179,10 @@ class TunnelWallFollower(Node):
             self.last_error = 0.0
 
         self.cmd_vel_pub.publish(cmd)
+        self.last_cmd = cmd
 
 
-def main(args=None):
+def main(args=None) -> None:
     rclpy.init(args=args)
     node = TunnelWallFollower()
     try:

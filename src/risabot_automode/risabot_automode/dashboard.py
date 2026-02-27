@@ -8,23 +8,48 @@ Run standalone:  python3 dashboard.py
 Or via launch:   included in competition.launch.py
 """
 
-import rclpy
-from rclpy.node import Node
-from std_msgs.msg import Bool, String, Float32
-from geometry_msgs.msg import Twist
-from sensor_msgs.msg import Joy, Image
-from nav_msgs.msg import Odometry
-from rclpy.qos import QoSPresetProfiles
-import threading
-import json
-import time
 import http.server
-import socketserver
-from rcl_interfaces.srv import GetParameters, SetParameters
-from rcl_interfaces.msg import Parameter as RosParameter, ParameterValue, ParameterType
+import json
 import math
-import numpy as np
+import socketserver
+import threading
+import time
+
 import cv2
+import rclpy
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+from rcl_interfaces.msg import Parameter as RosParameter, ParameterType, ParameterValue
+from rcl_interfaces.srv import GetParameters, SetParameters
+from rclpy.node import Node
+from rclpy.qos import QoSPresetProfiles
+from sensor_msgs.msg import Image, Joy
+from std_msgs.msg import Bool, Float32, String
+
+from .topics import (
+    AUTO_CMD_VEL_TOPIC,
+    AUTO_MODE_TOPIC,
+    BOOM_GATE_TOPIC,
+    CAMERA_DEBUG_LINE_TOPIC,
+    CAMERA_DEBUG_OBS_TOPIC,
+    CAMERA_DEBUG_TL_TOPIC,
+    CAMERA_IMAGE_TOPIC,
+    CMD_VEL_TOPIC,
+    DASH_CTRL_TOPIC,
+    DASH_STATE_TOPIC,
+    JOY_TOPIC,
+    LANE_ERROR_TOPIC,
+    OBSTACLE_CAMERA_TOPIC,
+    OBSTACLE_FUSED_TOPIC,
+    OBSTACLE_LIDAR_TOPIC,
+    ODOM_TOPIC,
+    OBSTRUCTION_ACTIVE_TOPIC,
+    PARKING_COMPLETE_TOPIC,
+    HEALTH_STATUS_TOPIC,
+    SET_CHALLENGE_TOPIC,
+    TRAFFIC_LIGHT_TOPIC,
+    TUNNEL_DETECTED_TOPIC,
+)
 
 try:
     from cv_bridge import CvBridge
@@ -38,11 +63,16 @@ from .dashboard_templates import DASHBOARD_HTML, TEACH_HTML
 # ======================== ROS2 Dashboard Node ========================
 
 class DashboardNode(Node):
+    """ROS 2 node providing data and camera streams to the web dashboard."""
     def __init__(self):
         super().__init__('dashboard')
         self.get_logger().info('Dashboard node starting on http://0.0.0.0:8080')
 
         self.declare_parameter('use_hw_odom', False)
+        self.declare_parameter('freshness_stale_sec', 2.0)
+        self.declare_parameter('sim_odom_scale', 1.55)
+        self.declare_parameter('hw_odom_scale', 1.0)
+        self.declare_parameter('hw_odom_yaw_scale', 1.0)
 
         # CV Bridge for camera
         self.bridge = CvBridge() if CvBridge else None
@@ -85,6 +115,29 @@ class DashboardNode(Node):
             'speed_pct': 25,
             'ctrl_state_index': 0,
             'ctrl_state_name': 'LANE_FOLLOW',
+            'health_ok': None,
+            'health_summary': '',
+            'health_stale': [],
+        }
+        self.topic_last_update = {
+            'auto_mode': 0.0,
+            'obstacle_front': 0.0,
+            'obstacle_camera': 0.0,
+            'obstacle_fused': 0.0,
+            'traffic_light': 0.0,
+            'boom_gate': 0.0,
+            'tunnel_detected': 0.0,
+            'obstruction_active': 0.0,
+            'parking_complete': 0.0,
+            'lane_error': 0.0,
+            'cmd_vel': 0.0,
+            'odom': 0.0,
+            'odom_sim': 0.0,
+            'joy': 0.0,
+            'dashboard_state': 0.0,
+            'dashboard_ctrl': 0.0,
+            'set_challenge': 0.0,
+            'health_status': 0.0,
         }
         self.data_lock = threading.Lock()
 
@@ -94,37 +147,38 @@ class DashboardNode(Node):
         # === Subscriptions ===
         qos = QoSPresetProfiles.SENSOR_DATA.value
 
-        self.create_subscription(Bool, '/auto_mode', self._auto_mode_cb, 10)
-        self.create_subscription(Bool, '/obstacle_front', self._lidar_cb, qos)
-        self.create_subscription(Bool, '/obstacle_detected_camera', self._cam_cb, qos)
-        self.create_subscription(Bool, '/obstacle_detected_fused', self._fused_cb, 10)
-        self.create_subscription(String, '/traffic_light_state', self._tl_cb, 10)
-        self.create_subscription(Bool, '/boom_gate_open', self._gate_cb, 10)
-        self.create_subscription(Bool, '/tunnel_detected', self._tunnel_cb, 10)
-        self.create_subscription(Bool, '/obstruction_active', self._obst_cb, 10)
-        self.create_subscription(Bool, '/parking_complete', self._park_cb, 10)
-        self.create_subscription(Float32, '/lane_error', self._lane_cb, qos)
-        self.create_subscription(Twist, '/cmd_vel', self._cmd_cb, 10)
-        self.create_subscription(Odometry, '/odom', self._odom_cb, 10)
-        self.create_subscription(Joy, '/joy', self._joy_cb, 10)
-        self.create_subscription(String, '/dashboard_state', self._dash_state_cb, 10)
-        self.create_subscription(String, '/dashboard_ctrl', self._dash_ctrl_cb, 10)
-        self.create_subscription(String, '/set_challenge', self._set_challenge_cb, 10)
+        self.create_subscription(Bool, AUTO_MODE_TOPIC, self._auto_mode_cb, 10)
+        self.create_subscription(Bool, OBSTACLE_LIDAR_TOPIC, self._lidar_cb, qos)
+        self.create_subscription(Bool, OBSTACLE_CAMERA_TOPIC, self._cam_cb, qos)
+        self.create_subscription(Bool, OBSTACLE_FUSED_TOPIC, self._fused_cb, 10)
+        self.create_subscription(String, TRAFFIC_LIGHT_TOPIC, self._tl_cb, 10)
+        self.create_subscription(Bool, BOOM_GATE_TOPIC, self._gate_cb, 10)
+        self.create_subscription(Bool, TUNNEL_DETECTED_TOPIC, self._tunnel_cb, 10)
+        self.create_subscription(Bool, OBSTRUCTION_ACTIVE_TOPIC, self._obst_cb, 10)
+        self.create_subscription(Bool, PARKING_COMPLETE_TOPIC, self._park_cb, 10)
+        self.create_subscription(String, HEALTH_STATUS_TOPIC, self._health_cb, 10)
+        self.create_subscription(Float32, LANE_ERROR_TOPIC, self._lane_cb, qos)
+        self.create_subscription(Twist, CMD_VEL_TOPIC, self._cmd_cb, 10)
+        self.create_subscription(Odometry, ODOM_TOPIC, self._odom_cb, 10)
+        self.create_subscription(Joy, JOY_TOPIC, self._joy_cb, 10)
+        self.create_subscription(String, DASH_STATE_TOPIC, self._dash_state_cb, 10)
+        self.create_subscription(String, DASH_CTRL_TOPIC, self._dash_ctrl_cb, 10)
+        self.create_subscription(String, SET_CHALLENGE_TOPIC, self._set_challenge_cb, 10)
         # Also listen to auto commands for display
-        self.create_subscription(Twist, '/cmd_vel_auto', self._cmd_cb, 10)
+        self.create_subscription(Twist, AUTO_CMD_VEL_TOPIC, self._cmd_cb, 10)
 
         # Camera subscriptions (SENSOR_DATA QoS to match camera publisher)
-        self.create_subscription(Image, '/camera/color/image_raw', lambda msg: self._image_cb(msg, 'raw'), qos)
-        self.create_subscription(Image, '/camera/debug/line_follower', lambda msg: self._image_cb(msg, 'line_follower'), qos)
-        self.create_subscription(Image, '/camera/debug/traffic_light', lambda msg: self._image_cb(msg, 'traffic_light'), qos)
-        self.create_subscription(Image, '/camera/debug/obstacle', lambda msg: self._image_cb(msg, 'obstacle'), qos)
+        self.create_subscription(Image, CAMERA_IMAGE_TOPIC, lambda msg: self._image_cb(msg, 'raw'), qos)
+        self.create_subscription(Image, CAMERA_DEBUG_LINE_TOPIC, lambda msg: self._image_cb(msg, 'line_follower'), qos)
+        self.create_subscription(Image, CAMERA_DEBUG_TL_TOPIC, lambda msg: self._image_cb(msg, 'traffic_light'), qos)
+        self.create_subscription(Image, CAMERA_DEBUG_OBS_TOPIC, lambda msg: self._image_cb(msg, 'obstacle'), qos)
 
         # Simulate odometry since hardware might not publish
         self.create_timer(0.05, self._simulate_odom_loop)
 
         self.get_logger().info('Dashboard subscriptions ready')
 
-    def _simulate_odom_loop(self):
+    def _simulate_odom_loop(self) -> None:
         """Simulates odometry position based on commanded velocities.
         Useful when the hardware driver fails to publish /odom data."""
         use_hw_odom = self.get_parameter('use_hw_odom').value
@@ -151,7 +205,7 @@ class DashboardNode(Node):
             
             # Odometry calibration: measured 1m real → scale to match
             # Residual error is from wheel slip/coasting (robot moves after cmd_vel=0)
-            odom_scale = 1.55
+            odom_scale = float(self.get_parameter('sim_odom_scale').value)
             cal_vel_x = vel_x * odom_scale
             
             # Minimum velocity threshold: ignore tiny commanded speeds
@@ -169,33 +223,78 @@ class DashboardNode(Node):
             # X and Y based on current heading
             self.data['odom_x'] += cal_vel_x * math.cos(self.data['odom_yaw']) * dt
             self.data['odom_y'] += cal_vel_x * math.sin(self.data['odom_yaw']) * dt
+            self.topic_last_update['odom_sim'] = time.monotonic()
 
-    def _set(self, key, value):
+    def _set(self, key, value, source_key=None) -> None:
         with self.data_lock:
             self.data[key] = value
+            if source_key:
+                self.topic_last_update[source_key] = time.monotonic()
 
-    def _auto_mode_cb(self, msg):
-        self._set('auto_mode', msg.data)
+    def _auto_mode_cb(self, msg: Bool) -> None:
+        self._set('auto_mode', msg.data, 'auto_mode')
         mode = "AUTO" if msg.data else "MANUAL"
         self.get_logger().info(f'Mode changed: {mode}')
 
-    def _lidar_cb(self, msg): self._set('lidar_obstacle', msg.data)
-    def _cam_cb(self, msg): self._set('camera_obstacle', msg.data)
-    def _fused_cb(self, msg): self._set('fused_obstacle', msg.data)
-    def _tl_cb(self, msg): self._set('traffic_light', msg.data)
-    def _gate_cb(self, msg): self._set('boom_gate', msg.data)
-    def _tunnel_cb(self, msg): self._set('tunnel_detected', msg.data)
-    def _obst_cb(self, msg): self._set('obstruction_active', msg.data)
-    def _park_cb(self, msg): self._set('parking_complete', msg.data)
-    def _lane_cb(self, msg): self._set('lane_error', msg.data)
+    def _lidar_cb(self, msg: Bool) -> None:
+        """Update LiDAR obstacle flag."""
+        self._set('lidar_obstacle', msg.data, 'obstacle_front')
 
-    def _cmd_cb(self, msg):
+    def _cam_cb(self, msg: Bool) -> None:
+        """Update camera obstacle flag."""
+        self._set('camera_obstacle', msg.data, 'obstacle_camera')
+
+    def _fused_cb(self, msg: Bool) -> None:
+        """Update fused obstacle flag."""
+        self._set('fused_obstacle', msg.data, 'obstacle_fused')
+
+    def _tl_cb(self, msg: String) -> None:
+        """Update traffic light state."""
+        self._set('traffic_light', msg.data, 'traffic_light')
+
+    def _gate_cb(self, msg: Bool) -> None:
+        """Update boom gate state."""
+        self._set('boom_gate', msg.data, 'boom_gate')
+
+    def _tunnel_cb(self, msg: Bool) -> None:
+        """Update tunnel detection flag."""
+        self._set('tunnel_detected', msg.data, 'tunnel_detected')
+
+    def _obst_cb(self, msg: Bool) -> None:
+        """Update obstruction avoidance flag."""
+        self._set('obstruction_active', msg.data, 'obstruction_active')
+
+    def _park_cb(self, msg: Bool) -> None:
+        """Update parking completion flag."""
+        self._set('parking_complete', msg.data, 'parking_complete')
+
+    def _lane_cb(self, msg: Float32) -> None:
+        """Update lane error."""
+        self._set('lane_error', msg.data, 'lane_error')
+
+    def _health_cb(self, msg: String) -> None:
+        """Update parsed health summary from /health_status."""
+        try:
+            payload = json.loads(msg.data)
+            with self.data_lock:
+                self.data['health_ok'] = bool(payload.get('ok', False))
+                self.data['health_summary'] = str(payload.get('summary', ''))
+                self.data['health_stale'] = list(payload.get('stale', []))
+                self.topic_last_update['health_status'] = time.monotonic()
+        except Exception:
+            with self.data_lock:
+                self.data['health_ok'] = False
+                self.data['health_summary'] = msg.data
+                self.topic_last_update['health_status'] = time.monotonic()
+
+    def _cmd_cb(self, msg: Twist) -> None:
         with self.data_lock:
             self.data['cmd_lin_x'] = msg.linear.x
             self.data['cmd_ang_z'] = msg.angular.z
             self.data['_cmd_time'] = time.time()
+            self.topic_last_update['cmd_vel'] = time.monotonic()
 
-    def _odom_cb(self, msg):
+    def _odom_cb(self, msg: Odometry) -> None:
         use_hw_odom = self.get_parameter('use_hw_odom').value
         if not use_hw_odom:
             return  # Ignore real hardware if simulation failsafe is active
@@ -204,12 +303,15 @@ class DashboardNode(Node):
         with self.data_lock:
             # Natively, many basic firmwares only populate Twist (speeds) and leave Pose (X, Y, Yaw) as exactly 0.0
             vel_x = msg.twist.twist.linear.x
-            self.data['speed'] = vel_x
+            hw_scale = float(self.get_parameter('hw_odom_scale').value)
+            yaw_scale = float(self.get_parameter('hw_odom_yaw_scale').value)
+            vel_x_scaled = vel_x * hw_scale
+            self.data['speed'] = vel_x_scaled
             
             now = time.time()
             if hasattr(self, '_last_real_odom_t'):
                 dt = min(now - self._last_real_odom_t, 0.2)
-                self.data['distance'] += abs(vel_x) * dt
+                self.data['distance'] += abs(vel_x_scaled) * dt
             else:
                 dt = 0.0
             self._last_real_odom_t = now
@@ -218,7 +320,7 @@ class DashboardNode(Node):
             q = msg.pose.pose.orientation
             if q.w == 0.0 and q.x == 0.0 and q.y == 0.0 and q.z == 0.0:
                 # Dead reckon yaw from twist angular Z
-                self.data['odom_yaw'] += msg.twist.twist.angular.z * dt
+                self.data['odom_yaw'] += msg.twist.twist.angular.z * yaw_scale * dt
             else:
                 siny_cosp = 2 * (q.w * q.z + q.x * q.y)
                 cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
@@ -230,13 +332,14 @@ class DashboardNode(Node):
             
             if abs(hw_x) < 0.0001 and abs(hw_y) < 0.0001 and self.data['distance'] > 0.0:
                 # Firmware omitted Pose but shipped Speeds. Dead reckon the speeds using current Yaw!
-                self.data['odom_x'] += vel_x * math.cos(self.data['odom_yaw']) * dt
-                self.data['odom_y'] += vel_x * math.sin(self.data['odom_yaw']) * dt
+                self.data['odom_x'] += vel_x_scaled * math.cos(self.data['odom_yaw']) * dt
+                self.data['odom_y'] += vel_x_scaled * math.sin(self.data['odom_yaw']) * dt
             else:
                 self.data['odom_x'] = hw_x
                 self.data['odom_y'] = hw_y
+            self.topic_last_update['odom'] = time.monotonic()
 
-    def _joy_cb(self, msg):
+    def _joy_cb(self, msg: Joy) -> None:
         with self.data_lock:
             self.data['buttons'] = list(msg.buttons)
             if self.initial_joy_axes is None:
@@ -247,8 +350,9 @@ class DashboardNode(Node):
             else:
                 self.initial_joy_axes = []  # Clear forever once moved
                 self.data['axes'] = list(msg.axes)
+            self.topic_last_update['joy'] = time.monotonic()
 
-    def _dash_state_cb(self, msg):
+    def _dash_state_cb(self, msg: String) -> None:
         """Parse STATE|LAP|TOTAL_DIST|STOP_REASON format from auto_driver."""
         try:
             parts = msg.data.split('|')
@@ -264,10 +368,11 @@ class DashboardNode(Node):
                     self.data['stop_reason'] = parts[3]
                 else:
                     self.data['stop_reason'] = ''
+                self.topic_last_update['dashboard_state'] = time.monotonic()
         except Exception:
             self._set('state', msg.data)
 
-    def _dash_ctrl_cb(self, msg):
+    def _dash_ctrl_cb(self, msg: String) -> None:
         """Parse SPD_PCT|STATE_INDEX|STATE_NAME format from servo_controller."""
         try:
             parts = msg.data.split('|')
@@ -277,15 +382,16 @@ class DashboardNode(Node):
                     self.data['ctrl_state_index'] = int(parts[1])
                 if len(parts) > 2:
                     self.data['ctrl_state_name'] = parts[2]
+                self.topic_last_update['dashboard_ctrl'] = time.monotonic()
         except Exception:
             pass
 
-    def _set_challenge_cb(self, msg):
+    def _set_challenge_cb(self, msg: String) -> None:
         """Also listen to /set_challenge as fallback for state cycle display."""
         name = msg.data.upper()
-        self._set('ctrl_state_name', name)
+        self._set('ctrl_state_name', name, 'set_challenge')
 
-    def _image_cb(self, msg, view_name):
+    def _image_cb(self, msg: Image, view_name: str) -> None:
         """Convert ROS Image to JPEG conditionally, tracking active view and clients."""
         if self.bridge is None or view_name != self.active_camera_view:
             return
@@ -310,10 +416,26 @@ class DashboardNode(Node):
         except Exception:
             pass
 
-    def get_json(self):
+    def get_json(self) -> str:
         with self.data_lock:
             d = dict(self.data)
+            updates = dict(self.topic_last_update)
         d['state_time'] = int(time.time() - self._state_entry_time)
+        now_mono = time.monotonic()
+        stale_sec = float(self.get_parameter('freshness_stale_sec').value)
+        freshness = {}
+        stale_streams = []
+        for key, last_t in updates.items():
+            if last_t <= 0.0:
+                freshness[key] = None
+                stale_streams.append(key)
+                continue
+            age = round(now_mono - last_t, 3)
+            freshness[key] = age
+            if age > stale_sec:
+                stale_streams.append(key)
+        d['freshness_sec'] = freshness
+        d['stale_streams'] = stale_streams
         
         # Ensure odometry types are standard python floats for JSON serialization
         for k in ['distance', 'speed', 'odom_x', 'odom_y', 'odom_yaw']:
@@ -322,7 +444,7 @@ class DashboardNode(Node):
                 
         return json.dumps(d)
 
-    def get_jpeg(self):
+    def get_jpeg(self) -> None:
         # We no longer use this standalone method because do_GET
         # manages the condition variable directly to block until new frame.
         pass
@@ -429,7 +551,9 @@ def _ros_set_param(node_name, param_name, value_str):
 _node_ref = None
 
 class DashboardHandler(http.server.BaseHTTPRequestHandler):
+    """HTTP handler for dashboard HTML, JSON, and MJPEG streams."""
     def do_GET(self):
+        """Serve dashboard HTML, JSON data, and MJPEG camera stream."""
         if self.path == '/data':
             data = _node_ref.get_json() if _node_ref else '{}'
             self.send_response(200)
@@ -539,6 +663,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(DASHBOARD_HTML.encode())
 
     def do_POST(self):
+        """Handle dashboard API POST requests."""
         if self.path == '/api/reset_odom':
             # Reset odometry counters
             global _node_ref
@@ -580,10 +705,11 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
 
     def log_message(self, format, *args):
+        """Suppress default HTTP logging."""
         pass  # Suppress HTTP logs
 
 
-def main(args=None):
+def main(args=None) -> None:
     global _node_ref
     rclpy.init(args=args)
     node = DashboardNode()

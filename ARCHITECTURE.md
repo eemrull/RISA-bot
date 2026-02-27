@@ -26,6 +26,7 @@ graph TD
     subgraph Control
         AD["auto_driver"]
         SC["servo_controller"]
+        HM["health_monitor"]
     end
 
     subgraph Interface
@@ -49,16 +50,22 @@ graph TD
     BG -->|"/boom_gate_open"| AD
     TUN -->|"/tunnel_detected + /tunnel_cmd_vel"| AD
     OBS -->|"/obstruction_active + /obstruction_cmd_vel"| AD
-    PARK -->|"/parking_complete + /parking_cmd_vel"| AD
+    PARK -->|"/parking_signboard_detected + /parking_cmd_vel + /parking_complete + /parking_status"| AD
 
     AD -->|"/cmd_vel_auto"| SC
+    AD -->|"/parking_command"| PARK
+    AD -->|"/obstacle_detected_fused"| DASH
     JOY -->|"/joy"| SC
+    JOY -->|"/joy"| DASH
     SC -->|"Rosmaster_Lib (serial)"| HW["Motor Board"]
+    SC -->|"/cmd_vel"| DASH
+    SC -->|"/auto_mode"| AD
     SC -->|"/odom"| DASH
     SC -->|"/odom"| AD
 
     AD -->|"/dashboard_state"| DASH
     SC -->|"/dashboard_ctrl"| DASH
+    HM -->|"/health_status"| DASH
 ```
 
 ## State Machine (auto_driver)
@@ -66,12 +73,13 @@ graph TD
 | Priority | State          | Trigger               | Action                      |
 | -------- | -------------- | --------------------- | --------------------------- |
 | 1        | MANUAL         | `auto_mode=false`     | No cmd_vel published        |
-| 2        | FINISHED       | Lap 2 + parking done  | Full stop                   |
+| 2        | FINISHED       | Lap 2 + perpendicular done | Full stop              |
 | 3        | TRAFFIC_LIGHT  | Red/yellow detected   | Full stop                   |
 | 4        | BOOM_GATE      | Gate closed           | Full stop                   |
 | 5        | OBSTRUCTION    | LiDAR lateral avoid   | Use `/obstruction_cmd_vel`  |
 | 5.5      | REVERSE_ADJUST | Too close to obstacle | Reverse slowly              |
-| 6        | PARALLEL_PARK  | Lap 2 + signboard     | Use `/parking_cmd_vel`      |
+| 6        | PARALLEL_PARK  | Lap 2 + signboard (latched) | Use `/parking_cmd_vel` |
+| 6        | PERPENDICULAR_PARK | Parallel complete  | Use `/parking_cmd_vel`      |
 | 6        | TUNNEL         | Walls on both sides   | Use `/tunnel_cmd_vel`       |
 | 7        | LANE_FOLLOW    | Default               | Steering from `/lane_error` |
 
@@ -100,4 +108,5 @@ Lap 2: Lane Follow → Obstruction → Roundabout →
 | `tunnel_wall_follower.py`   | PD wall following in tunnel             |
 | `boom_gate_detector.py`     | LiDAR gate barrier detection            |
 | `parking_controller.py`     | Odometry-based parking maneuvers        |
+| `health_monitor.py`         | Topic freshness and runtime health      |
 | `config/params.yaml`        | Centralized tunable parameters          |

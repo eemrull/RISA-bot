@@ -12,6 +12,7 @@ auto_driver:
     stale_timeout: 3.0
     dist_lap_complete: 1.0
     enable_subsumption_obstacle: false
+    max_odom_speed: 1.0
 
 # --- Line Follower Camera ---
 line_follower_camera:
@@ -21,31 +22,32 @@ line_follower_camera:
     white_threshold: 150
     crop_ratio: 0.4
     show_debug: false
+    resize_width: 320
+    print_debug: false
+    debug_print_rate: 0.5
 
 # --- Traffic Light Detector ---
 traffic_light_detector:
   ros__parameters:
     red_h_low1: 0
     red_h_high1: 10
-    red_h_low2: 170
+    red_h_low2: 160
     red_h_high2: 180
-    red_s_low: 100
-    red_s_high: 255
-    red_v_low: 100
-    red_v_high: 255
     yellow_h_low: 20
     yellow_h_high: 35
-    yellow_s_low: 100
-    yellow_s_high: 255
-    yellow_v_low: 100
-    yellow_v_high: 255
     green_h_low: 40
-    green_h_high: 90
-    green_s_low: 60
-    green_s_high: 255
-    green_v_low: 60
-    green_v_high: 255
+    green_h_high: 85
+    sat_min: 80
+    val_min: 80
+    min_circle_radius: 8
+    max_circle_radius: 80
+    min_pixel_count: 50
+    required_confidence: 3
     show_debug: false
+    resize_width: 320
+    print_debug: false
+    debug_print_rate: 0.5
+    heartbeat_sec: 0.5
 
 # --- Boom Gate Detector ---
 boom_gate_detector:
@@ -57,6 +59,7 @@ boom_gate_detector:
     distance_variance_max: 0.05
     lidar_angle_offset: 1.5708
     hysteresis: 3
+    heartbeat_sec: 0.5
 
 # --- Tunnel Wall Follower ---
 tunnel_wall_follower:
@@ -73,6 +76,7 @@ tunnel_wall_follower:
     lidar_angle_offset: 1.5708
     min_wall_points: 3
     max_wall_dist: 0.60
+    heartbeat_sec: 0.2
 
 # --- Obstruction Avoidance ---
 obstruction_avoidance:
@@ -94,12 +98,15 @@ obstruction_avoidance:
 parking_controller:
   ros__parameters:
     parallel_forward_dist: 0.30
-    parallel_steer_angle: 0.8
-    parallel_steer_dist: 0.25
-    parallel_wait_time: 3.0
+    parallel_reverse_dist: 0.35
+    parallel_steer_angle: 0.6
+    park_wait_time: 3.0
     perp_turn_angle: 1.57
-    perp_forward_dist: 0.40
-    perp_wait_time: 3.0
+    perp_forward_dist: 0.25
+    drive_speed: 0.15
+    reverse_speed: -0.12
+    signboard_min_area: 500
+    signboard_resize_width: 320
 
 # --- Camera Obstacle Detection ---
 obstacle_avoidance_camera:
@@ -111,13 +118,56 @@ obstacle_avoidance_camera:
     hysteresis_on: 3
     hysteresis_off: 5
     show_debug: false
+    resize_width: 320
+    print_debug: false
+    debug_print_rate: 0.5
+    heartbeat_sec: 0.5
 
 # --- LiDAR Obstacle Detection ---
 obstacle_avoidance_node:
   ros__parameters:
     min_obstacle_distance: 0.48
+    heartbeat_sec: 0.5
 
 # --- Dashboard ---
 dashboard:
   ros__parameters:
     use_hw_odom: true
+    freshness_stale_sec: 2.0
+    sim_odom_scale: 1.55
+    hw_odom_scale: 1.0
+    hw_odom_yaw_scale: 1.0
+
+# --- Health Monitor ---
+health_monitor:
+  ros__parameters:
+    publish_period: 0.5
+    timeout_perception: 1.5
+    timeout_state: 2.0
+    timeout_control: 1.0
+    timeout_odom: 1.0
+    timeout_joy: 2.0
+
+# --- Servo Controller ---
+servo_controller:
+  ros__parameters:
+    servo_steer_id: 4
+    servo_center: 90
+    servo_range: 50
+    speed_levels: [15, 25, 40, 60, 100]
+    default_speed_index: 1
+    joy_timeout: 0.8
+    hw_heartbeat_sec: 1.0
+    hw_fail_limit: 5
+    ticks_per_meter: 1050.0
+    odom_distance_scale: 1.0
+    odom_yaw_scale: 1.0
+    encoder_jump_threshold: 800.0
+    max_linear_velocity: 1.0
+    max_angular_velocity: 6.0
+    odom_reverse_polarity: false
+    wheel_base: 0.14
+    steering_max_deg: 50.0
+    odom_vel_alpha: 0.3
+    odom_frame_id: "odom"
+    base_frame_id: "base_link"

@@ -14,17 +14,24 @@ Algorithm:
 Publishes Float32 on /lane_error (range -1.0 to +1.0).
 """
 
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import Image
-from std_msgs.msg import Float32
-from cv_bridge import CvBridge
+import time
+from typing import Dict
+
 import cv2
 import numpy as np
+import rclpy
+from cv_bridge import CvBridge
+from rcl_interfaces.msg import SetParametersResult
+from rclpy.node import Node
 from rclpy.qos import QoSPresetProfiles
+from sensor_msgs.msg import Image
+from std_msgs.msg import Float32
+
+from .topics import CAMERA_DEBUG_LINE_TOPIC, CAMERA_IMAGE_TOPIC, LANE_ERROR_TOPIC
 
 
 class LineFollowerCamera(Node):
+    """Lane detection and steering error estimation from camera frames."""
 
     def __init__(self):
         super().__init__('line_follower_camera')
@@ -38,31 +45,64 @@ class LineFollowerCamera(Node):
         self.declare_parameter('white_threshold', 150)    # grayscale threshold for white lines
         self.declare_parameter('crop_ratio', 0.4)         # bottom portion of image to use
         self.declare_parameter('show_debug', False)       # set True to show debug window
+        self.declare_parameter('resize_width', 320)       # downscale width for faster processing
+        self.declare_parameter('print_debug', False)      # print debug line to stdout
+        self.declare_parameter('debug_print_rate', 0.5)   # seconds between prints
+        self._param_cache: Dict[str, object] = {}
+        self._update_param_cache()
+        self.add_on_set_parameters_callback(self._on_params)
+        self._last_debug_print = 0.0
 
-        self.error_pub = self.create_publisher(Float32, '/lane_error', 10)
-        self.debug_pub = self.create_publisher(Image, '/camera/debug/line_follower', 10)
+        self.error_pub = self.create_publisher(Float32, LANE_ERROR_TOPIC, 10)
+        self.debug_pub = self.create_publisher(Image, CAMERA_DEBUG_LINE_TOPIC, 10)
         self.bridge = CvBridge()
         self.color_sub = self.create_subscription(
             Image,
-            '/camera/color/image_raw',
+            CAMERA_IMAGE_TOPIC,
             self.color_callback,
             QoSPresetProfiles.SENSOR_DATA.value
         )
         self.get_logger().info('Line Follower Camera: Ready (Smoothed Two-Line Midpoint Mode)')
 
-    def color_callback(self, msg):
+    def _update_param_cache(self) -> None:
+        """Cache frequently used parameters to avoid per-frame lookups."""
+        self._param_cache = {
+            'smoothing_alpha': float(self.get_parameter('smoothing_alpha').value),
+            'dead_zone': float(self.get_parameter('dead_zone').value),
+            'white_threshold': int(self.get_parameter('white_threshold').value),
+            'crop_ratio': float(self.get_parameter('crop_ratio').value),
+            'show_debug': bool(self.get_parameter('show_debug').value),
+            'resize_width': int(self.get_parameter('resize_width').value),
+            'print_debug': bool(self.get_parameter('print_debug').value),
+            'debug_print_rate': float(self.get_parameter('debug_print_rate').value),
+        }
+
+    def _on_params(self, params) -> SetParametersResult:
+        """Update cached parameters when set via CLI or services."""
+        for p in params:
+            if p.name in self._param_cache:
+                self._param_cache[p.name] = p.value
+        return SetParametersResult(successful=True)
+
+    def color_callback(self, msg: Image) -> None:
+        """Process a camera frame and publish lane error."""
         try:
             # Convert to BGR, then grayscale
             bgr = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
             h, w = bgr.shape[:2]
+            resize_w = self._param_cache['resize_width']
+            if resize_w > 0 and w > resize_w:
+                scale = resize_w / float(w)
+                bgr = cv2.resize(bgr, (resize_w, int(h * scale)))
+                h, w = bgr.shape[:2]
 
             # Focus on bottom portion (more road visibility for high mount)
-            crop_ratio = self.get_parameter('crop_ratio').value
+            crop_ratio = self._param_cache['crop_ratio']
             crop_h = int(h * crop_ratio)
             road = bgr[h - crop_h:, :]
 
             # Threshold white lines
-            white_thresh = self.get_parameter('white_threshold').value
+            white_thresh = self._param_cache['white_threshold']
             gray = cv2.cvtColor(road, cv2.COLOR_BGR2GRAY)
             blurred = cv2.GaussianBlur(gray, (5, 5), 0)  # reduce noise before threshold
             _, binary = cv2.threshold(blurred, white_thresh, 255, cv2.THRESH_BINARY)
@@ -169,12 +209,12 @@ class LineFollowerCamera(Node):
             raw_error = float(np.clip(error, -1.0, 1.0))
 
             # Dead zone — ignore tiny errors to prevent jitter on straight roads
-            dead_zone = self.get_parameter('dead_zone').value
+            dead_zone = self._param_cache['dead_zone']
             if abs(raw_error) < dead_zone:
                 raw_error = 0.0
 
             # Low-pass filter (exponential moving average) to smooth output
-            alpha = self.get_parameter('smoothing_alpha').value
+            alpha = self._param_cache['smoothing_alpha']
             self.filtered_error = alpha * raw_error + (1 - alpha) * self.filtered_error
             self.lane_error = self.filtered_error
 
@@ -186,7 +226,7 @@ class LineFollowerCamera(Node):
             self.error_pub.publish(Float32(data=self.lane_error))
 
             # Debug visualization
-            if self.get_parameter('show_debug').value:
+            if self._param_cache['show_debug']:
                 debug = bgr.copy()
                 
                 crop_top = h - crop_h  # top of cropped region in full image coords
@@ -257,14 +297,18 @@ class LineFollowerCamera(Node):
                 debug_msg = self.bridge.cv2_to_imgmsg(debug, encoding="bgr8")
                 self.debug_pub.publish(debug_msg)
 
-            status = "CENTER" if abs(self.lane_error) < 0.05 else ("TURN RIGHT" if self.lane_error < 0 else "TURN LEFT")
-            print(f"\r[LF] C:{int(weighted_center_x)} | Err:{self.lane_error:.2f} | {status}", end='', flush=True)
+            if self._param_cache['print_debug']:
+                now = time.monotonic()
+                if now - self._last_debug_print >= self._param_cache['debug_print_rate']:
+                    status = "CENTER" if abs(self.lane_error) < 0.05 else ("TURN RIGHT" if self.lane_error < 0 else "TURN LEFT")
+                    print(f"\r[LF] C:{int(weighted_center_x)} | Err:{self.lane_error:.2f} | {status}", end='', flush=True)
+                    self._last_debug_print = now
 
         except Exception as e:
             self.get_logger().error(f'Line follower error: {e}')
 
 
-def main(args=None):
+def main(args=None) -> None:
     rclpy.init(args=args)
     node = LineFollowerCamera()
     try:

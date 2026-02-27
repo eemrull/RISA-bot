@@ -1017,6 +1017,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <div class="s-row"><span class="s-label">Tunnel</span><span class="s-val"><span class="dot dot-gray" id="dotTunnel"></span><span id="valTunnel">—</span></span></div>
       <div class="s-row"><span class="s-label">Obstruction</span><span class="s-val"><span class="dot dot-gray" id="dotObst"></span><span id="valObst">—</span></span></div>
       <div class="s-row"><span class="s-label">Parking</span><span class="s-val"><span class="dot dot-gray" id="dotPark"></span><span id="valPark">—</span></span></div>
+      <div class="s-row"><span class="s-label">Health</span><span class="s-val"><span class="dot dot-gray" id="dotHealth"></span><span id="valHealth">—</span></span></div>
+      <div class="s-row"><span class="s-label">Stale Streams</span><span class="s-val" id="valStale">—</span></div>
     </div>
 
     <!-- Odometry -->
@@ -1315,6 +1317,25 @@ function update() {
       ss('dotTunnel','valTunnel',d.tunnel_detected,'IN TUNNEL','NO');
       ss('dotObst','valObst',d.obstruction_active,'DODGING','NO');
       ss('dotPark','valPark',d.parking_complete,'DONE','NO');
+      if (d.health_ok === null || d.health_ok === undefined) {
+        document.getElementById('dotHealth').className = 'dot dot-gray';
+        document.getElementById('valHealth').textContent = '—';
+      } else if (d.health_ok) {
+        document.getElementById('dotHealth').className = 'dot dot-green';
+        document.getElementById('valHealth').textContent = 'OK';
+      } else {
+        document.getElementById('dotHealth').className = 'dot dot-red';
+        document.getElementById('valHealth').textContent = 'STALE';
+      }
+      const stale = Array.isArray(d.health_stale) ? d.health_stale : (Array.isArray(d.stale_streams) ? d.stale_streams : []);
+      const staleEl = document.getElementById('valStale');
+      if (stale.length === 0) {
+        staleEl.textContent = 'NONE';
+        staleEl.style.color = '#9bd69b';
+      } else {
+        staleEl.textContent = stale.slice(0, 3).join(', ') + (stale.length > 3 ? ' +' + (stale.length - 3) : '');
+        staleEl.style.color = '#f38ba8';
+      }
 
       // Warning Flash Overlay (if blocked in AUTO)
       const isBlocked = d.fused_obstacle; // Use fused for reliable alarm
@@ -1399,83 +1420,111 @@ function update() {
 }
 // ===== PARAMETER TUNING (curated) =====
 const PARAM_TIPS = {
-  // Traffic Light
-  red_h_low1:'Red hue range 1 lower bound (HSV)',  red_h_high1:'Red hue range 1 upper bound',
-  red_h_low2:'Red hue range 2 lower bound (wrap)',  red_h_high2:'Red hue range 2 upper bound',
-  yellow_h_low:'Yellow hue lower',  yellow_h_high:'Yellow hue upper',
-  green_h_low:'Green hue lower',  green_h_high:'Green hue upper',
-  sat_min:'Min saturation to count as color',  val_min:'Min brightness to count as color',
-  min_circle_radius:'Smallest circle to detect',  max_circle_radius:'Largest circle to detect',
-  min_pixel_count:'Min colored pixels to trigger',
-  // Line Follower
-  smoothing_alpha:'Error smoothing (0=smooth, 1=raw)',  dead_zone:'Ignore error below this',
-  white_threshold:'Brightness to count as white line',  crop_ratio:'How far down to crop (0=top, 1=bottom)',
-  // Auto Driver
-  steering_gain:'How aggressively to steer on error',  forward_speed:'Base forward speed (m/s)',
-  stale_timeout:'Seconds before data is considered stale',
-  dist_obstruction_clear:'Distance after obstruction clears',  dist_roundabout:'Distance through roundabout',
-  dist_boom_gate_1_pass:'Distance past boom gate 1',  dist_boom_gate_2_pass:'Distance past boom gate 2',
-  dist_hill:'Distance over the hill',  dist_bumper:'Distance over bumpers',
-  dist_traffic_light_pass:'Distance past green light',  dist_drive_to_perp:'Distance parallel → perp parking',
-  // Boom Gate
-  min_detect_dist:'Closest gate detection (m)',  max_detect_dist:'Farthest gate detection (m)',
-  angle_window:'Forward arc width (rad)',  min_gate_points:'Min LiDAR points for gate',
-  distance_variance_max:'Max spread of gate points',  lidar_angle_offset:'LiDAR mount rotation (rad)',
+  // Traffic light
+  red_h_low1:'Red hue range 1 lower bound (HSV)', red_h_high1:'Red hue range 1 upper bound',
+  red_h_low2:'Red hue range 2 lower bound (wrap)', red_h_high2:'Red hue range 2 upper bound',
+  yellow_h_low:'Yellow hue lower', yellow_h_high:'Yellow hue upper',
+  green_h_low:'Green hue lower', green_h_high:'Green hue upper',
+  sat_min:'Min saturation to count as color', val_min:'Min brightness to count as color',
+  min_circle_radius:'Smallest circle to detect', max_circle_radius:'Largest circle to detect',
+  min_pixel_count:'Min colored pixels to trigger', required_confidence:'Consecutive detections required',
+  resize_width:'Resize width for CV speed', heartbeat_sec:'Publish heartbeat period',
+  // Line follower
+  smoothing_alpha:'Error smoothing (0=smooth, 1=raw)', dead_zone:'Ignore error below this',
+  white_threshold:'Brightness threshold for white line', crop_ratio:'Bottom crop ratio',
+  debug_print_rate:'Seconds between console debug prints',
+  // Auto driver
+  steering_gain:'Lane steering gain', forward_speed:'Base forward speed (m/s)',
+  stale_timeout:'Seconds before module data is stale', dist_lap_complete:'Distance after green to mark lap',
+  enable_subsumption_obstacle:'Enable fused obstacle reverse adjust', max_odom_speed:'Ignore odom speed spikes above this',
+  // Boom gate
+  min_detect_dist:'Closest gate detection (m)', max_detect_dist:'Farthest gate detection (m)',
+  angle_window:'Forward arc width (rad)', min_gate_points:'Min LiDAR points for gate',
+  distance_variance_max:'Max spread of gate points', lidar_angle_offset:'LiDAR mount rotation (rad)',
+  hysteresis:'Consecutive frames before state change',
   // Obstruction
-  detect_dist:'Start dodging at this distance (m)',  clear_dist:'Consider clear beyond this (m)',
-  front_angle:'Front detection arc (rad)',  side_angle_min:'Side arc start (rad)',  side_angle_max:'Side arc end (rad)',
-  steer_speed:'Speed while steering around (m/s)',  steer_angular:'Turn rate while dodging (rad/s)',
-  pass_speed:'Speed while passing alongside (m/s)',  pass_duration:'Seconds driving alongside',
-  steer_back_duration:'Seconds steering back to lane',  steer_away_duration:'Seconds steering away',
+  detect_dist:'Start dodging at this distance (m)', clear_dist:'Consider clear beyond this (m)',
+  front_angle:'Front detection arc (rad)', side_angle_min:'Side arc start (rad)', side_angle_max:'Side arc end (rad)',
+  steer_speed:'Speed while steering around (m/s)', steer_angular:'Turn rate while dodging (rad/s)',
+  pass_speed:'Speed while passing alongside (m/s)', pass_duration:'Seconds driving alongside',
+  steer_back_duration:'Seconds steering back to lane', steer_away_duration:'Seconds steering away',
   // Parking
-  parallel_forward_dist:'Drive past slot distance (m)',  parallel_reverse_dist:'Reverse into slot distance (m)',
-  parallel_steer_angle:'Steering rate during reverse (rad/s)',  perp_turn_angle:'Turn angle into slot (rad)',
-  perp_forward_dist:'Drive into slot distance (m)',  park_wait_time:'Seconds to wait in slot',
-  drive_speed:'Parking drive speed (m/s)',  reverse_speed:'Parking reverse speed (m/s)',
-  // Camera Obstacle
-  edge_threshold:'Edge pixel ratio to trigger (0.0–1.0)',  canny_low:'Canny lower threshold',
-  canny_high:'Canny upper threshold',  blur_kernel:'Gaussian blur kernel (odd number)',
-  hysteresis_on:'Frames to confirm obstacle',  hysteresis_off:'Frames to confirm clear',
-  show_debug:'Publish annotated debug frame',
+  parallel_forward_dist:'Drive past slot distance (m)', parallel_reverse_dist:'Reverse into slot distance (m)',
+  parallel_steer_angle:'Steering rate during reverse (rad/s)', perp_turn_angle:'Turn angle into slot (rad)',
+  perp_forward_dist:'Drive into slot distance (m)', park_wait_time:'Seconds to wait in slot',
+  drive_speed:'Parking drive speed (m/s)', reverse_speed:'Parking reverse speed (m/s)',
+  signboard_min_area:'Min contour area for parking sign', signboard_resize_width:'Resize width for sign detection',
+  // Camera obstacle
+  edge_threshold:'Edge pixel ratio to trigger (0.0-1.0)', canny_low:'Canny lower threshold',
+  canny_high:'Canny upper threshold', blur_kernel:'Gaussian blur kernel (odd number)',
+  hysteresis_on:'Frames to confirm obstacle', hysteresis_off:'Frames to confirm clear',
   // Dashboard
-  use_hw_odom:'Use hardware encoder odometry (bool)',
+  use_hw_odom:'Use hardware encoder odometry', freshness_stale_sec:'Dashboard stale threshold in seconds',
+  sim_odom_scale:'Scale for simulated odometry distance', hw_odom_scale:'Scale for hardware odometry distance',
+  hw_odom_yaw_scale:'Scale for hardware odometry yaw',
+  // Servo controller
+  ticks_per_meter:'Encoder ticks per meter', odom_distance_scale:'Extra distance calibration multiplier',
+  odom_yaw_scale:'Extra yaw calibration multiplier', encoder_jump_threshold:'Reject tick jumps above this',
+  max_linear_velocity:'Clamp linear odom speed', max_angular_velocity:'Clamp angular odom speed',
+  odom_reverse_polarity:'Invert encoder odom sign if needed',
+  // Health monitor
+  publish_period:'Health publish period (s)', timeout_perception:'Perception timeout (s)',
+  timeout_state:'State timeout (s)', timeout_control:'Control timeout (s)',
+  timeout_odom:'Odometry timeout (s)', timeout_joy:'Joystick timeout (s)',
+  show_debug:'Publish annotated debug frame', print_debug:'Enable console debug printing'
 };
 const PARAM_GROUPS = [
-  { node: 'traffic_light_detector', label: '🚦 Traffic Light', params: [
+  { node: 'traffic_light_detector', label: 'Traffic Light', params: [
     'red_h_low1','red_h_high1','red_h_low2','red_h_high2',
     'yellow_h_low','yellow_h_high','green_h_low','green_h_high',
-    'sat_min','val_min','min_circle_radius','max_circle_radius','min_pixel_count',
-    'show_debug'
+    'sat_min','val_min','min_circle_radius','max_circle_radius',
+    'min_pixel_count','required_confidence','resize_width','heartbeat_sec','show_debug'
   ]},
-  { node: 'line_follower_camera', label: '📐 Line Follower', params: [
-    'smoothing_alpha','dead_zone','white_threshold','crop_ratio','show_debug'
+  { node: 'line_follower_camera', label: 'Line Follower', params: [
+    'smoothing_alpha','dead_zone','white_threshold','crop_ratio',
+    'resize_width','print_debug','debug_print_rate','show_debug'
   ]},
-  { node: 'auto_driver', label: '🚗 Auto Driver', params: [
+  { node: 'auto_driver', label: 'Auto Driver', params: [
     'steering_gain','forward_speed','stale_timeout',
-    'dist_obstruction_clear','dist_roundabout','dist_boom_gate_1_pass',
-    'dist_boom_gate_2_pass','dist_hill','dist_bumper',
-    'dist_traffic_light_pass','dist_drive_to_perp'
+    'dist_lap_complete','enable_subsumption_obstacle','max_odom_speed'
   ]},
-  { node: 'boom_gate_detector', label: '🚧 Boom Gate', params: [
+  { node: 'boom_gate_detector', label: 'Boom Gate', params: [
     'min_detect_dist','max_detect_dist','angle_window',
-    'min_gate_points','distance_variance_max','lidar_angle_offset'
+    'min_gate_points','distance_variance_max','lidar_angle_offset','hysteresis','heartbeat_sec'
   ]},
-  { node: 'obstruction_avoidance', label: '🔀 Obstruction', params: [
+  { node: 'tunnel_wall_follower', label: 'Tunnel', params: [
+    'target_center_dist','forward_speed','kp','kd','max_angular',
+    'left_angle_min','left_angle_max','right_angle_min','right_angle_max',
+    'min_wall_points','max_wall_dist','heartbeat_sec'
+  ]},
+  { node: 'obstruction_avoidance', label: 'Obstruction', params: [
     'detect_dist','clear_dist','front_angle','side_angle_min','side_angle_max',
     'steer_speed','steer_angular','pass_speed','pass_duration',
-    'steer_back_duration','lidar_angle_offset'
+    'steer_back_duration','steer_away_duration','lidar_angle_offset'
   ]},
-  { node: 'parking_controller', label: '🅿️ Parking', params: [
+  { node: 'parking_controller', label: 'Parking', params: [
     'parallel_forward_dist','parallel_reverse_dist','parallel_steer_angle',
     'perp_turn_angle','perp_forward_dist','park_wait_time',
-    'drive_speed','reverse_speed'
+    'drive_speed','reverse_speed','signboard_min_area','signboard_resize_width'
   ]},
-  { node: 'obstacle_avoidance_camera', label: '📷 Camera Obstacle', params: [
+  { node: 'obstacle_avoidance_camera', label: 'Camera Obstacle', params: [
     'edge_threshold','canny_low','canny_high','blur_kernel',
-    'hysteresis_on','hysteresis_off', 'show_debug'
+    'hysteresis_on','hysteresis_off','resize_width','heartbeat_sec','show_debug'
   ]},
-  { node: 'dashboard', label: '📊 Dashboard Settings', params: [
-    'use_hw_odom'
+  { node: 'obstacle_avoidance_node', label: 'LiDAR Obstacle', params: [
+    'min_obstacle_distance','heartbeat_sec'
+  ]},
+  { node: 'servo_controller', label: 'Servo/Odom', params: [
+    'joy_timeout','ticks_per_meter','odom_distance_scale','odom_yaw_scale',
+    'encoder_jump_threshold','max_linear_velocity','max_angular_velocity',
+    'wheel_base','steering_max_deg','odom_vel_alpha','odom_reverse_polarity'
+  ]},
+  { node: 'dashboard', label: 'Dashboard', params: [
+    'use_hw_odom','freshness_stale_sec','sim_odom_scale','hw_odom_scale','hw_odom_yaw_scale'
+  ]},
+  { node: 'health_monitor', label: 'Health Monitor', params: [
+    'publish_period','timeout_perception','timeout_state',
+    'timeout_control','timeout_odom','timeout_joy'
   ]},
 ];
 

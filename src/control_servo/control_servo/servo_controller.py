@@ -21,20 +21,35 @@ Controls:
   RB (Btn 7):                Next Challenge State
 """
 
+import math
+import time
+from typing import Dict
+
 import rclpy
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
-from geometry_msgs.msg import Twist
 from std_msgs.msg import Bool, String
-from nav_msgs.msg import Odometry
-import math
-from Rosmaster_Lib import Rosmaster
-import time
 
-# --- Configuration ---
-SERVO_STEER_ID = 4
-SERVO_CENTER = 90
-SERVO_RANGE = 50   # 90 +/- 50 = [40, 140]
+from Rosmaster_Lib import Rosmaster
+from .topics import (
+    AUTO_CMD_VEL_TOPIC,
+    AUTO_MODE_TOPIC,
+    BASE_FRAME,
+    CMD_VEL_TOPIC,
+    DASH_CTRL_TOPIC,
+    JOY_TOPIC,
+    ODOM_FRAME,
+    ODOM_TOPIC,
+    SET_CHALLENGE_TOPIC,
+)
+
+# --- Defaults ---
+DEFAULT_SERVO_STEER_ID = 4
+DEFAULT_SERVO_CENTER = 90
+DEFAULT_SERVO_RANGE = 50   # 90 +/- 50 = [40, 140]
 
 CHALLENGE_STATES = [
     'LANE_FOLLOW', 'OBSTRUCTION', 'ROUNDABOUT',
@@ -44,8 +59,39 @@ CHALLENGE_STATES = [
 ]
 
 class ServoControllerV9(Node):
+    """Interface between joystick, auto driver, and Rosmaster motor board."""
+
     def __init__(self):
         super().__init__('servo_controller')
+
+        # --- Parameters ---
+        self.declare_parameter('servo_steer_id', DEFAULT_SERVO_STEER_ID)
+        self.declare_parameter('servo_center', DEFAULT_SERVO_CENTER)
+        self.declare_parameter('servo_range', DEFAULT_SERVO_RANGE)
+        self.declare_parameter('speed_levels', [15, 25, 40, 60, 100])
+        self.declare_parameter('default_speed_index', 1)
+        self.declare_parameter('joy_timeout', 0.8)
+        self.declare_parameter('hw_heartbeat_sec', 1.0)
+        self.declare_parameter('hw_fail_limit', 5)
+        self.declare_parameter('ticks_per_meter', 1050.0)
+        self.declare_parameter('odom_distance_scale', 1.0)
+        self.declare_parameter('odom_yaw_scale', 1.0)
+        self.declare_parameter('encoder_jump_threshold', 800.0)
+        self.declare_parameter('max_linear_velocity', 1.0)
+        self.declare_parameter('max_angular_velocity', 6.0)
+        self.declare_parameter('odom_reverse_polarity', False)
+        self.declare_parameter('wheel_base', 0.14)
+        self.declare_parameter('steering_max_deg', 50.0)
+        self.declare_parameter('odom_vel_alpha', 0.3)
+        self.declare_parameter('odom_frame_id', ODOM_FRAME)
+        self.declare_parameter('base_frame_id', BASE_FRAME)
+        self._param_cache: Dict[str, object] = {}
+        self._update_param_cache()
+        self.add_on_set_parameters_callback(self._on_params)
+
+        self.servo_steer_id = int(self._param_cache['servo_steer_id'])
+        self.servo_center = int(self._param_cache['servo_center'])
+        self.servo_range = int(self._param_cache['servo_range'])
 
         # Connect to Hardware
         self.bot = None
@@ -54,32 +100,35 @@ class ServoControllerV9(Node):
             self.bot.create_receive_threading()
             
             self.bot.set_motor(0, 0, 0, 0)
-            self.bot.set_pwm_servo(SERVO_STEER_ID, SERVO_CENTER)
+            self.bot.set_pwm_servo(self.servo_steer_id, self.servo_center)
             self.get_logger().info("✅ Rosmaster Connected (V9 Competition)")
         except Exception as e:
             self.get_logger().error(f"❌ Failed to connect to Rosmaster: {e}")
             exit(1)
 
         # Publishers
-        self.dash_pub = self.create_publisher(String, '/dashboard_ctrl', 10)
-        self.auto_mode_pub = self.create_publisher(Bool, '/auto_mode', 10)
-        self.challenge_pub = self.create_publisher(String, '/set_challenge', 10)
-        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
-        self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
+        self.dash_pub = self.create_publisher(String, DASH_CTRL_TOPIC, 10)
+        self.auto_mode_pub = self.create_publisher(Bool, AUTO_MODE_TOPIC, 10)
+        self.challenge_pub = self.create_publisher(String, SET_CHALLENGE_TOPIC, 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, CMD_VEL_TOPIC, 10)
+        self.odom_pub = self.create_publisher(Odometry, ODOM_TOPIC, 10)
 
         # Subscribers
-        self.create_subscription(Joy, 'joy', self.joy_callback, 10)
-        self.create_subscription(Twist, '/cmd_vel_auto', self.cmd_vel_auto_callback, 10)
+        self.create_subscription(Joy, JOY_TOPIC, self.joy_callback, 10)
+        self.create_subscription(Twist, AUTO_CMD_VEL_TOPIC, self.cmd_vel_auto_callback, 10)
 
         # State
         self.manual_mode = True
         self.challenge_index = 0
-        self.speed_levels = [15, 25, 40, 60, 100]
-        self.speed_idx = 0 # Index 0 -> 25% Default
+        self.speed_levels = list(self._param_cache['speed_levels'])
+        if not self.speed_levels:
+            self.speed_levels = [25]
+        default_idx = int(self._param_cache['default_speed_index'])
+        self.speed_idx = max(0, min(default_idx, len(self.speed_levels) - 1))
         self.current_speed_limit = self.speed_levels[self.speed_idx]
 
         self.target_motor_val = 0
-        self.target_servo_val = SERVO_CENTER
+        self.target_servo_val = self.servo_center
         # Hardware continuous update loop (10 Hz)
         self.create_timer(0.1, self._hardware_update_loop)
 
@@ -87,14 +136,17 @@ class ServoControllerV9(Node):
         # Ackermann kinematics parameters for RISA-Bot 
         # Ticks to meters needs calibration based on exact gear ratio and wheel diameter
         # Using a default scaling factor for now
-        self.wheel_diameter = 0.065 # m
-        self.wheel_base = 0.14 # m
-        self.ticks_per_meter = 1050 
+        self.wheel_base = float(self._param_cache['wheel_base'])
+        self.ticks_per_meter = float(self._param_cache['ticks_per_meter'])
 
-        self.last_odom_time = time.time()
+        self.last_odom_time = time.monotonic()
         self.odom_x = 0.0
         self.odom_y = 0.0
         self.odom_yaw = 0.0
+        self._filtered_linear = 0.0
+        self._filtered_angular = 0.0
+        self._encoder_glitch_count = 0
+        self._last_glitch_warn_t = 0.0
         self.last_encoder_ticks = [0, 0, 0, 0] # FL, FR, RL, RR
         self.encoder_first_read = True
 
@@ -111,26 +163,78 @@ class ServoControllerV9(Node):
         self.initial_joy_axes = None
         self.initial_joy_buttons = None
         
-        self.last_joy_time = 0.0        # timestamp of last /joy message
-        self.joy_timeout = 0.5          # seconds before declaring controller lost
+        self.last_joy_time = 0.0        # timestamp of last /joy message (monotonic)
+        self.joy_timeout = float(self._param_cache['joy_timeout'])
         self.joy_lost_reported = False   # avoid spamming log
         self.create_timer(0.3, self._joy_watchdog)
+        self.hw_error_count = 0
+        self.hw_error_tripped = False
 
         self.get_logger().info("🎮 V9 Ready: Right Stick X = Steer | LB/RB = Challenges")
         self._update_dash()
 
-    def _update_dash(self):
+    def _update_param_cache(self) -> None:
+        """Cache frequently used parameters to avoid per-loop lookups."""
+        self._param_cache = {
+            'servo_steer_id': int(self.get_parameter('servo_steer_id').value),
+            'servo_center': int(self.get_parameter('servo_center').value),
+            'servo_range': int(self.get_parameter('servo_range').value),
+            'speed_levels': list(self.get_parameter('speed_levels').value),
+            'default_speed_index': int(self.get_parameter('default_speed_index').value),
+            'joy_timeout': float(self.get_parameter('joy_timeout').value),
+            'hw_heartbeat_sec': float(self.get_parameter('hw_heartbeat_sec').value),
+            'hw_fail_limit': int(self.get_parameter('hw_fail_limit').value),
+            'ticks_per_meter': float(self.get_parameter('ticks_per_meter').value),
+            'odom_distance_scale': float(self.get_parameter('odom_distance_scale').value),
+            'odom_yaw_scale': float(self.get_parameter('odom_yaw_scale').value),
+            'encoder_jump_threshold': float(self.get_parameter('encoder_jump_threshold').value),
+            'max_linear_velocity': float(self.get_parameter('max_linear_velocity').value),
+            'max_angular_velocity': float(self.get_parameter('max_angular_velocity').value),
+            'odom_reverse_polarity': bool(self.get_parameter('odom_reverse_polarity').value),
+            'wheel_base': float(self.get_parameter('wheel_base').value),
+            'steering_max_deg': float(self.get_parameter('steering_max_deg').value),
+            'odom_vel_alpha': float(self.get_parameter('odom_vel_alpha').value),
+            'odom_frame_id': str(self.get_parameter('odom_frame_id').value),
+            'base_frame_id': str(self.get_parameter('base_frame_id').value),
+        }
+
+    def _on_params(self, params) -> SetParametersResult:
+        """Update cached parameters when set via CLI or services."""
+        for p in params:
+            if p.name in self._param_cache:
+                self._param_cache[p.name] = p.value
+                if p.name == 'joy_timeout':
+                    self.joy_timeout = float(p.value)
+                elif p.name == 'servo_steer_id':
+                    self.servo_steer_id = int(p.value)
+                elif p.name == 'servo_center':
+                    self.servo_center = int(p.value)
+                elif p.name == 'servo_range':
+                    self.servo_range = int(p.value)
+                elif p.name == 'speed_levels':
+                    self.speed_levels = list(p.value)
+                    if not self.speed_levels:
+                        self.speed_levels = [25]
+                    self.speed_idx = max(0, min(self.speed_idx, len(self.speed_levels) - 1))
+                    self.current_speed_limit = self.speed_levels[self.speed_idx]
+                elif p.name == 'ticks_per_meter':
+                    self.ticks_per_meter = float(p.value)
+                elif p.name == 'wheel_base':
+                    self.wheel_base = float(p.value)
+        return SetParametersResult(successful=True)
+
+    def _update_dash(self) -> None:
         """Publish controller state to dashboard (speed|index|state)."""
         state_str = CHALLENGE_STATES[self.challenge_index]
         msg = String()
         msg.data = f"{self.current_speed_limit}|{self.challenge_index}|{state_str}"
         self.dash_pub.publish(msg)
 
-    def _joy_watchdog(self):
-        """Stop robot if controller disconnects (no /joy for >0.5s)."""
+    def _joy_watchdog(self) -> None:
+        """Stop robot if controller disconnects (no /joy for >joy_timeout)."""
         if not self.joy_alive:
             return  # Haven't received first joy yet, nothing to do
-        elapsed = time.time() - self.last_joy_time
+        elapsed = time.monotonic() - self.last_joy_time
         if elapsed > self.joy_timeout:
             if not self.joy_lost_reported:
                 self.get_logger().warn(
@@ -148,9 +252,10 @@ class ServoControllerV9(Node):
             cmd = Twist()
             self.cmd_vel_pub.publish(cmd)
 
-    def joy_callback(self, msg):
+    def joy_callback(self, msg: Joy) -> None:
+        """Handle joystick input for mode toggle, driving, and state cycling."""
         # Mark controller as alive
-        self.last_joy_time = time.time()
+        self.last_joy_time = time.monotonic()
         
         if not self.joy_alive:
             self.joy_alive = True
@@ -240,8 +345,8 @@ class ServoControllerV9(Node):
             # If main branch says: joy > 0 -> Angle Decrease...
             # And user says "push left and right sometimes steers correctly".
             # I will trust the main branch math: 90 - (joy * 50)
-            steer_angle = int(SERVO_CENTER - (steer_raw * SERVO_RANGE))
-            steer_angle = max(SERVO_CENTER - SERVO_RANGE, min(SERVO_CENTER + SERVO_RANGE, steer_angle))
+            steer_angle = int(self.servo_center - (steer_raw * self.servo_range))
+            steer_angle = max(self.servo_center - self.servo_range, min(self.servo_center + self.servo_range, steer_angle))
 
             self.apply_hardware(motor_pwm, steer_angle)
 
@@ -254,58 +359,70 @@ class ServoControllerV9(Node):
         self.prev_buttons = list(msg.buttons)
         self.prev_axes = list(msg.axes)
 
-    def cmd_vel_auto_callback(self, msg):
+    def cmd_vel_auto_callback(self, msg: Twist) -> None:
         """Forward auto commands to hardware when in auto mode."""
         if not self.manual_mode:
             self.process_twist(msg)
 
-    def process_twist(self, msg):
+    def process_twist(self, msg: Twist) -> None:
         """Convert Twist message to hardware PWM + servo angle."""
         # Auto Mode Driving
         pwm_val = int(msg.linear.x * 255.0)
         
         # Steering
-        angle_offset = msg.angular.z * (50.0 / 1.0)
-        steer_angle = int(SERVO_CENTER - angle_offset)
+        angle_offset = msg.angular.z * float(self.servo_range)
+        steer_angle = int(self.servo_center - angle_offset)
         
         # Clamp
         pwm_val = max(-255, min(255, pwm_val))
-        steer_angle = max(SERVO_CENTER - SERVO_RANGE, min(SERVO_CENTER + SERVO_RANGE, steer_angle))
+        steer_angle = max(self.servo_center - self.servo_range, min(self.servo_center + self.servo_range, steer_angle))
         
         self.apply_hardware(pwm_val, steer_angle)
         
         # Also publish to /cmd_vel so dashboard can track velocity/odometry
         self.cmd_vel_pub.publish(msg)
 
-    def apply_hardware(self, motor_pwm, steer_angle):
+    def apply_hardware(self, motor_pwm: int, steer_angle: int) -> None:
         """Update target hardware state; timer loop handles transmission."""
         self.target_motor_val = motor_pwm
         self.target_servo_val = steer_angle
 
-    def _hardware_update_loop(self):
+    def _hardware_update_loop(self) -> None:
         """Send 10Hz heartbeat to Rosmaster, but only update on change or 1-second timeout to prevent serial spam."""
-        now = time.time()
+        now = time.monotonic()
+        heartbeat = float(self._param_cache['hw_heartbeat_sec'])
         # If values changed, OR every 1 second (safety heartbeat)
         if (self.target_motor_val != getattr(self, 'sent_motor_val', None) or 
             self.target_servo_val != getattr(self, 'sent_servo_val', None) or
-            now - getattr(self, 'last_hw_send_time', 0.0) > 1.0):
+            now - getattr(self, 'last_hw_send_time', 0.0) > heartbeat):
             
             try:
                 self.bot.set_motor(self.target_motor_val, 0, 0, 0)
-                self.bot.set_pwm_servo(SERVO_STEER_ID, self.target_servo_val)
+                self.bot.set_pwm_servo(self.servo_steer_id, self.target_servo_val)
                 self.sent_motor_val = self.target_motor_val
                 self.sent_servo_val = self.target_servo_val
                 self.last_hw_send_time = now
+                self.hw_error_count = 0
+                self.hw_error_tripped = False
             except Exception as e:
+                self.hw_error_count += 1
                 self.get_logger().warn(f'Hardware send failed: {e}')
+                if self.hw_error_count >= int(self._param_cache['hw_fail_limit']) and not self.hw_error_tripped:
+                    self.hw_error_tripped = True
+                    self.get_logger().error('Hardware send failure limit reached, stopping robot')
+                    self.stop_robot()
+                    if not self.manual_mode:
+                        self.manual_mode = True
+                        self.auto_mode_pub.publish(Bool(data=False))
 
-    def _encoder_read_loop(self):
+    def _encoder_read_loop(self) -> None:
         """Read hardware encoders and compute/publish /odom"""
-        now = time.time()
+        now = time.monotonic()
         dt = now - self.last_odom_time
         
         # Don't divide by zero if timer fires too fast
-        if dt <= 0.001:
+        if dt <= 0.001 or dt > 0.3:
+            self.last_odom_time = now
             return
 
         try:
@@ -329,22 +446,44 @@ class ServoControllerV9(Node):
             ]
             self.last_encoder_ticks = list(ticks)
             self.last_odom_time = now
+            jump_thresh = float(self._param_cache['encoder_jump_threshold'])
+            valid_d_ticks = []
+            for d in d_ticks:
+                if abs(d) > jump_thresh:
+                    valid_d_ticks.append(0.0)
+                    self._encoder_glitch_count += 1
+                else:
+                    valid_d_ticks.append(float(d))
+            if self._encoder_glitch_count > 0 and now - self._last_glitch_warn_t > 1.0:
+                self.get_logger().warn(f'Encoder jump filtered, count={self._encoder_glitch_count}')
+                self._last_glitch_warn_t = now
+                self._encoder_glitch_count = 0
 
             # RISA-Bot uses a single motor driving all wheels, or separate motors
             # Usually left/right speed is averaged.
             # Assuming standard Ackermann driving, rear wheels are driven, front steer.
             # If all 4 are driven (4WD), average left and right side
-            left_ticks = (d_ticks[0] + d_ticks[2]) / 2.0
-            right_ticks = (d_ticks[1] + d_ticks[3]) / 2.0
+            left_ticks = (valid_d_ticks[0] + valid_d_ticks[2]) / 2.0
+            right_ticks = (valid_d_ticks[1] + valid_d_ticks[3]) / 2.0
             avg_ticks = (left_ticks + right_ticks) / 2.0
+            if bool(self._param_cache['odom_reverse_polarity']):
+                avg_ticks = -avg_ticks
 
             # Convert to distance
-            distance = avg_ticks / self.ticks_per_meter
+            if self.ticks_per_meter <= 0:
+                return
+            distance = (avg_ticks / self.ticks_per_meter) * float(self._param_cache['odom_distance_scale'])
             linear_velocity = distance / dt
+            max_lin = float(self._param_cache['max_linear_velocity'])
+            if abs(linear_velocity) > max_lin:
+                linear_velocity = max(-max_lin, min(max_lin, linear_velocity))
+                distance = linear_velocity * dt
 
             # Calculate steering angle from servo command (for Ackermann kinematics)
             # Servo range [40, 140], center 90
-            steering_angle_deg = (SERVO_CENTER - self.target_servo_val) * (50.0 / SERVO_RANGE) # Approximate
+            steer_norm = (self.servo_center - self.target_servo_val) / float(self.servo_range)
+            steer_norm = max(-1.0, min(1.0, steer_norm))
+            steering_angle_deg = steer_norm * float(self._param_cache['steering_max_deg'])
             steering_angle_rad = math.radians(steering_angle_deg)
             
             # Ackermann kinematics: w = v / R, where R = L / tan(delta)
@@ -354,19 +493,27 @@ class ServoControllerV9(Node):
                 angular_velocity = linear_velocity / turning_radius
             else:
                 angular_velocity = 0.0
+            angular_velocity *= float(self._param_cache['odom_yaw_scale'])
+            max_ang = float(self._param_cache['max_angular_velocity'])
+            angular_velocity = max(-max_ang, min(max_ang, angular_velocity))
 
-            yaw_delta = angular_velocity * dt
+            alpha = float(self._param_cache['odom_vel_alpha'])
+            self._filtered_linear = alpha * linear_velocity + (1 - alpha) * self._filtered_linear
+            self._filtered_angular = alpha * angular_velocity + (1 - alpha) * self._filtered_angular
+
+            yaw_delta = self._filtered_angular * dt
 
             # Update pose
             self.odom_yaw += yaw_delta
-            self.odom_x += distance * math.cos(self.odom_yaw)
-            self.odom_y += distance * math.sin(self.odom_yaw)
+            self.odom_yaw = math.atan2(math.sin(self.odom_yaw), math.cos(self.odom_yaw))
+            self.odom_x += self._filtered_linear * math.cos(self.odom_yaw) * dt
+            self.odom_y += self._filtered_linear * math.sin(self.odom_yaw) * dt
 
             # Build and publish Odometry message
             odom = Odometry()
             odom.header.stamp = self.get_clock().now().to_msg()
-            odom.header.frame_id = 'odom'
-            odom.child_frame_id = 'base_link'
+            odom.header.frame_id = str(self._param_cache['odom_frame_id'])
+            odom.child_frame_id = str(self._param_cache['base_frame_id'])
 
             odom.pose.pose.position.x = self.odom_x
             odom.pose.pose.position.y = self.odom_y
@@ -376,24 +523,24 @@ class ServoControllerV9(Node):
             odom.pose.pose.orientation.z = math.sin(self.odom_yaw / 2.0)
             odom.pose.pose.orientation.w = math.cos(self.odom_yaw / 2.0)
 
-            odom.twist.twist.linear.x = linear_velocity
-            odom.twist.twist.angular.z = angular_velocity
+            odom.twist.twist.linear.x = self._filtered_linear
+            odom.twist.twist.angular.z = self._filtered_angular
 
             self.odom_pub.publish(odom)
 
         except Exception as e:
             self.get_logger().error(f"Failed to read encoders: {e}")
 
-    def stop_robot(self):
+    def stop_robot(self) -> None:
         self.target_motor_val = 0
-        self.target_servo_val = SERVO_CENTER
+        self.target_servo_val = self.servo_center
         try:
             self.bot.set_motor(0, 0, 0, 0)
-            self.bot.set_pwm_servo(SERVO_STEER_ID, SERVO_CENTER)
+            self.bot.set_pwm_servo(self.servo_steer_id, self.servo_center)
         except Exception:
             pass
 
-def main(args=None):
+def main(args=None) -> None:
     rclpy.init(args=args)
     node = ServoControllerV9()
     try:
