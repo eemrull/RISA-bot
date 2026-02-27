@@ -162,13 +162,25 @@ def generate_launch_description():
                 )
             ]
         ),
+        Node(
+            package='risabot_automode',
+            executable='cmd_safety_controller',
+            name='cmd_safety_controller',
+            output='screen',
+            parameters=[params_file]
+        ),
 
         # M. Joystick driver + Servo controller (mode toggle + manual driving)
         Node(
             package='joy',
             executable='joy_node',
             name='joy_node',
-            output='screen'
+            output='screen',
+            parameters=[{
+                'deadzone': 0.12,
+                'autorepeat_rate': 20.0,
+                'coalesce_interval_ms': 1,
+            }]
         ),
         Node(
             package='control_servo',

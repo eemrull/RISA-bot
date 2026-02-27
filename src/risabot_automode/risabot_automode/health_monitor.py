@@ -17,6 +17,7 @@ from .topics import (
     AUTO_CMD_VEL_TOPIC,
     AUTO_MODE_TOPIC,
     BOOM_GATE_TOPIC,
+    CMD_SAFETY_STATUS_TOPIC,
     DASH_STATE_TOPIC,
     HEALTH_STATUS_TOPIC,
     JOY_TOPIC,
@@ -65,6 +66,7 @@ class HealthMonitor(Node):
         self.create_subscription(Odometry, ODOM_TOPIC, lambda _: self._touch('odom'), 10)
         self.create_subscription(Joy, JOY_TOPIC, lambda _: self._touch('joy'), sensor_qos)
         self.create_subscription(Twist, AUTO_CMD_VEL_TOPIC, lambda _: self._touch('cmd_vel_auto'), 10)
+        self.create_subscription(String, CMD_SAFETY_STATUS_TOPIC, lambda _: self._touch('cmd_safety_status'), 10)
 
         period = float(self.get_parameter('publish_period').value)
         self.create_timer(period, self._publish_health)
@@ -89,6 +91,7 @@ class HealthMonitor(Node):
             'parking_complete': perception,
             'dashboard_state': state,
             'cmd_vel_auto': control,
+            'cmd_safety_status': control,
             'odom': odom,
             'joy': joy,
             'auto_mode': state,

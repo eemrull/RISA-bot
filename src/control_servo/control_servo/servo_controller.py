@@ -21,6 +21,7 @@ Controls:
   RB (Btn 7):                Next Challenge State
 """
 
+import json
 import math
 import time
 from typing import Dict
@@ -41,6 +42,7 @@ from .topics import (
     CMD_VEL_TOPIC,
     DASH_CTRL_TOPIC,
     JOY_TOPIC,
+    LOOP_STATS_TOPIC,
     ODOM_FRAME,
     ODOM_TOPIC,
     SET_CHALLENGE_TOPIC,
@@ -58,6 +60,50 @@ CHALLENGE_STATES = [
     'PARALLEL_PARK', 'DRIVE_TO_PERP', 'PERPENDICULAR_PARK'
 ]
 
+
+class LoopMonitor:
+    """Tracks loop timing statistics."""
+
+    def __init__(self, loop_name: str, target_hz: float, overrun_ratio: float = 1.5) -> None:
+        self.loop_name = loop_name
+        self.target_hz = float(target_hz) if target_hz > 0 else 1.0
+        self.expected_dt = 1.0 / self.target_hz
+        self.overrun_dt = self.expected_dt * float(overrun_ratio)
+        self.last_t = 0.0
+        self.reset()
+
+    def reset(self) -> None:
+        self.count = 0
+        self.sum_dt = 0.0
+        self.max_dt = 0.0
+        self.overruns = 0
+
+    def tick(self) -> None:
+        now = time.monotonic()
+        if self.last_t > 0.0:
+            dt = now - self.last_t
+            self.count += 1
+            self.sum_dt += dt
+            if dt > self.max_dt:
+                self.max_dt = dt
+            if dt > self.overrun_dt:
+                self.overruns += 1
+        self.last_t = now
+
+    def snapshot(self) -> Dict[str, float]:
+        avg_dt = (self.sum_dt / self.count) if self.count > 0 else 0.0
+        avg_hz = (1.0 / avg_dt) if avg_dt > 0 else 0.0
+        data = {
+            'loop': self.loop_name,
+            'target_hz': round(self.target_hz, 3),
+            'avg_hz': round(avg_hz, 3),
+            'max_dt_ms': round(self.max_dt * 1000.0, 3),
+            'overruns': int(self.overruns),
+            'samples': int(self.count),
+        }
+        self.reset()
+        return data
+
 class ServoControllerV9(Node):
     """Interface between joystick, auto driver, and Rosmaster motor board."""
 
@@ -71,6 +117,9 @@ class ServoControllerV9(Node):
         self.declare_parameter('speed_levels', [15, 25, 40, 60, 100])
         self.declare_parameter('default_speed_index', 1)
         self.declare_parameter('joy_timeout', 0.8)
+        self.declare_parameter('auto_cmd_timeout', 0.4)
+        self.declare_parameter('unlock_requires_neutral', True)
+        self.declare_parameter('unlock_neutral_threshold', 0.15)
         self.declare_parameter('hw_heartbeat_sec', 1.0)
         self.declare_parameter('hw_fail_limit', 5)
         self.declare_parameter('ticks_per_meter', 1050.0)
@@ -83,6 +132,8 @@ class ServoControllerV9(Node):
         self.declare_parameter('wheel_base', 0.14)
         self.declare_parameter('steering_max_deg', 50.0)
         self.declare_parameter('odom_vel_alpha', 0.3)
+        self.declare_parameter('odom_velocity_deadband', 0.02)
+        self.declare_parameter('publish_loop_stats', True)
         self.declare_parameter('odom_frame_id', ODOM_FRAME)
         self.declare_parameter('base_frame_id', BASE_FRAME)
         self._param_cache: Dict[str, object] = {}
@@ -112,6 +163,7 @@ class ServoControllerV9(Node):
         self.challenge_pub = self.create_publisher(String, SET_CHALLENGE_TOPIC, 10)
         self.cmd_vel_pub = self.create_publisher(Twist, CMD_VEL_TOPIC, 10)
         self.odom_pub = self.create_publisher(Odometry, ODOM_TOPIC, 10)
+        self.loop_stats_pub = self.create_publisher(String, LOOP_STATS_TOPIC, 10)
 
         # Subscribers
         self.create_subscription(Joy, JOY_TOPIC, self.joy_callback, 10)
@@ -149,6 +201,8 @@ class ServoControllerV9(Node):
         self._last_glitch_warn_t = 0.0
         self.last_encoder_ticks = [0, 0, 0, 0] # FL, FR, RL, RR
         self.encoder_first_read = True
+        self.encoder_loop_monitor = LoopMonitor('servo_encoder', 20.0)
+        self.hw_loop_monitor = LoopMonitor('servo_hw', 10.0)
 
         # Fast encoder loop (20 Hz)
         self.create_timer(0.05, self._encoder_read_loop)
@@ -167,8 +221,12 @@ class ServoControllerV9(Node):
         self.joy_timeout = float(self._param_cache['joy_timeout'])
         self.joy_lost_reported = False   # avoid spamming log
         self.create_timer(0.3, self._joy_watchdog)
+        self.create_timer(1.0, self._publish_loop_stats)
         self.hw_error_count = 0
         self.hw_error_tripped = False
+        self.awaiting_neutral = False
+        self.last_auto_cmd_time = 0.0
+        self.auto_cmd_stale_reported = False
 
         self.get_logger().info("🎮 V9 Ready: Right Stick X = Steer | LB/RB = Challenges")
         self._update_dash()
@@ -182,6 +240,9 @@ class ServoControllerV9(Node):
             'speed_levels': list(self.get_parameter('speed_levels').value),
             'default_speed_index': int(self.get_parameter('default_speed_index').value),
             'joy_timeout': float(self.get_parameter('joy_timeout').value),
+            'auto_cmd_timeout': float(self.get_parameter('auto_cmd_timeout').value),
+            'unlock_requires_neutral': bool(self.get_parameter('unlock_requires_neutral').value),
+            'unlock_neutral_threshold': float(self.get_parameter('unlock_neutral_threshold').value),
             'hw_heartbeat_sec': float(self.get_parameter('hw_heartbeat_sec').value),
             'hw_fail_limit': int(self.get_parameter('hw_fail_limit').value),
             'ticks_per_meter': float(self.get_parameter('ticks_per_meter').value),
@@ -194,6 +255,8 @@ class ServoControllerV9(Node):
             'wheel_base': float(self.get_parameter('wheel_base').value),
             'steering_max_deg': float(self.get_parameter('steering_max_deg').value),
             'odom_vel_alpha': float(self.get_parameter('odom_vel_alpha').value),
+            'odom_velocity_deadband': float(self.get_parameter('odom_velocity_deadband').value),
+            'publish_loop_stats': bool(self.get_parameter('publish_loop_stats').value),
             'odom_frame_id': str(self.get_parameter('odom_frame_id').value),
             'base_frame_id': str(self.get_parameter('base_frame_id').value),
         }
@@ -205,6 +268,8 @@ class ServoControllerV9(Node):
                 self._param_cache[p.name] = p.value
                 if p.name == 'joy_timeout':
                     self.joy_timeout = float(p.value)
+                elif p.name == 'unlock_requires_neutral':
+                    self.awaiting_neutral = bool(p.value)
                 elif p.name == 'servo_steer_id':
                     self.servo_steer_id = int(p.value)
                 elif p.name == 'servo_center':
@@ -229,6 +294,15 @@ class ServoControllerV9(Node):
         msg = String()
         msg.data = f"{self.current_speed_limit}|{self.challenge_index}|{state_str}"
         self.dash_pub.publish(msg)
+
+    def _publish_loop_stats(self) -> None:
+        """Publish loop timing diagnostics."""
+        if not bool(self._param_cache['publish_loop_stats']):
+            return
+        for monitor in (self.encoder_loop_monitor, self.hw_loop_monitor):
+            payload = monitor.snapshot()
+            payload['node'] = self.get_name()
+            self.loop_stats_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
 
     def _joy_watchdog(self) -> None:
         """Stop robot if controller disconnects (no /joy for >joy_timeout)."""
@@ -274,9 +348,28 @@ class ServoControllerV9(Node):
             any_button_pressed = any(b == 1 for b in msg.buttons)
             if any_button_pressed:
                 self.joy_unlocked = True
-                self.get_logger().info("🎮 Controller unlocked (Button press detected)")
+                self.awaiting_neutral = bool(self._param_cache['unlock_requires_neutral'])
+                self.get_logger().info("Controller unlocked (Button press detected)")
+                # Consume unlock frame: do not process toggles/driving in same packet.
+                self.prev_buttons = list(msg.buttons)
+                self.prev_axes = list(msg.axes)
+                self.stop_robot()
+                return
             else:
                 return  # Return early, ignore all input until a button is pressed
+
+        if self.awaiting_neutral:
+            neutral_thr = float(self._param_cache['unlock_neutral_threshold'])
+            raw_throttle = msg.axes[1] if 1 < len(msg.axes) else 0.0
+            raw_steer = msg.axes[2] if 2 < len(msg.axes) else 0.0
+            if abs(raw_throttle) <= neutral_thr and abs(raw_steer) <= neutral_thr:
+                self.awaiting_neutral = False
+                self.get_logger().info('Controller neutral detected, manual drive enabled')
+            else:
+                self.stop_robot()
+                self.prev_buttons = list(msg.buttons)
+                self.prev_axes = list(msg.axes)
+                return
 
         # Helpers
         def btn(idx): return msg.buttons[idx] if idx < len(msg.buttons) else 0
@@ -289,7 +382,11 @@ class ServoControllerV9(Node):
             self.manual_mode = not self.manual_mode
             self.auto_mode_pub.publish(Bool(data=not self.manual_mode))
             self.get_logger().info(f"Mode: {'MANUAL' if self.manual_mode else 'AUTO'}")
-            if self.manual_mode: self.stop_robot()
+            if self.manual_mode:
+                self.stop_robot()
+            else:
+                self.last_auto_cmd_time = time.monotonic()
+                self.auto_cmd_stale_reported = False
             self._update_dash()
 
         # 2. Challenge Cycling (LB=6, RB=7)
@@ -361,6 +458,8 @@ class ServoControllerV9(Node):
 
     def cmd_vel_auto_callback(self, msg: Twist) -> None:
         """Forward auto commands to hardware when in auto mode."""
+        self.last_auto_cmd_time = time.monotonic()
+        self.auto_cmd_stale_reported = False
         if not self.manual_mode:
             self.process_twist(msg)
 
@@ -389,7 +488,23 @@ class ServoControllerV9(Node):
 
     def _hardware_update_loop(self) -> None:
         """Send 10Hz heartbeat to Rosmaster, but only update on change or 1-second timeout to prevent serial spam."""
+        self.hw_loop_monitor.tick()
         now = time.monotonic()
+        if not self.manual_mode:
+            timeout = float(self._param_cache['auto_cmd_timeout'])
+            auto_age = now - self.last_auto_cmd_time if self.last_auto_cmd_time > 0.0 else float('inf')
+            if auto_age > timeout:
+                if not self.auto_cmd_stale_reported:
+                    self.get_logger().warn(
+                        f'Auto command stream stale for {auto_age:.2f}s (> {timeout:.2f}s), forcing MANUAL stop'
+                    )
+                    self.auto_cmd_stale_reported = True
+                self.stop_robot()
+                self.manual_mode = True
+                self.auto_mode_pub.publish(Bool(data=False))
+                self._update_dash()
+                return
+
         heartbeat = float(self._param_cache['hw_heartbeat_sec'])
         # If values changed, OR every 1 second (safety heartbeat)
         if (self.target_motor_val != getattr(self, 'sent_motor_val', None) or 
@@ -417,6 +532,7 @@ class ServoControllerV9(Node):
 
     def _encoder_read_loop(self) -> None:
         """Read hardware encoders and compute/publish /odom"""
+        self.encoder_loop_monitor.tick()
         now = time.monotonic()
         dt = now - self.last_odom_time
         
@@ -478,6 +594,10 @@ class ServoControllerV9(Node):
             if abs(linear_velocity) > max_lin:
                 linear_velocity = max(-max_lin, min(max_lin, linear_velocity))
                 distance = linear_velocity * dt
+            vel_deadband = float(self._param_cache['odom_velocity_deadband'])
+            if abs(linear_velocity) < vel_deadband:
+                linear_velocity = 0.0
+                distance = 0.0
 
             # Calculate steering angle from servo command (for Ackermann kinematics)
             # Servo range [40, 140], center 90

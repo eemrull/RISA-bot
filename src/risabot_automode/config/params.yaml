@@ -13,6 +13,21 @@ auto_driver:
     dist_lap_complete: 1.0
     enable_subsumption_obstacle: false
     max_odom_speed: 1.0
+    min_state_dwell_sec: 0.25
+    publish_loop_stats: true
+
+# --- Command Safety Controller ---
+cmd_safety_controller:
+  ros__parameters:
+    publish_hz: 50.0
+    cmd_timeout: 0.35
+    max_linear_speed: 0.30
+    max_angular_speed: 1.2
+    max_linear_accel: 0.8
+    max_angular_accel: 4.0
+    deadband_linear: 0.01
+    deadband_angular: 0.01
+    publish_loop_stats: true
 
 # --- Line Follower Camera ---
 line_follower_camera:
@@ -157,6 +172,9 @@ servo_controller:
     speed_levels: [15, 25, 40, 60, 100]
     default_speed_index: 1
     joy_timeout: 0.8
+    auto_cmd_timeout: 0.4
+    unlock_requires_neutral: true
+    unlock_neutral_threshold: 0.15
     hw_heartbeat_sec: 1.0
     hw_fail_limit: 5
     ticks_per_meter: 1050.0
@@ -169,5 +187,7 @@ servo_controller:
     wheel_base: 0.14
     steering_max_deg: 50.0
     odom_vel_alpha: 0.3
+    odom_velocity_deadband: 0.02
+    publish_loop_stats: true
     odom_frame_id: "odom"
     base_frame_id: "base_link"

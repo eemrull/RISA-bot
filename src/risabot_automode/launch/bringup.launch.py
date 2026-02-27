@@ -70,6 +70,13 @@ def generate_launch_description():
             output='screen',
             parameters=[params_file]
         ),
+        Node(
+            package='risabot_automode',
+            executable='cmd_safety_controller',
+            name='cmd_safety_controller',
+            output='screen',
+            parameters=[params_file]
+        ),
 
         # Note: Camera (astra_camera), joystick (joy_node), and line_follower_camera
         # are launched separately via CLI aliases (see main_branch.md).

@@ -7,6 +7,7 @@ AUTO_CMD_VEL_TOPIC = '/cmd_vel_auto'
 ODOM_TOPIC = '/odom'
 JOY_TOPIC = '/joy'
 DASH_CTRL_TOPIC = '/dashboard_ctrl'
+LOOP_STATS_TOPIC = '/loop_stats'
 
 ODOM_FRAME = 'odom'
 BASE_FRAME = 'base_link'

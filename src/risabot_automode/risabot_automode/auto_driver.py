@@ -15,6 +15,7 @@ Subscribes to all sensor/module topics and selects the appropriate
 cmd_vel source for each challenge phase.
 """
 
+import json
 import time
 from enum import Enum
 from typing import Dict
@@ -27,12 +28,15 @@ from rclpy.node import Node
 from rclpy.qos import QoSPresetProfiles
 from std_msgs.msg import Bool, Float32, String
 
+from .loop_monitor import LoopMonitor
 from .topics import (
-    AUTO_CMD_VEL_TOPIC,
+    AUTO_CMD_VEL_RAW_TOPIC,
     AUTO_MODE_TOPIC,
     BOOM_GATE_TOPIC,
+    CMD_SAFETY_STATUS_TOPIC,
     DASH_STATE_TOPIC,
     LANE_ERROR_TOPIC,
+    LOOP_STATS_TOPIC,
     OBSTACLE_CAMERA_TOPIC,
     OBSTACLE_FUSED_TOPIC,
     OBSTACLE_LIDAR_TOPIC,
@@ -62,6 +66,7 @@ class ChallengeState(Enum):
     PERPENDICULAR_PARK = 7   # Perpendicular parking sequence
     LANE_FOLLOW = 8          # Default driving mode
     REVERSE_ADJUST = 9       # Backing up from close obstacle
+    EMERGENCY_STOP = 10      # External e-stop asserted
 
 
 class AutoDriver(Node):
@@ -72,9 +77,10 @@ class AutoDriver(Node):
         self.get_logger().info('Auto Driver Node Starting (Competition Mode)...')
 
         # ===== Publishers =====
-        self.cmd_vel_pub = self.create_publisher(Twist, AUTO_CMD_VEL_TOPIC, 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, AUTO_CMD_VEL_RAW_TOPIC, 10)
         self.parking_cmd_pub = self.create_publisher(String, PARKING_CMD_TOPIC, 10)
         self.dash_state_pub = self.create_publisher(String, DASH_STATE_TOPIC, 10)
+        self.loop_stats_pub = self.create_publisher(String, LOOP_STATS_TOPIC, 10)
 
         # Continuous cmd_vel publisher at 50 Hz
         self.cmd_vel_timer = self.create_timer(0.02, self.publish_cmd_vel)
@@ -93,12 +99,16 @@ class AutoDriver(Node):
         self.obstacle_active = False
         self.stop_reason = ''
         self.lane_error = 0.0
+        self.cmd_safety_estop = False
+        self.cmd_safety_last_time = 0.0
 
         # Tunable parameters
         self.declare_parameter('steering_gain', 1.0)
         self.declare_parameter('forward_speed', 0.12)  # m/s base forward speed
         self.declare_parameter('stale_timeout', 3.0)   # seconds before treating module data as stale
         self.declare_parameter('max_odom_speed', 1.0)  # ignore odom speed spikes beyond this
+        self.declare_parameter('min_state_dwell_sec', 0.25)
+        self.declare_parameter('publish_loop_stats', True)
 
         # Distance threshold (only for determining if a lap is complete after passing traffic light)
         self.declare_parameter('dist_lap_complete', 1.0)
@@ -135,6 +145,8 @@ class AutoDriver(Node):
         self.last_odom_time = time.monotonic()
         self.distance = 0.0
         self._last_tl_state = 'unknown'
+        self.last_cmd = Twist()
+        self.loop_monitor = LoopMonitor('auto_driver_cmd', 50.0)
 
         # ===== Subscribers — existing =====
         self.lidar_sub = self.create_subscription(
@@ -184,6 +196,9 @@ class AutoDriver(Node):
         self.create_subscription(
             String, PARKING_STATUS_TOPIC, self.parking_status_callback, 10
         )
+        self.create_subscription(
+            String, CMD_SAFETY_STATUS_TOPIC, self.cmd_safety_status_callback, 10
+        )
         
         # Subscribe to Odometry (from servo_controller)
         self.odom_sub = self.create_subscription(
@@ -200,6 +215,7 @@ class AutoDriver(Node):
         self.obstacle_pub = self.create_publisher(Bool, OBSTACLE_FUSED_TOPIC, 10)
 
         self.get_logger().info(f'State: {self.state.name}')
+        self.create_timer(1.0, self._publish_loop_stats)
 
 
 
@@ -212,6 +228,8 @@ class AutoDriver(Node):
             'dist_lap_complete': float(self.get_parameter('dist_lap_complete').value),
             'enable_subsumption_obstacle': bool(self.get_parameter('enable_subsumption_obstacle').value),
             'max_odom_speed': float(self.get_parameter('max_odom_speed').value),
+            'min_state_dwell_sec': float(self.get_parameter('min_state_dwell_sec').value),
+            'publish_loop_stats': bool(self.get_parameter('publish_loop_stats').value),
         }
 
     def _on_params(self, params) -> SetParametersResult:
@@ -296,6 +314,23 @@ class AutoDriver(Node):
             self.perpendicular_done = True
             self.parking_complete = True
 
+    def cmd_safety_status_callback(self, msg: String) -> None:
+        """Track command safety status payload."""
+        try:
+            payload = json.loads(msg.data)
+            self.cmd_safety_estop = bool(payload.get('estop', False))
+            self.cmd_safety_last_time = time.monotonic()
+        except Exception:
+            pass
+
+    def _publish_loop_stats(self) -> None:
+        """Publish loop timing stats for diagnostics."""
+        if not self._param_cache['publish_loop_stats']:
+            return
+        payload = self.loop_monitor.snapshot()
+        payload['node'] = self.get_name()
+        self.loop_stats_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
+
     def _is_stale(self, last_time: float) -> bool:
         """Check if a module's data is stale (no updates for stale_timeout seconds)."""
         if last_time == 0.0:
@@ -334,12 +369,15 @@ class AutoDriver(Node):
 
     def publish_cmd_vel(self) -> None:
         """Main control loop: selects behavior and publishes cmd_vel."""
+        self.loop_monitor.tick()
         cmd = Twist()
         self.stop_reason = ''
         target_state = ChallengeState.LANE_FOLLOW
 
         # Priority 1: Manual Mode Override
         if not self.in_auto_mode:
+            if self.state != ChallengeState.MANUAL:
+                self.state_entry_time = time.monotonic()
             self.state = ChallengeState.MANUAL
             self.stop_reason = 'MANUAL MODE'
             self._publish_dash_state()
@@ -382,6 +420,10 @@ class AutoDriver(Node):
             self.parking_sequence_active = False
 
         # Priority 3: Hard Safety Stops (immediate halt required)
+        elif self.cmd_safety_estop:
+            target_state = ChallengeState.EMERGENCY_STOP
+            self.stop_reason = 'E-STOP ACTIVE'
+
         elif self.traffic_light_state in ('red', 'yellow'):
             target_state = ChallengeState.TRAFFIC_LIGHT
             self.stop_reason = f'TRAFFIC LIGHT {self.traffic_light_state.upper()}'
@@ -429,10 +471,32 @@ class AutoDriver(Node):
 
         # Update and publish
         if self.state != target_state:
-            self.get_logger().info(f'Behavior switch: {self.state.name} -> {target_state.name}')
-            self.state = target_state
+            now = time.monotonic()
+            dwell = now - self.state_entry_time
+            min_dwell = float(self._param_cache['min_state_dwell_sec'])
+            immediate_states = {
+                ChallengeState.MANUAL,
+                ChallengeState.FINISHED,
+                ChallengeState.TRAFFIC_LIGHT,
+                ChallengeState.BOOM_GATE,
+                ChallengeState.REVERSE_ADJUST,
+                ChallengeState.EMERGENCY_STOP,
+            }
+            allow_switch = (
+                target_state in immediate_states
+                or self.state in immediate_states
+                or dwell >= min_dwell
+            )
+            if allow_switch:
+                self.get_logger().info(f'Behavior switch: {self.state.name} -> {target_state.name}')
+                self.state = target_state
+                self.state_entry_time = now
+            else:
+                target_state = self.state
+                cmd = self.last_cmd
 
         self.cmd_vel_pub.publish(cmd)
+        self.last_cmd = cmd
         self._publish_dash_state()
 
         # Debug

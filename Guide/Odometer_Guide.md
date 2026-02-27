@@ -28,6 +28,7 @@ Key runtime parameters on `/servo_controller`:
 - `wheel_base`
 - `steering_max_deg`
 - `odom_vel_alpha`
+- `odom_velocity_deadband`
 
 ## 2. Software Odometry (Fallback)
 
@@ -75,6 +76,7 @@ new_odom_yaw_scale = old_odom_yaw_scale * (target_yaw / reported_yaw)
 2. Tune `ticks_per_meter` or `odom_distance_scale` for straight distance.
 3. Tune `odom_yaw_scale` for turn accuracy.
 4. Tune `odom_vel_alpha` for smoothness versus responsiveness.
+5. Tune `odom_velocity_deadband` to suppress standstill drift.
 
 ## 5. Runtime Commands
 
@@ -84,6 +86,7 @@ ros2 param set /servo_controller ticks_per_meter 1700.0
 ros2 param set /servo_controller odom_yaw_scale 0.95
 ros2 param set /servo_controller encoder_jump_threshold 600.0
 ros2 param set /servo_controller max_linear_velocity 0.80
+ros2 param set /servo_controller odom_velocity_deadband 0.03
 ```
 
 ## 6. Dashboard Note

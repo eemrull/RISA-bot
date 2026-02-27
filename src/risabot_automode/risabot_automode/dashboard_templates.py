@@ -186,6 +186,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .state-TRAFFIC_LIGHT { background: #f57f17; color: #fff9c4; }
   .state-PARALLEL_PARK,.state-PERPENDICULAR_PARK { background: #0d47a1; color: #90caf9; }
   .state-DRIVE_TO_PERP { background: #1565c0; color: #90caf9; }
+  .state-EMERGENCY_STOP { background: #b71c1c; color: #ffcdd2; }
   .state-FINISHED { background: #ffd600; color: #333; }
 
   .mode-badge {
@@ -1437,6 +1438,17 @@ const PARAM_TIPS = {
   steering_gain:'Lane steering gain', forward_speed:'Base forward speed (m/s)',
   stale_timeout:'Seconds before module data is stale', dist_lap_complete:'Distance after green to mark lap',
   enable_subsumption_obstacle:'Enable fused obstacle reverse adjust', max_odom_speed:'Ignore odom speed spikes above this',
+  min_state_dwell_sec:'Minimum hold time for non-emergency behavior switches',
+  publish_loop_stats:'Enable loop timing diagnostics stream',
+  // Command safety
+  publish_hz:'Safety controller publish loop frequency',
+  cmd_timeout:'Max age for raw auto commands before forced zero',
+  max_linear_speed:'Clamp for linear auto command speed',
+  max_angular_speed:'Clamp for angular auto command speed',
+  max_linear_accel:'Linear acceleration slew limit',
+  max_angular_accel:'Angular acceleration slew limit',
+  deadband_linear:'Zero small linear command noise',
+  deadband_angular:'Zero small angular command noise',
   // Boom gate
   min_detect_dist:'Closest gate detection (m)', max_detect_dist:'Farthest gate detection (m)',
   angle_window:'Forward arc width (rad)', min_gate_points:'Min LiDAR points for gate',
@@ -1463,10 +1475,13 @@ const PARAM_TIPS = {
   sim_odom_scale:'Scale for simulated odometry distance', hw_odom_scale:'Scale for hardware odometry distance',
   hw_odom_yaw_scale:'Scale for hardware odometry yaw',
   // Servo controller
+  auto_cmd_timeout:'Auto cmd stream timeout before forcing manual stop',
+  unlock_requires_neutral:'Require neutral sticks after unlock before driving',
+  unlock_neutral_threshold:'Neutral stick threshold for unlock gate',
   ticks_per_meter:'Encoder ticks per meter', odom_distance_scale:'Extra distance calibration multiplier',
   odom_yaw_scale:'Extra yaw calibration multiplier', encoder_jump_threshold:'Reject tick jumps above this',
   max_linear_velocity:'Clamp linear odom speed', max_angular_velocity:'Clamp angular odom speed',
-  odom_reverse_polarity:'Invert encoder odom sign if needed',
+  odom_reverse_polarity:'Invert encoder odom sign if needed', odom_velocity_deadband:'Zero odom near standstill',
   // Health monitor
   publish_period:'Health publish period (s)', timeout_perception:'Perception timeout (s)',
   timeout_state:'State timeout (s)', timeout_control:'Control timeout (s)',
@@ -1486,7 +1501,12 @@ const PARAM_GROUPS = [
   ]},
   { node: 'auto_driver', label: 'Auto Driver', params: [
     'steering_gain','forward_speed','stale_timeout',
-    'dist_lap_complete','enable_subsumption_obstacle','max_odom_speed'
+    'dist_lap_complete','enable_subsumption_obstacle','max_odom_speed',
+    'min_state_dwell_sec','publish_loop_stats'
+  ]},
+  { node: 'cmd_safety_controller', label: 'Cmd Safety', params: [
+    'publish_hz','cmd_timeout','max_linear_speed','max_angular_speed',
+    'max_linear_accel','max_angular_accel','deadband_linear','deadband_angular','publish_loop_stats'
   ]},
   { node: 'boom_gate_detector', label: 'Boom Gate', params: [
     'min_detect_dist','max_detect_dist','angle_window',
@@ -1515,9 +1535,11 @@ const PARAM_GROUPS = [
     'min_obstacle_distance','heartbeat_sec'
   ]},
   { node: 'servo_controller', label: 'Servo/Odom', params: [
-    'joy_timeout','ticks_per_meter','odom_distance_scale','odom_yaw_scale',
+    'joy_timeout','auto_cmd_timeout','unlock_requires_neutral','unlock_neutral_threshold',
+    'ticks_per_meter','odom_distance_scale','odom_yaw_scale',
     'encoder_jump_threshold','max_linear_velocity','max_angular_velocity',
-    'wheel_base','steering_max_deg','odom_vel_alpha','odom_reverse_polarity'
+    'wheel_base','steering_max_deg','odom_vel_alpha','odom_velocity_deadband',
+    'odom_reverse_polarity','publish_loop_stats'
   ]},
   { node: 'dashboard', label: 'Dashboard', params: [
     'use_hw_odom','freshness_stale_sec','sim_odom_scale','hw_odom_scale','hw_odom_yaw_scale'

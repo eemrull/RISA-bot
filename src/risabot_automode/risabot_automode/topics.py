@@ -2,9 +2,13 @@
 
 # Command and control
 AUTO_CMD_VEL_TOPIC = '/cmd_vel_auto'
+AUTO_CMD_VEL_RAW_TOPIC = '/cmd_vel_auto_raw'
 CMD_VEL_TOPIC = '/cmd_vel'
 AUTO_MODE_TOPIC = '/auto_mode'
 SET_CHALLENGE_TOPIC = '/set_challenge'
+E_STOP_TOPIC = '/e_stop'
+CMD_SAFETY_STATUS_TOPIC = '/cmd_safety_status'
+LOOP_STATS_TOPIC = '/loop_stats'
 
 # Dashboard
 DASH_STATE_TOPIC = '/dashboard_state'
@@ -16,11 +20,15 @@ OBSTACLE_LIDAR_TOPIC = '/obstacle_front'
 OBSTACLE_CAMERA_TOPIC = '/obstacle_detected_camera'
 OBSTACLE_FUSED_TOPIC = '/obstacle_detected_fused'
 TRAFFIC_LIGHT_TOPIC = '/traffic_light_state'
+TRAFFIC_LIGHT_CONF_TOPIC = '/traffic_light_confidence'
 BOOM_GATE_TOPIC = '/boom_gate_open'
+BOOM_GATE_CONF_TOPIC = '/boom_gate_confidence'
 TUNNEL_DETECTED_TOPIC = '/tunnel_detected'
 TUNNEL_CMD_TOPIC = '/tunnel_cmd_vel'
+TUNNEL_CONF_TOPIC = '/tunnel_confidence'
 OBSTRUCTION_ACTIVE_TOPIC = '/obstruction_active'
 OBSTRUCTION_CMD_TOPIC = '/obstruction_cmd_vel'
+OBSTRUCTION_CONF_TOPIC = '/obstruction_confidence'
 
 # Parking
 PARKING_CMD_TOPIC = '/parking_command'

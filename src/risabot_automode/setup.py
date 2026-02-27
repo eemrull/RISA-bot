@@ -34,6 +34,8 @@ setup(
             'obstruction_avoidance = risabot_automode.obstruction_avoidance:main',
             'dashboard = risabot_automode.dashboard:main',
             'health_monitor = risabot_automode.health_monitor:main',
+            'cmd_safety_controller = risabot_automode.cmd_safety_controller:main',
+            'bag_regression_validator = risabot_automode.bag_regression_validator:main',
         ],
     },
 )

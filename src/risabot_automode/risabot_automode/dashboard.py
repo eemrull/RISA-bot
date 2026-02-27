@@ -30,6 +30,7 @@ from .topics import (
     AUTO_CMD_VEL_TOPIC,
     AUTO_MODE_TOPIC,
     BOOM_GATE_TOPIC,
+    CMD_SAFETY_STATUS_TOPIC,
     CAMERA_DEBUG_LINE_TOPIC,
     CAMERA_DEBUG_OBS_TOPIC,
     CAMERA_DEBUG_TL_TOPIC,
@@ -44,6 +45,7 @@ from .topics import (
     OBSTACLE_LIDAR_TOPIC,
     ODOM_TOPIC,
     OBSTRUCTION_ACTIVE_TOPIC,
+    LOOP_STATS_TOPIC,
     PARKING_COMPLETE_TOPIC,
     HEALTH_STATUS_TOPIC,
     SET_CHALLENGE_TOPIC,
@@ -118,6 +120,9 @@ class DashboardNode(Node):
             'health_ok': None,
             'health_summary': '',
             'health_stale': [],
+            'cmd_safety_estop': False,
+            'cmd_safety_timeout_count': 0,
+            'loop_stats': {},
         }
         self.topic_last_update = {
             'auto_mode': 0.0,
@@ -138,6 +143,8 @@ class DashboardNode(Node):
             'dashboard_ctrl': 0.0,
             'set_challenge': 0.0,
             'health_status': 0.0,
+            'cmd_safety_status': 0.0,
+            'loop_stats': 0.0,
         }
         self.data_lock = threading.Lock()
 
@@ -157,6 +164,8 @@ class DashboardNode(Node):
         self.create_subscription(Bool, OBSTRUCTION_ACTIVE_TOPIC, self._obst_cb, 10)
         self.create_subscription(Bool, PARKING_COMPLETE_TOPIC, self._park_cb, 10)
         self.create_subscription(String, HEALTH_STATUS_TOPIC, self._health_cb, 10)
+        self.create_subscription(String, CMD_SAFETY_STATUS_TOPIC, self._cmd_safety_cb, 10)
+        self.create_subscription(String, LOOP_STATS_TOPIC, self._loop_stats_cb, 10)
         self.create_subscription(Float32, LANE_ERROR_TOPIC, self._lane_cb, qos)
         self.create_subscription(Twist, CMD_VEL_TOPIC, self._cmd_cb, 10)
         self.create_subscription(Odometry, ODOM_TOPIC, self._odom_cb, 10)
@@ -286,6 +295,32 @@ class DashboardNode(Node):
                 self.data['health_ok'] = False
                 self.data['health_summary'] = msg.data
                 self.topic_last_update['health_status'] = time.monotonic()
+
+    def _cmd_safety_cb(self, msg: String) -> None:
+        """Update command safety status fields."""
+        try:
+            payload = json.loads(msg.data)
+            with self.data_lock:
+                self.data['cmd_safety_estop'] = bool(payload.get('estop', False))
+                self.data['cmd_safety_timeout_count'] = int(payload.get('timeout_count', 0))
+                self.topic_last_update['cmd_safety_status'] = time.monotonic()
+        except Exception:
+            self._set('cmd_safety_estop', False, 'cmd_safety_status')
+
+    def _loop_stats_cb(self, msg: String) -> None:
+        """Track latest loop stat payloads by node:loop key."""
+        try:
+            payload = json.loads(msg.data)
+            node = str(payload.get('node', 'unknown'))
+            loop = str(payload.get('loop', 'unknown'))
+            key = f'{node}:{loop}'
+            with self.data_lock:
+                stats = dict(self.data.get('loop_stats', {}))
+                stats[key] = payload
+                self.data['loop_stats'] = stats
+                self.topic_last_update['loop_stats'] = time.monotonic()
+        except Exception:
+            pass
 
     def _cmd_cb(self, msg: Twist) -> None:
         with self.data_lock:
