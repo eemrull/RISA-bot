@@ -1584,10 +1584,11 @@ async function getParam(node, param, isInitialLoad=false) {
       if (input) {
         input.value = d.value;
         if (isInitialLoad) {
-          input.placeholder = `Def: ${d.value}`;
+          const defVal = d.default !== undefined ? d.default : d.value;
+          input.placeholder = `Def: ${defVal}`;
           const pName = input.parentElement.querySelector('.param-name');
           if (pName) {
-            pName.innerHTML = `${param} <span style="color:#555;font-size:0.85em;">(def: ${d.value})</span>`;
+            pName.innerHTML = `${param} <span style="color:#555;font-size:0.85em;">(def: ${defVal})</span>`;
           }
         }
       }

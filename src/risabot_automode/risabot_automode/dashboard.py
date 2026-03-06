@@ -14,6 +14,8 @@ import math
 import socketserver
 import threading
 import time
+import os
+import yaml
 
 import cv2
 import rclpy
@@ -61,6 +63,35 @@ except ImportError:
 # ======================== HTML Dashboard ========================
 
 from .dashboard_templates import DASHBOARD_HTML, TEACH_HTML
+
+_DEFAULT_PARAMS = {}
+
+def load_default_params():
+    global _DEFAULT_PARAMS
+    try:
+        from ament_index_python.packages import get_package_share_directory
+        try:
+            share_dir = get_package_share_directory('risabot_automode')
+            params_file = os.path.join(share_dir, 'config', 'params.yaml')
+        except Exception:
+            params_file = ''
+            
+        if not os.path.exists(params_file):
+            this_dir = os.path.dirname(os.path.abspath(__file__))
+            params_file = os.path.abspath(os.path.join(this_dir, '..', '..', 'config', 'params.yaml'))
+
+        if os.path.exists(params_file):
+            with open(params_file, 'r') as f:
+                data = yaml.safe_load(f)
+                if data:
+                    for node_name, node_data in data.items():
+                        if isinstance(node_data, dict) and 'ros__parameters' in node_data:
+                            if node_name not in _DEFAULT_PARAMS:
+                                _DEFAULT_PARAMS[node_name] = {}
+                            _DEFAULT_PARAMS[node_name].update(node_data['ros__parameters'])
+            print(f"Loaded default params from {params_file}")
+    except Exception as e:
+        print(f"Failed to load default params: {e}")
 
 # ======================== ROS2 Dashboard Node ========================
 
@@ -677,6 +708,8 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                 value, err = _ros_get_param(node, param)
                 if err is None:
                     result = {'ok': True, 'value': value}
+                    if node in _DEFAULT_PARAMS and param in _DEFAULT_PARAMS[node]:
+                        result['default'] = _DEFAULT_PARAMS[node][param]
                 else:
                     result = {'ok': False, 'error': err}
             self.send_response(200)
@@ -747,6 +780,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 def main(args=None) -> None:
     global _node_ref
     rclpy.init(args=args)
+    load_default_params()
     node = DashboardNode()
     _node_ref = node
 
