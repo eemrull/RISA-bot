@@ -32,6 +32,12 @@
 #include "astra_camera_msgs/msg/extrinsics.hpp"
 #include "dynamic_params.h"
 
+namespace openni {
+bool operator==(const openni::VideoMode& lhs, const openni::VideoMode& rhs);
+bool operator!=(const openni::VideoMode& lhs, const openni::VideoMode& rhs);
+std::ostream& operator<<(std::ostream& os, const openni::VideoMode& video_mode);
+}
+
 namespace astra_camera {
 
 tf2::Quaternion rotationMatrixToQuaternion(const float rotation[9]);

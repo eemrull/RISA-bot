@@ -189,6 +189,11 @@ echo "  -> colcon build..."
 # Use --parallel-workers 1 or 2 and set MAKEFLAGS to avoid OOM killer on low-RAM SBCs
 MAKEFLAGS="-j2" colcon build --symlink-install --executor sequential
 echo "✅ Workspace built successfully!"
+
+echo "  -> Adding COLCON_IGNORE to core C++ packages to speed up future builds..."
+touch "$SRC_DIR/ros2_astra_camera/COLCON_IGNORE"
+touch "$SRC_DIR/ydlidar_ros2_driver/COLCON_IGNORE"
+echo "✅ Added COLCON_IGNORE to ros2_astra_camera and ydlidar_ros2_driver"
 sleep 1
 
 echo ""
