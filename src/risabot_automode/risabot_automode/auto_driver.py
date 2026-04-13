@@ -67,6 +67,7 @@ class ChallengeState(Enum):
     LANE_FOLLOW = 8          # Default driving mode
     REVERSE_ADJUST = 9       # Backing up from close obstacle
     EMERGENCY_STOP = 10      # External e-stop asserted
+    ROUNDABOUT = 11          # Traversing roundabout (lane follow on Lap 1)
 
 
 class AutoDriver(Node):
@@ -102,17 +103,37 @@ class AutoDriver(Node):
         self.cmd_safety_estop = False
         self.cmd_safety_last_time = 0.0
 
+        # PID controller state
+        self._pid_prev_error = 0.0
+        self._pid_integral = 0.0
+        self._pid_last_time = time.monotonic()
+
         # Tunable parameters
-        self.declare_parameter('steering_gain', 1.0)
-        self.declare_parameter('forward_speed', 0.12)  # m/s base forward speed
+        self.declare_parameter('steering_gain', 1.0)   # legacy — kept for compatibility
+        self.declare_parameter('forward_speed', 0.12)  # m/s maximum forward speed (straight)
         self.declare_parameter('stale_timeout', 3.0)   # seconds before treating module data as stale
         self.declare_parameter('max_odom_speed', 1.0)  # ignore odom speed spikes beyond this
         self.declare_parameter('min_state_dwell_sec', 0.25)
         self.declare_parameter('publish_loop_stats', True)
 
+        # PID gains for steering angular.z
+        self.declare_parameter('pid_kp', 1.2)   # Proportional — how hard to steer for a given error
+        self.declare_parameter('pid_ki', 0.01)  # Integral — correct steady-state drift/bias
+        self.declare_parameter('pid_kd', 0.15)  # Derivative — dampen oscillations / prevent overshoot
+        self.declare_parameter('pid_integral_max', 0.3)  # Anti-windup clamp for integral term
+
+        # Adaptive speed control
+        # forward speed = forward_speed * max(min_turn_speed, 1 - speed_error_scale * |error|)
+        self.declare_parameter('speed_error_scale', 1.5)  # how aggressively speed drops with error
+        self.declare_parameter('min_turn_speed', 0.5)     # minimum speed multiplier in sharp turns (0.5 = half)
+
         # Distance threshold (only for determining if a lap is complete after passing traffic light)
         self.declare_parameter('dist_lap_complete', 1.0)
-        self.declare_parameter('enable_subsumption_obstacle', False) 
+        self.declare_parameter('enable_subsumption_obstacle', False)
+
+        # Challenge sequencing — time-based gating
+        self.declare_parameter('t_post_obstacle_sec', 1.5)  # delay after obstacle clears before entering roundabout
+        self.declare_parameter('t_roundabout_sec', 8.0)      # time to traverse roundabout arc
         self.distance_past_light = 0.0
         self._param_cache: Dict[str, object] = {}
         self._update_param_cache()
@@ -140,6 +161,12 @@ class AutoDriver(Node):
 
         # Transition tracking
         self.state_entry_time = time.monotonic()
+
+        # Challenge sequencing state
+        self._obs_cleared_time: float = 0.0    # monotonic timestamp when obstruction cleared
+        self._obs_was_active: bool = False      # edge detector for obstruction_active
+        self._boom_gate_armed: bool = False     # True after roundabout exit
+        self._tl_armed: bool = False            # True after tunnel exit
 
         # Odometry integration (used minimally now)
         self.last_odom_time = time.monotonic()
@@ -230,6 +257,17 @@ class AutoDriver(Node):
             'max_odom_speed': float(self.get_parameter('max_odom_speed').value),
             'min_state_dwell_sec': float(self.get_parameter('min_state_dwell_sec').value),
             'publish_loop_stats': bool(self.get_parameter('publish_loop_stats').value),
+            # PID
+            'pid_kp':            float(self.get_parameter('pid_kp').value),
+            'pid_ki':            float(self.get_parameter('pid_ki').value),
+            'pid_kd':            float(self.get_parameter('pid_kd').value),
+            'pid_integral_max':  float(self.get_parameter('pid_integral_max').value),
+            # Adaptive speed
+            'speed_error_scale': float(self.get_parameter('speed_error_scale').value),
+            'min_turn_speed':    float(self.get_parameter('min_turn_speed').value),
+            # Challenge sequencing
+            't_post_obstacle_sec': float(self.get_parameter('t_post_obstacle_sec').value),
+            't_roundabout_sec':    float(self.get_parameter('t_roundabout_sec').value),
         }
 
     def _on_params(self, params) -> SetParametersResult:
@@ -360,11 +398,53 @@ class AutoDriver(Node):
         self.dash_state_pub.publish(msg)
 
     def _lane_follow_cmd(self) -> Twist:
-        """Build a Twist for standard lane following."""
+        """Build a Twist using a full PID controller + adaptive speed.
+
+        PID terms:
+          P — proportional to current error (immediate correction)
+          I — proportional to accumulated error (corrects persistent drift)
+          D — proportional to rate-of-change of error (dampens oscillation)
+
+        Adaptive speed:
+          Forward speed scales DOWN as |error| increases so the robot
+          naturally slows for sharp turns and accelerates on straights.
+        """
+        now = time.monotonic()
+        dt = now - self._pid_last_time
+        self._pid_last_time = now
+
+        # Guard against very large dt (e.g. first tick, state transition pause)
+        if dt <= 0.0 or dt > 0.5:
+            dt = 0.02  # assume 50 Hz nominal
+
+        error = self.lane_error
+
+        # --- Integral term with anti-windup clamp ---
+        self._pid_integral += error * dt
+        i_max = self._param_cache['pid_integral_max']
+        self._pid_integral = max(-i_max, min(i_max, self._pid_integral))
+
+        # --- Derivative term ---
+        derivative = (error - self._pid_prev_error) / dt
+        self._pid_prev_error = error
+
+        # --- PID output → steering ---
+        kp = self._param_cache['pid_kp']
+        ki = self._param_cache['pid_ki']
+        kd = self._param_cache['pid_kd']
+        angular_z = kp * error + ki * self._pid_integral + kd * derivative
+        # Hard clamp so we never command an impossible turn rate
+        angular_z = max(-2.0, min(2.0, angular_z))
+
+        # --- Adaptive speed: slower in turns, faster on straights ---
+        scale = self._param_cache['speed_error_scale']
+        min_spd = self._param_cache['min_turn_speed']
+        speed_mult = max(min_spd, 1.0 - scale * abs(error))
+        linear_x = self._param_cache['forward_speed'] * speed_mult
+
         cmd = Twist()
-        cmd.linear.x = self._param_cache['forward_speed']
-        # Positive error = lane on left. Positive Z = left turn.
-        cmd.angular.z = self._param_cache['steering_gain'] * self.lane_error
+        cmd.linear.x  = linear_x
+        cmd.angular.z = angular_z
         return cmd
 
     def publish_cmd_vel(self) -> None:
@@ -410,43 +490,64 @@ class AutoDriver(Node):
                 self.parallel_done = False
                 self.perpendicular_done = False
                 self.parking_sequence_active = False
+                # Reset sequencing flags for Lap 2
+                self._boom_gate_armed = False
+                self._tl_armed = False
+                self._obs_cleared_time = 0.0
+                self._obs_was_active = False
 
-        # --- Priority Evaluation Engine ---
-        
-        # Priority 2: Terminal Constraints (Finished)
+        # ── Obstruction edge detection (runs every tick) ──
+        if self.obstruction_active:
+            self._obs_was_active = True
+        elif self._obs_was_active:
+            # Falling edge: obstacle just cleared
+            self._obs_cleared_time = time.monotonic()
+            self._obs_was_active = False
+            self.get_logger().info('Obstruction cleared → roundabout countdown started')
+
+        # --- Priority Evaluation Engine (Sequenced) ---
+
+        # Priority 1: Terminal (Finished)
         if self.current_lap == 2 and self.perpendicular_done:
             target_state = ChallengeState.FINISHED
             self.stop_reason = 'COMPETITION FINISHED'
             self.parking_sequence_active = False
 
-        # Priority 3: Hard Safety Stops (immediate halt required)
+        # Priority 2: Hard Safety (E-Stop)
         elif self.cmd_safety_estop:
             target_state = ChallengeState.EMERGENCY_STOP
             self.stop_reason = 'E-STOP ACTIVE'
 
-        elif self.traffic_light_state in ('red', 'yellow'):
-            target_state = ChallengeState.TRAFFIC_LIGHT
-            self.stop_reason = f'TRAFFIC LIGHT {self.traffic_light_state.upper()}'
-
-        elif not self.boom_gate_open:
-            target_state = ChallengeState.BOOM_GATE
-            self.stop_reason = 'BOOM GATE CLOSED'
-
-        # Priority 4: Active Maneuvers (Steering overriding normal driving)
+        # Priority 3: Obstruction — Challenge 1 (reactive)
         elif self.obstruction_active:
             target_state = ChallengeState.OBSTRUCTION
             cmd = self.obstruction_cmd
 
-        # Priority 4.5: Front Obstacle Backup (Too close, but not actively avoiding)
+        # Priority 3.5: Front obstacle backup (unchanged)
         elif self.obstacle_active:
             target_state = ChallengeState.REVERSE_ADJUST
             self.stop_reason = 'TOO CLOSE TO OBSTACLE'
             cmd.linear.x = -self._param_cache['forward_speed'] * 0.8
             cmd.angular.z = 0.0
 
-        # Priority 5: Contextual Overrides (Parking / Tunnel)
+        # Priority 4: Roundabout — Challenge 2 (time-gated)
+        elif (self._obs_cleared_time > 0
+              and not self._boom_gate_armed
+              and (time.monotonic() - self._obs_cleared_time) >= self._param_cache['t_post_obstacle_sec']):
+            target_state = ChallengeState.ROUNDABOUT
+            cmd = self._lane_follow_cmd()  # Roundabout has painted lane lines
+            # Check exit: dwell time expired
+            if self.state == ChallengeState.ROUNDABOUT:
+                time_in_roundabout = time.monotonic() - self.state_entry_time
+                if time_in_roundabout >= self._param_cache['t_roundabout_sec']:
+                    target_state = ChallengeState.LANE_FOLLOW
+                    cmd = self._lane_follow_cmd()
+                    self._boom_gate_armed = True
+                    self._obs_cleared_time = 0.0  # prevent re-entry
+                    self.get_logger().info('Roundabout complete → boom gate armed')
+
+        # Priority 5: Parking (Lap 2 only)
         elif self.current_lap == 2 and not self.perpendicular_done and (self.parking_sequence_active or self.signboard_detected):
-            # Latch parking sequence once entered so temporary signboard loss does not abort the maneuver.
             self.parking_sequence_active = True
             cmd = self.parking_cmd
             if not self.parallel_done:
@@ -459,15 +560,33 @@ class AutoDriver(Node):
                 if not self._parking_perp_sent:
                     self.parking_cmd_pub.publish(String(data='perpendicular'))
                     self._parking_perp_sent = True
-            
+
+        # Priority 6: Tunnel — Challenge 3 (reactive)
         elif self.tunnel_detected:
             target_state = ChallengeState.TUNNEL
             cmd = self.tunnel_cmd
 
-        # Priority 6: Default Action
+        # # Priority 7: Boom Gate — Challenge 4 (GATED: only after roundabout)
+        # # TODO: Enable when boom gate is on the test field
+        # elif not self.boom_gate_open and self._boom_gate_armed:
+        #     target_state = ChallengeState.BOOM_GATE
+        #     self.stop_reason = 'BOOM GATE CLOSED'
+
+        # # Priority 8: Traffic Light — Challenge 5 (GATED: only after tunnel)
+        # # TODO: Enable when traffic light is on the test field
+        # elif self.traffic_light_state in ('red', 'yellow') and self._tl_armed:
+        #     target_state = ChallengeState.TRAFFIC_LIGHT
+        #     self.stop_reason = f'TRAFFIC LIGHT {self.traffic_light_state.upper()}'
+
+        # Priority 9: Default — Lane Follow
         else:
             target_state = ChallengeState.LANE_FOLLOW
             cmd = self._lane_follow_cmd()
+
+        # ── Arm traffic light on tunnel exit (edge detect) ──
+        if self.state == ChallengeState.TUNNEL and target_state != ChallengeState.TUNNEL:
+            self._tl_armed = True
+            self.get_logger().info('Tunnel exited → traffic light armed')
 
         # Update and publish
         if self.state != target_state:

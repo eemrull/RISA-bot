@@ -1435,11 +1435,18 @@ const PARAM_TIPS = {
   white_threshold:'Brightness threshold for white line', crop_ratio:'Bottom crop ratio',
   debug_print_rate:'Seconds between console debug prints',
   // Auto driver
-  steering_gain:'Lane steering gain', forward_speed:'Base forward speed (m/s)',
+  steering_gain:'Lane steering gain (legacy)', forward_speed:'Max forward speed (m/s) — on a straight',
   stale_timeout:'Seconds before module data is stale', dist_lap_complete:'Distance after green to mark lap',
   enable_subsumption_obstacle:'Enable fused obstacle reverse adjust', max_odom_speed:'Ignore odom speed spikes above this',
   min_state_dwell_sec:'Minimum hold time for non-emergency behavior switches',
   publish_loop_stats:'Enable loop timing diagnostics stream',
+  // PID Steering
+  pid_kp:'[PID] Proportional gain — how hard to steer. Too high → oscillation/weaving',
+  pid_ki:'[PID] Integral gain — corrects long-term drift. Keep very small (0.0–0.05)',
+  pid_kd:'[PID] Derivative gain — dampens oscillation. Too high → jittery steering',
+  pid_integral_max:'[PID] Anti-windup clamp for I term. Prevents integral runaway in long turns',
+  speed_error_scale:'Adaptive speed: higher = robot slows more in turns (try 1.0–2.5)',
+  min_turn_speed:'Adaptive speed: minimum speed multiplier in a sharp turn (0.4 = 40% of max)',
   // Command safety
   publish_hz:'Safety controller publish loop frequency',
   cmd_timeout:'Max age for raw auto commands before forced zero',
@@ -1479,6 +1486,10 @@ const PARAM_TIPS = {
   unlock_requires_neutral:'Require neutral sticks after unlock before driving',
   unlock_neutral_threshold:'Neutral stick threshold for unlock gate',
   ticks_per_meter:'Encoder ticks per meter', odom_distance_scale:'Extra distance calibration multiplier',
+  drive_motor_index:'Which motor encoder channel to use (0=FL 1=FR 2=RL 3=RR)',
+  // Challenge sequencing
+  t_post_obstacle_sec:'Lane-follow delay after obstacle clears before entering roundabout (sec)',
+  t_roundabout_sec:'Time to traverse the roundabout arc before exiting (sec)',
   odom_yaw_scale:'Extra yaw calibration multiplier', encoder_jump_threshold:'Reject tick jumps above this',
   max_linear_velocity:'Clamp linear odom speed', max_angular_velocity:'Clamp angular odom speed',
   odom_reverse_polarity:'Invert encoder odom sign if needed', odom_velocity_deadband:'Zero odom near standstill',
@@ -1496,13 +1507,17 @@ const PARAM_GROUPS = [
     'min_pixel_count','required_confidence','resize_width','heartbeat_sec','show_debug'
   ]},
   { node: 'line_follower_camera', label: 'Line Follower', params: [
-    'smoothing_alpha','dead_zone','white_threshold','crop_ratio',
+    'smoothing_alpha','dead_zone','white_threshold',
+    'crop_ratio_base','crop_ratio_max','hold_error_frames','error_decay_rate','min_valid_windows',
     'resize_width','print_debug','debug_print_rate','show_debug'
   ]},
   { node: 'auto_driver', label: 'Auto Driver', params: [
-    'steering_gain','forward_speed','stale_timeout',
+    'forward_speed','stale_timeout',
     'dist_lap_complete','enable_subsumption_obstacle','max_odom_speed',
-    'min_state_dwell_sec','publish_loop_stats'
+    'min_state_dwell_sec','publish_loop_stats',
+    'pid_kp','pid_ki','pid_kd','pid_integral_max',
+    'speed_error_scale','min_turn_speed',
+    't_post_obstacle_sec','t_roundabout_sec'
   ]},
   { node: 'cmd_safety_controller', label: 'Cmd Safety', params: [
     'publish_hz','cmd_timeout','max_linear_speed','max_angular_speed',
@@ -1536,7 +1551,7 @@ const PARAM_GROUPS = [
   ]},
   { node: 'servo_controller', label: 'Servo/Odom', params: [
     'joy_timeout','auto_cmd_timeout','unlock_requires_neutral','unlock_neutral_threshold',
-    'ticks_per_meter','odom_distance_scale','odom_yaw_scale',
+    'ticks_per_meter','drive_motor_index','odom_distance_scale','odom_yaw_scale',
     'encoder_jump_threshold','max_linear_velocity','max_angular_velocity',
     'wheel_base','steering_max_deg','odom_vel_alpha','odom_velocity_deadband',
     'odom_reverse_polarity','publish_loop_stats'

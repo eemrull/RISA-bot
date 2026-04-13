@@ -122,6 +122,7 @@ class ServoControllerV9(Node):
         self.declare_parameter('unlock_neutral_threshold', 0.15)
         self.declare_parameter('hw_heartbeat_sec', 1.0)
         self.declare_parameter('hw_fail_limit', 5)
+        self.declare_parameter('drive_motor_index', 0)  # which motor channel has the encoder (0=FL, 1=FR, 2=RL, 3=RR)
         self.declare_parameter('ticks_per_meter', 1050.0)
         self.declare_parameter('odom_distance_scale', 1.0)
         self.declare_parameter('odom_yaw_scale', 1.0)
@@ -245,6 +246,7 @@ class ServoControllerV9(Node):
             'unlock_neutral_threshold': float(self.get_parameter('unlock_neutral_threshold').value),
             'hw_heartbeat_sec': float(self.get_parameter('hw_heartbeat_sec').value),
             'hw_fail_limit': int(self.get_parameter('hw_fail_limit').value),
+            'drive_motor_index': int(self.get_parameter('drive_motor_index').value),
             'ticks_per_meter': float(self.get_parameter('ticks_per_meter').value),
             'odom_distance_scale': float(self.get_parameter('odom_distance_scale').value),
             'odom_yaw_scale': float(self.get_parameter('odom_yaw_scale').value),
@@ -575,13 +577,11 @@ class ServoControllerV9(Node):
                 self._last_glitch_warn_t = now
                 self._encoder_glitch_count = 0
 
-            # RISA-Bot uses a single motor driving all wheels, or separate motors
-            # Usually left/right speed is averaged.
-            # Assuming standard Ackermann driving, rear wheels are driven, front steer.
-            # If all 4 are driven (4WD), average left and right side
-            left_ticks = (valid_d_ticks[0] + valid_d_ticks[2]) / 2.0
-            right_ticks = (valid_d_ticks[1] + valid_d_ticks[3]) / 2.0
-            avg_ticks = (left_ticks + right_ticks) / 2.0
+            # RISA-Bot uses a single rear-drive motor (motor index 0).
+            # Only use that motor's encoder — the other 3 channels are undriven
+            # and return noise/garbage that corrupts the odometry.
+            motor_idx = int(self._param_cache['drive_motor_index'])
+            avg_ticks = valid_d_ticks[motor_idx]
             if bool(self._param_cache['odom_reverse_polarity']):
                 avg_ticks = -avg_ticks
 

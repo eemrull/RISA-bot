@@ -5,16 +5,34 @@
 # ============================================================
 
 # --- Auto Driver (brain) ---
+# PID TUNING GUIDE:
+#   Start conservative: kp=0.8, ki=0.0, kd=0.1
+#   If robot weaves/oscillates: INCREASE kd, DECREASE kp
+#   If robot is slow to correct: INCREASE kp
+#   If robot drifts to one side on a straight: INCREASE ki slightly
+#   speed_error_scale: higher = more aggressive speed reduction in turns
+#   min_turn_speed: 0.5 = robot never goes below 50% forward_speed in turns
 auto_driver:
   ros__parameters:
-    steering_gain: 1.0
-    forward_speed: 0.12
+    forward_speed: 0.12          # m/s maximum speed on a straight
     stale_timeout: 3.0
     dist_lap_complete: 1.0
     enable_subsumption_obstacle: false
     max_odom_speed: 1.0
     min_state_dwell_sec: 0.25
     publish_loop_stats: true
+    steering_gain: 1.0           # legacy, kept for compatibility
+    # PID gains
+    pid_kp: 1.2
+    pid_ki: 0.01
+    pid_kd: 0.15
+    pid_integral_max: 0.3
+    # Adaptive speed
+    speed_error_scale: 1.5
+    min_turn_speed: 0.5
+    # Challenge 1→2 sequencing (time-based gating)
+    t_post_obstacle_sec: 1.5     # re-center delay after obstacle clears (before roundabout)
+    t_roundabout_sec: 8.0        # time inside roundabout before exiting
 
 # --- Command Safety Controller ---
 cmd_safety_controller:
@@ -30,18 +48,33 @@ cmd_safety_controller:
     publish_loop_stats: true
 
 # --- Line Follower Camera ---
+# TUNING GUIDE:
+#   white_threshold : lower if track lighting is dim, raise if many false whites
+#   crop_ratio_base : increase if robot cuts corners on slight curves
+#   crop_ratio_max  : raise only if robot still loses lane on very sharp turns
+#   hold_error_frames: frames (~30fps) the last heading is held when lines are lost
+#   error_decay_rate: 0.92 → held error halves every ~9 frames; lower = faster fade
+#   min_valid_windows: lower = less strict lane lock (may cause false locks)
 line_follower_camera:
   ros__parameters:
     smoothing_alpha: 0.3
     dead_zone: 0.08
     white_threshold: 150
-    crop_ratio: 0.4
+    crop_ratio_base: 0.4
+    crop_ratio_max: 0.65
+    hold_error_frames: 15
+    error_decay_rate: 0.92
+    min_valid_windows: 3
     show_debug: false
     resize_width: 320
     print_debug: false
     debug_print_rate: 0.5
 
 # --- Traffic Light Detector ---
+# TUNING GUIDE:
+#   sat_min / val_min    : raise if false positives on dark-coloured objects
+#   required_confidence  : raise to reduce false triggers (3 = safe default)
+#   min_pixel_count      : raise if detecting small coloured blobs that aren't lights
 traffic_light_detector:
   ros__parameters:
     red_h_low1: 0
@@ -178,6 +211,7 @@ servo_controller:
     hw_heartbeat_sec: 1.0
     hw_fail_limit: 5
     ticks_per_meter: 1050.0
+    drive_motor_index: 0        # which encoder channel to use (0=FL, 1=FR, 2=RL, 3=RR)
     odom_distance_scale: 1.0
     odom_yaw_scale: 1.0
     encoder_jump_threshold: 800.0
