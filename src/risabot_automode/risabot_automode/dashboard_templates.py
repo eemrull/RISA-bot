@@ -1430,9 +1430,14 @@ const PARAM_TIPS = {
   min_circle_radius:'Smallest circle to detect', max_circle_radius:'Largest circle to detect',
   min_pixel_count:'Min colored pixels to trigger', required_confidence:'Consecutive detections required',
   resize_width:'Resize width for CV speed', heartbeat_sec:'Publish heartbeat period',
-  // Line follower
-  smoothing_alpha:'Error smoothing (0=smooth, 1=raw)', dead_zone:'Ignore error below this',
-  white_threshold:'Brightness threshold for white line', crop_ratio:'Bottom crop ratio',
+  // Line follower (Cytron-style scanline)
+  n_scanlines:'Number of horizontal scanlines to sample', min_valid_scanlines:'Min scanlines for confident lock',
+  min_line_width_px:'Min white region width in pixels (noise filter)',
+  crop_ratio_base:'Bottom crop ratio — how much of the frame is road',
+  clahe_enabled:'Enable CLAHE adaptive lighting normalization', clahe_clip_limit:'CLAHE contrast clip limit',
+  smoothing_alpha:'EMA smoothing (0=smooth, 1=raw)', dead_zone:'Tolerance threshold — ignore error below this',
+  hold_error_frames:'Frames to hold last known error when lines lost',
+  error_decay_rate:'Per-frame decay for held error (0.92 = halves in ~9 frames)',
   debug_print_rate:'Seconds between console debug prints',
   // Auto driver
   steering_gain:'Lane steering gain (legacy)', forward_speed:'Max forward speed (m/s) — on a straight',
@@ -1447,6 +1452,7 @@ const PARAM_TIPS = {
   pid_integral_max:'[PID] Anti-windup clamp for I term. Prevents integral runaway in long turns',
   speed_error_scale:'Adaptive speed: higher = robot slows more in turns (try 1.0–2.5)',
   min_turn_speed:'Adaptive speed: minimum speed multiplier in a sharp turn (0.4 = 40% of max)',
+  lane_steer_slew:'Max steering change per second — lower = smoother but slower response (Cytron accel limit)',
   // Command safety
   publish_hz:'Safety controller publish loop frequency',
   cmd_timeout:'Max age for raw auto commands before forced zero',
@@ -1507,8 +1513,9 @@ const PARAM_GROUPS = [
     'min_pixel_count','required_confidence','resize_width','heartbeat_sec','show_debug'
   ]},
   { node: 'line_follower_camera', label: 'Line Follower', params: [
-    'smoothing_alpha','dead_zone','white_threshold',
-    'crop_ratio_base','crop_ratio_max','hold_error_frames','error_decay_rate','min_valid_windows',
+    'n_scanlines','min_valid_scanlines','min_line_width_px',
+    'crop_ratio_base','clahe_enabled','clahe_clip_limit',
+    'smoothing_alpha','dead_zone','hold_error_frames','error_decay_rate',
     'resize_width','print_debug','debug_print_rate','show_debug'
   ]},
   { node: 'auto_driver', label: 'Auto Driver', params: [
@@ -1516,7 +1523,7 @@ const PARAM_GROUPS = [
     'dist_lap_complete','enable_subsumption_obstacle','max_odom_speed',
     'min_state_dwell_sec','publish_loop_stats',
     'pid_kp','pid_ki','pid_kd','pid_integral_max',
-    'speed_error_scale','min_turn_speed',
+    'speed_error_scale','min_turn_speed','lane_steer_slew',
     't_post_obstacle_sec','t_roundabout_sec'
   ]},
   { node: 'cmd_safety_controller', label: 'Cmd Safety', params: [

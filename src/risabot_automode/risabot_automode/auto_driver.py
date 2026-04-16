@@ -107,6 +107,7 @@ class AutoDriver(Node):
         self._pid_prev_error = 0.0
         self._pid_integral = 0.0
         self._pid_last_time = time.monotonic()
+        self._prev_angular_z = 0.0  # steering slew rate state
 
         # Tunable parameters
         self.declare_parameter('steering_gain', 1.0)   # legacy — kept for compatibility
@@ -126,6 +127,7 @@ class AutoDriver(Node):
         # forward speed = forward_speed * max(min_turn_speed, 1 - speed_error_scale * |error|)
         self.declare_parameter('speed_error_scale', 1.5)  # how aggressively speed drops with error
         self.declare_parameter('min_turn_speed', 0.5)     # minimum speed multiplier in sharp turns (0.5 = half)
+        self.declare_parameter('lane_steer_slew', 3.0)    # max angular.z change per second (Cytron acceleration limit)
 
         # Distance threshold (only for determining if a lap is complete after passing traffic light)
         self.declare_parameter('dist_lap_complete', 1.0)
@@ -265,6 +267,7 @@ class AutoDriver(Node):
             # Adaptive speed
             'speed_error_scale': float(self.get_parameter('speed_error_scale').value),
             'min_turn_speed':    float(self.get_parameter('min_turn_speed').value),
+            'lane_steer_slew':   float(self.get_parameter('lane_steer_slew').value),
             # Challenge sequencing
             't_post_obstacle_sec': float(self.get_parameter('t_post_obstacle_sec').value),
             't_roundabout_sec':    float(self.get_parameter('t_roundabout_sec').value),
@@ -435,6 +438,13 @@ class AutoDriver(Node):
         angular_z = kp * error + ki * self._pid_integral + kd * derivative
         # Hard clamp so we never command an impossible turn rate
         angular_z = max(-2.0, min(2.0, angular_z))
+
+        # Steering slew rate limiter (Cytron acceleration control)
+        # v(t) = clip(v(t), v(t-1) - a_max, v(t-1) + a_max)
+        slew = self._param_cache['lane_steer_slew'] * dt
+        angular_z = max(self._prev_angular_z - slew,
+                        min(self._prev_angular_z + slew, angular_z))
+        self._prev_angular_z = angular_z
 
         # --- Adaptive speed: slower in turns, faster on straights ---
         scale = self._param_cache['speed_error_scale']

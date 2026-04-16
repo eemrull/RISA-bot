@@ -1,27 +1,25 @@
 #!/usr/bin/env python3
 """
-Line Follower Camera Node
-Detects white lane lines using grayscale thresholding and computes a steering
-error from the midpoint between the left and right lane peaks.
+Line Follower Camera Node  (Cytron-style scanline detection)
+Detects white lane lines using CLAHE + Otsu's adaptive thresholding and
+computes a steering error from multi-scanline pixel scanning.
 
-Algorithm:
-  1. Crop bottom portion of camera image (road surface)
-  2. Threshold for white pixels (lane markings)
-  3. Sliding windows to trace left/right lane boundaries
-  4. Error = offset of lane midpoint from image center
-  5. Smoothed via dead zone + exponential moving average (EMA)
+Algorithm (adapted from Cytron Differential Line Following for dual white lanes):
+  1. Resize + crop bottom portion of camera image (road surface)
+  2. CLAHE histogram equalization (adaptive lighting compensation)
+  3. Gaussian blur + Otsu's auto-threshold (no fixed white_threshold!)
+  4. Multiple horizontal scanlines scan for left/right white lane edges
+  5. Error = average offset of lane midpoints from image center
+  6. Deadband filter (tolerance threshold) + EMA smoothing
+  7. Publish Float32 on /lane_error (range -1.0 to +1.0)
 
-Advanced Features:
-  - Dynamic look-ahead: automatically raises crop window when lane confidence
-    drops, so the robot can "see" further into sharp curves
-  - Steering persistence: holds the last known steering intent and decays it
-    slowly when both lines are fully lost, preventing snap-to-centre behaviour
-
-Publishes Float32 on /lane_error (range -1.0 to +1.0).
+Reference:
+  Cytron Technologies — Differential Line Following Algorithm
+  https://my.cytron.io/tutorial/differential-line-following-algorithm
 """
 
 import time
-from typing import Dict
+from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -43,19 +41,23 @@ class LineFollowerCamera(Node):
         super().__init__('line_follower_camera')
         self.lane_error = 0.0
         self.filtered_error = 0.0    # EMA-smoothed output
-        self.last_valid_error = 0.0  # last error from a confident lane lock
+        self.last_valid_error = 0.0  # last error from a confident scan
 
         # ── Tunable parameters ─────────────────────────────────────────────
-        self.declare_parameter('smoothing_alpha', 0.3)
-        self.declare_parameter('dead_zone', 0.08)
-        self.declare_parameter('white_threshold', 150)
-        # Dynamic look-ahead
-        self.declare_parameter('crop_ratio_base', 0.4)   # normal operation
-        self.declare_parameter('crop_ratio_max', 0.65)   # expanded on lane loss
-        # Steering persistence on total lane loss
-        self.declare_parameter('hold_error_frames', 15)  # frames to hold intent
-        self.declare_parameter('error_decay_rate', 0.92) # per-frame decay factor
-        self.declare_parameter('min_valid_windows', 3)   # windows needed for confident lock
+        # Scanline detection
+        self.declare_parameter('n_scanlines', 8)             # number of horizontal scanlines
+        self.declare_parameter('min_valid_scanlines', 3)     # minimum for confident lock
+        self.declare_parameter('min_line_width_px', 5)       # min white region to count as lane line
+        self.declare_parameter('crop_ratio_base', 0.4)       # bottom crop ratio (road surface)
+        # CLAHE adaptive lighting
+        self.declare_parameter('clahe_enabled', True)
+        self.declare_parameter('clahe_clip_limit', 2.0)
+        # Error conditioning (Cytron-style)
+        self.declare_parameter('smoothing_alpha', 0.3)       # EMA α
+        self.declare_parameter('dead_zone', 0.05)            # tolerance threshold T
+        # Steering persistence on lane loss
+        self.declare_parameter('hold_error_frames', 15)      # frames to hold last intent
+        self.declare_parameter('error_decay_rate', 0.92)     # per-frame decay factor
         # Display / debug
         self.declare_parameter('show_debug', False)
         self.declare_parameter('resize_width', 320)
@@ -69,8 +71,14 @@ class LineFollowerCamera(Node):
 
         # ── Internal state ──────────────────────────────────────────────────
         self.current_hold_frames = 0
-        self.dynamic_crop_ratio = self._param_cache['crop_ratio_base']
-        self.frames_since_valid = 0  # consecutive frames without a confident lane lock
+        self.frames_since_valid = 0       # consecutive frames without confident lock
+        self.last_lane_width = 0          # last detected lane width in pixels
+
+        # CLAHE object (reused across frames)
+        self._clahe = cv2.createCLAHE(
+            clipLimit=self._param_cache['clahe_clip_limit'],
+            tileGridSize=(8, 8)
+        )
 
         # ── ROS publishers / subscribers ────────────────────────────────────
         self.error_pub = self.create_publisher(Float32, LANE_ERROR_TOPIC, 10)
@@ -83,7 +91,7 @@ class LineFollowerCamera(Node):
             QoSPresetProfiles.SENSOR_DATA.value
         )
         self.get_logger().info(
-            'Line Follower Camera: Ready (Dynamic Look-Ahead + Steering Persistence)'
+            'Line Follower Camera: Ready (Cytron-style scanline + CLAHE + Otsu)'
         )
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -93,26 +101,154 @@ class LineFollowerCamera(Node):
     def _update_param_cache(self) -> None:
         """Cache frequently used parameters to avoid per-frame lookups."""
         self._param_cache = {
-            'smoothing_alpha':   float(self.get_parameter('smoothing_alpha').value),
-            'dead_zone':         float(self.get_parameter('dead_zone').value),
-            'white_threshold':   int(self.get_parameter('white_threshold').value),
-            'crop_ratio_base':   float(self.get_parameter('crop_ratio_base').value),
-            'crop_ratio_max':    float(self.get_parameter('crop_ratio_max').value),
-            'hold_error_frames': int(self.get_parameter('hold_error_frames').value),
-            'error_decay_rate':  float(self.get_parameter('error_decay_rate').value),
-            'min_valid_windows': int(self.get_parameter('min_valid_windows').value),
-            'show_debug':        bool(self.get_parameter('show_debug').value),
-            'resize_width':      int(self.get_parameter('resize_width').value),
-            'print_debug':       bool(self.get_parameter('print_debug').value),
-            'debug_print_rate':  float(self.get_parameter('debug_print_rate').value),
+            'n_scanlines':        int(self.get_parameter('n_scanlines').value),
+            'min_valid_scanlines': int(self.get_parameter('min_valid_scanlines').value),
+            'min_line_width_px':  int(self.get_parameter('min_line_width_px').value),
+            'crop_ratio_base':    float(self.get_parameter('crop_ratio_base').value),
+            'clahe_enabled':      bool(self.get_parameter('clahe_enabled').value),
+            'clahe_clip_limit':   float(self.get_parameter('clahe_clip_limit').value),
+            'smoothing_alpha':    float(self.get_parameter('smoothing_alpha').value),
+            'dead_zone':          float(self.get_parameter('dead_zone').value),
+            'hold_error_frames':  int(self.get_parameter('hold_error_frames').value),
+            'error_decay_rate':   float(self.get_parameter('error_decay_rate').value),
+            'show_debug':         bool(self.get_parameter('show_debug').value),
+            'resize_width':       int(self.get_parameter('resize_width').value),
+            'print_debug':        bool(self.get_parameter('print_debug').value),
+            'debug_print_rate':   float(self.get_parameter('debug_print_rate').value),
         }
 
     def _on_params(self, params) -> SetParametersResult:
-        """Update cached parameters when set via CLI or services."""
+        """Update cached parameters when set via CLI or dashboard."""
         for p in params:
             if p.name in self._param_cache:
                 self._param_cache[p.name] = p.value
+                # Recreate CLAHE if clip limit changed
+                if p.name == 'clahe_clip_limit':
+                    self._clahe = cv2.createCLAHE(
+                        clipLimit=float(p.value), tileGridSize=(8, 8)
+                    )
         return SetParametersResult(successful=True)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Scanline detection — Cytron-style pixel scanning
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _scan_row_for_white_region(
+        self, row: np.ndarray, start: int, end: int, step: int,
+        min_width: int
+    ) -> Optional[int]:
+        """Scan a binary row to find the center of the first white region.
+
+        Args:
+            row: 1D array of binary pixel values (0 or 255).
+            start: pixel index to start scanning from.
+            end: pixel index to stop scanning at (exclusive).
+            step: +1 for left→right, -1 for right→left.
+            min_width: minimum consecutive white pixels to count as a line.
+
+        Returns:
+            Center x-coordinate of the detected white region, or None.
+        """
+        in_white = False
+        white_start = 0
+        x = start
+        while (step > 0 and x < end) or (step < 0 and x >= end):
+            if row[x] == 255:
+                if not in_white:
+                    white_start = x
+                    in_white = True
+            else:
+                if in_white:
+                    white_end = x
+                    width = abs(white_end - white_start)
+                    if width >= min_width:
+                        # Return center of this white region
+                        return (white_start + white_end) // 2
+                    in_white = False
+            x += step
+
+        # Handle case where white region extends to the edge
+        if in_white:
+            white_end = x
+            width = abs(white_end - white_start)
+            if width >= min_width:
+                return (white_start + white_end) // 2
+
+        return None
+
+    def _detect_scanlines(
+        self, binary: np.ndarray, crop_h: int, w: int
+    ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]], List[Tuple[int, int]], int]:
+        """Run multi-scanline detection on the binary image.
+
+        For each scanline:
+          - Scan left→right from left edge to find LEFT lane line
+          - Scan right→left from right edge to find RIGHT lane line
+          - Compute midpoint between the two lines
+
+        Returns:
+            (left_points, right_points, center_points, valid_count)
+        """
+        n_scanlines = self._param_cache['n_scanlines']
+        min_width = self._param_cache['min_line_width_px']
+
+        left_points = []
+        right_points = []
+        center_points = []
+        valid_count = 0
+        half_w = w // 2
+
+        for i in range(n_scanlines):
+            # Distribute scanlines evenly across the crop region
+            # Bottom scanline is closest to the robot, top is furthest ahead
+            y_frac = (i + 0.5) / n_scanlines
+            y_in_crop = int(crop_h * (1.0 - y_frac))
+            y_in_crop = max(0, min(crop_h - 1, y_in_crop))
+
+            row = binary[y_in_crop, :]
+
+            # Scan for left lane line: left→right, searching left half primarily
+            left_x = self._scan_row_for_white_region(
+                row, 0, half_w + half_w // 3, +1, min_width
+            )
+
+            # Scan for right lane line: right→left, searching right half primarily
+            right_x = self._scan_row_for_white_region(
+                row, w - 1, half_w - half_w // 3, -1, min_width
+            )
+
+            # Determine lane center
+            if left_x is not None and right_x is not None:
+                # Both lines found — confident detection
+                if right_x > left_x:  # sanity check
+                    valid_count += 1
+                    self.last_lane_width = right_x - left_x
+                    center_x = (left_x + right_x) // 2
+                else:
+                    # Lines crossed (noise) — use last known width
+                    center_x = half_w
+                    left_x = half_w - self.last_lane_width // 2
+                    right_x = half_w + self.last_lane_width // 2
+
+            elif left_x is not None and self.last_lane_width > 0:
+                # Only left line found — estimate right from known width
+                right_x = left_x + self.last_lane_width
+                center_x = (left_x + right_x) // 2
+
+            elif right_x is not None and self.last_lane_width > 0:
+                # Only right line found — estimate left from known width
+                left_x = right_x - self.last_lane_width
+                center_x = (left_x + right_x) // 2
+
+            else:
+                # Neither line found — skip this scanline
+                continue
+
+            left_points.append((int(left_x), y_in_crop))
+            right_points.append((int(right_x), y_in_crop))
+            center_points.append((int(center_x), y_in_crop))
+
+        return left_points, right_points, center_points, valid_count
 
     # ──────────────────────────────────────────────────────────────────────────
     # Main camera callback
@@ -132,137 +268,72 @@ class LineFollowerCamera(Node):
 
             image_center = w / 2.0
 
-            # ── 2. Dynamic look-ahead crop ──────────────────────────────────
-            # When lane confidence drops, dynamic_crop_ratio grows so we
-            # scan a taller region that reaches further ahead into the curve.
-            crop_h = int(h * self.dynamic_crop_ratio)
+            # ── 2. Crop bottom portion (road surface) ───────────────────────
+            crop_ratio = self._param_cache['crop_ratio_base']
+            crop_h = int(h * crop_ratio)
             road = bgr[h - crop_h:, :]
 
-            # ── 3. Threshold white lane markings ────────────────────────────
-            white_thresh = self._param_cache['white_threshold']
+            # ── 3. CLAHE + Otsu's adaptive threshold ────────────────────────
             gray = cv2.cvtColor(road, cv2.COLOR_BGR2GRAY)
+
+            # CLAHE: normalize lighting across the image
+            if self._param_cache['clahe_enabled']:
+                gray = self._clahe.apply(gray)
+
+            # Gaussian blur to reduce noise
             blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-            _, binary = cv2.threshold(blurred, white_thresh, 255, cv2.THRESH_BINARY)
 
-            # ── 4. Sliding window lane detection ────────────────────────────
-            n_windows = 10
-            window_height = max(1, crop_h // n_windows)
+            # Otsu's auto-threshold — no more fixed white_threshold!
+            _, binary = cv2.threshold(
+                blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+            )
 
-            left_points = []
-            right_points = []
-            center_points = []
-            valid_frames = 0                   # windows where both lines confirmed
-            estimated_lane_width = w // 2      # maintained across windows
-            min_lane_width = 80                # pixels; avoids fusing both lines
+            # ── 4. Multi-scanline detection ─────────────────────────────────
+            left_pts, right_pts, center_pts, valid_count = \
+                self._detect_scanlines(binary, crop_h, w)
 
-            for window in range(n_windows):
-                win_y_low  = crop_h - (window + 1) * window_height
-                win_y_high = crop_h - window * window_height
-                if win_y_high <= win_y_low:
-                    break
+            # ── 5. Compute average error (Cytron formula) ───────────────────
+            conf_min = self._param_cache['min_valid_scanlines']
 
-                hist = np.sum(binary[win_y_low:win_y_high, :], axis=0)
-
-                # Search regions — follow previous point if available
-                left_start,  left_end  = 0,      w // 3
-                right_start, right_end = 2*w//3, w
-
-                if window > 0 and left_points:
-                    prev_l = left_points[-1][0]
-                    left_start = max(0,     prev_l - 60)
-                    left_end   = min(w//2,  prev_l + 60)
-                if window > 0 and right_points:
-                    prev_r = right_points[-1][0]
-                    right_start = max(w//2, prev_r - 60)
-                    right_end   = min(w,    prev_r + 60)
-
-                left_region  = hist[left_start:left_end]
-                right_region = hist[right_start:right_end]
-
-                valid_left  = (np.max(left_region)  >= 10) if len(left_region)  > 0 else False
-                valid_right = (np.max(right_region) >= 10) if len(right_region) > 0 else False
-
-                if valid_left and valid_right:
-                    lp = np.argmax(left_region)  + left_start
-                    rp = np.argmax(right_region) + right_start
-                    detected_width = rp - lp
-                    if detected_width >= min_lane_width:
-                        valid_frames += 1
-                        if detected_width < w * 2 // 3:
-                            estimated_lane_width = detected_width
-                        left_peak, right_peak = lp, rp
-                    else:
-                        left_peak  = left_points[-1][0]  if left_points  else w//2 - estimated_lane_width//2
-                        right_peak = left_peak + estimated_lane_width
-
-                elif valid_left:
-                    left_peak  = np.argmax(left_region)  + left_start
-                    right_peak = left_peak + estimated_lane_width
-
-                elif valid_right:
-                    right_peak = np.argmax(right_region) + right_start
-                    left_peak  = right_peak - estimated_lane_width
-
-                else:
-                    # No lines found — project from last known position
-                    cx_est = int(self.last_valid_error * (w / 2.0) * -1 + image_center)
-                    left_peak  = left_points[-1][0]  if left_points  else cx_est - estimated_lane_width//2
-                    right_peak = right_points[-1][0] if right_points else cx_est + estimated_lane_width//2
-
-                lane_center_x = (left_peak + right_peak) // 2
-                lane_center_y = int(h - crop_h + win_y_low + window_height / 2)
-
-                left_points.append((int(left_peak),  lane_center_y))
-                right_points.append((int(right_peak), lane_center_y))
-                center_points.append((int(lane_center_x), lane_center_y))
-
-            # ── 5. Compute weighted lane centre ─────────────────────────────
-            n_pts    = len(center_points)
-            conf_min = self._param_cache['min_valid_windows']
-
-            if valid_frames >= conf_min:
-                # Confident lane lock — use real detection
-                weighted_center_x = sum(pt[0] for pt in center_points) / n_pts
-                self.dynamic_crop_ratio  = self._param_cache['crop_ratio_base']
+            if valid_count >= conf_min and len(center_pts) > 0:
+                # Confident lock — average error across all scanlines
+                # e_i = x_center,i - x_image_center
+                # e_avg = (1/N) * Σ e_i
+                avg_center_x = sum(pt[0] for pt in center_pts) / len(center_pts)
                 self.current_hold_frames = self._param_cache['hold_error_frames']
-                self.frames_since_valid  = 0
+                self.frames_since_valid = 0
 
             elif self.current_hold_frames > 0:
-                # Lane partially lost — hold last intent with decay
-                weighted_center_x = image_center - (self.last_valid_error * (w / 2.0))
-                self.last_valid_error   *= self._param_cache['error_decay_rate']
+                # Lane partially lost — hold last error with decay
+                avg_center_x = image_center - (self.last_valid_error * image_center)
+                self.last_valid_error *= self._param_cache['error_decay_rate']
                 self.current_hold_frames -= 1
-                self.frames_since_valid  += 1
-                # Expand crop to search higher for the lane
-                self.dynamic_crop_ratio = min(
-                    self._param_cache['crop_ratio_max'],
-                    self.dynamic_crop_ratio + 0.05
-                )
+                self.frames_since_valid += 1
 
             else:
-                # Lane fully lost — hold image centre, keep vision wide
-                weighted_center_x = image_center
-                self.frames_since_valid  += 1
-                self.dynamic_crop_ratio   = self._param_cache['crop_ratio_max']
+                # Lane fully lost — center error
+                avg_center_x = image_center
+                self.frames_since_valid += 1
 
             # ── 6. Error calculation ────────────────────────────────────────
             # Positive error → lane centre is to the LEFT → steer LEFT
-            # Negative error → lane centre is to the RIGHT → steer RIGHT
             raw_error = float(
-                np.clip((image_center - weighted_center_x) / image_center, -1.0, 1.0)
+                np.clip((image_center - avg_center_x) / image_center, -1.0, 1.0)
             )
 
-            # Dead zone — suppress tiny jitter on straight sections
+            # Deadband filter (Cytron tolerance threshold T)
+            # e_deadband = 0 if |e_avg| < T, else e_avg
             if abs(raw_error) < self._param_cache['dead_zone']:
                 raw_error = 0.0
 
-            # EMA smoothing
+            # EMA smoothing (Cytron formula)
+            # e_smooth(t) = α · e_deadband(t) + (1 - α) · e_smooth(t - 1)
             alpha = self._param_cache['smoothing_alpha']
             self.filtered_error = alpha * raw_error + (1.0 - alpha) * self.filtered_error
             self.lane_error = self.filtered_error
 
             # Update last_valid_error only on confident frames
-            if valid_frames >= conf_min:
+            if valid_count >= conf_min:
                 self.last_valid_error = self.lane_error
 
             # ── 7. Publish ──────────────────────────────────────────────────
@@ -270,33 +341,29 @@ class LineFollowerCamera(Node):
 
             # ── 8. Debug visualisation ──────────────────────────────────────
             if self._param_cache['show_debug']:
-                debug    = bgr.copy()
+                debug = bgr.copy()
                 crop_top = h - crop_h
 
-                def draw_polyfit_curve(pts_list, color, thickness=2):
-                    if len(pts_list) < 3:
-                        return None
-                    pts      = np.array(pts_list)
-                    poly_fit = np.polyfit(pts[:, 1], pts[:, 0], 2)
-                    y_eval   = np.linspace(crop_top, h - 1, 80)
-                    x_eval   = np.clip(np.polyval(poly_fit, y_eval), 0, w - 1)
-                    curve_pts = np.vstack((x_eval, y_eval)).astype(np.int32).T
-                    cv2.polylines(debug, [curve_pts], False, (0, 0, 0), thickness + 2)
-                    cv2.polylines(debug, [curve_pts], False, color, thickness)
-                    return poly_fit
+                # Draw scanline detection points
+                for lp, rp, cp in zip(left_pts, right_pts, center_pts):
+                    # Offset y to full image coordinates
+                    ly = lp[1] + crop_top
+                    ry = rp[1] + crop_top
+                    cy = cp[1] + crop_top
 
-                draw_polyfit_curve(left_points,   (255, 130, 130), 2)
-                draw_polyfit_curve(right_points,  (130, 130, 255), 2)
-                center_poly = draw_polyfit_curve(center_points, (0, 255, 0), 3)
+                    # Left line point (blue)
+                    cv2.circle(debug, (lp[0], ly), 4, (255, 130, 130), -1)
+                    # Right line point (pink)
+                    cv2.circle(debug, (rp[0], ry), 4, (130, 130, 255), -1)
+                    # Center point (green)
+                    cv2.circle(debug, (cp[0], cy), 5, (0, 255, 0), -1)
+                    # Scanline visualization
+                    cv2.line(debug, (lp[0], ly), (rp[0], ry), (50, 50, 50), 1)
 
-                for i, (l_pt, r_pt, c_pt) in enumerate(
-                        zip(left_points, right_points, center_points)):
-                    if i % 2 == 0:
-                        cv2.circle(debug, l_pt, 3, (255, 130, 130), -1)
-                        cv2.circle(debug, r_pt, 3, (130, 130, 255), -1)
-                    cv2.circle(debug, c_pt, 4, (0, 0, 0), -1)
-                    cv2.circle(debug, c_pt, 3, (0, 255, 0), -1)
+                # Draw center reference line
+                cv2.line(debug, (w // 2, crop_top), (w // 2, h), (0, 0, 255), 1)
 
+                # Status text
                 def put_text(img, text, pos, scale, color, thick=2):
                     cv2.putText(img, text, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), thick + 2)
                     cv2.putText(img, text, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, color, thick)
@@ -312,21 +379,17 @@ class LineFollowerCamera(Node):
                 put_text(debug, f'{direction} ({steer_deg:.0f} deg)', (10, 30), 0.7, t_color)
 
                 status_str = (
-                    f'LOCK({valid_frames}w)' if valid_frames >= conf_min
-                    else (f'HOLD({self.current_hold_frames})' if self.current_hold_frames > 0
+                    f'LOCK({valid_count}/{self._param_cache["n_scanlines"]})'
+                    if valid_count >= conf_min
+                    else (f'HOLD({self.current_hold_frames})'
+                          if self.current_hold_frames > 0
                           else f'LOST({self.frames_since_valid}f)')
                 )
                 put_text(debug, status_str, (10, 55), 0.55, (0, 255, 255))
 
-                lane_w_cm = estimated_lane_width * 40.0 / (w * 0.4)
-                if center_poly is not None and abs(center_poly[0]) > 0.001:
-                    R_px = abs(1.0 / (2.0 * center_poly[0]))
-                    R_cm = R_px * 40.0 / max(estimated_lane_width, 1)
-                    curve_dir = 'LEFT' if center_poly[0] < 0 else 'RIGHT'
-                    put_text(debug, f'Curve:{curve_dir} R={R_cm:.0f}cm W={lane_w_cm:.0f}cm',
-                             (10, 78), 0.5, (0, 255, 255))
-                else:
-                    put_text(debug, f'Straight | W={lane_w_cm:.0f}cm', (10, 78), 0.5, (0, 255, 255))
+                if self.last_lane_width > 0:
+                    lane_w_cm = self.last_lane_width * 40.0 / (w * 0.4)
+                    put_text(debug, f'W={lane_w_cm:.0f}cm', (10, 78), 0.5, (0, 255, 255))
 
                 self.debug_pub.publish(self.bridge.cv2_to_imgmsg(debug, encoding='bgr8'))
 
@@ -338,7 +401,7 @@ class LineFollowerCamera(Node):
                     hold_str = f'h={self.current_hold_frames}' if self.current_hold_frames > 0 else ''
                     print(
                         f'\r[LF] Err:{self.lane_error:.2f} | {status} | '
-                        f'crop={self.dynamic_crop_ratio:.2f} | {hold_str}',
+                        f'valid={valid_count}/{self._param_cache["n_scanlines"]} | {hold_str}',
                         end='', flush=True
                     )
                     self._last_debug_print = now

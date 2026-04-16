@@ -30,6 +30,7 @@ auto_driver:
     # Adaptive speed
     speed_error_scale: 1.5
     min_turn_speed: 0.5
+    lane_steer_slew: 3.0         # max angular.z change per second (Cytron acceleration limit)
     # Challenge 1→2 sequencing (time-based gating)
     t_post_obstacle_sec: 1.5     # re-center delay after obstacle clears (before roundabout)
     t_roundabout_sec: 8.0        # time inside roundabout before exiting
@@ -47,24 +48,30 @@ cmd_safety_controller:
     deadband_angular: 0.01
     publish_loop_stats: true
 
-# --- Line Follower Camera ---
+# --- Line Follower Camera (Cytron-style scanline detection) ---
 # TUNING GUIDE:
-#   white_threshold : lower if track lighting is dim, raise if many false whites
-#   crop_ratio_base : increase if robot cuts corners on slight curves
-#   crop_ratio_max  : raise only if robot still loses lane on very sharp turns
+#   n_scanlines      : more scanlines = more robust but slightly slower
+#   min_valid_scanlines: lower = less strict lane lock (may cause false locks)
+#   min_line_width_px: raise if noise triggers false lane detections
+#   crop_ratio_base  : increase if robot cuts corners on slight curves
+#   clahe_enabled    : disable if camera already has good auto-exposure
+#   clahe_clip_limit : higher = more contrast boost (good for dim tracks)
+#   smoothing_alpha  : EMA factor — lower = smoother but slower response
+#   dead_zone        : tolerance threshold — ignore error below this value
 #   hold_error_frames: frames (~30fps) the last heading is held when lines are lost
-#   error_decay_rate: 0.92 → held error halves every ~9 frames; lower = faster fade
-#   min_valid_windows: lower = less strict lane lock (may cause false locks)
+#   error_decay_rate : 0.92 → held error halves every ~9 frames; lower = faster fade
 line_follower_camera:
   ros__parameters:
-    smoothing_alpha: 0.3
-    dead_zone: 0.08
-    white_threshold: 150
-    crop_ratio_base: 0.4
-    crop_ratio_max: 0.65
-    hold_error_frames: 15
-    error_decay_rate: 0.92
-    min_valid_windows: 3
+    n_scanlines: 8              # number of horizontal scanlines
+    min_valid_scanlines: 3      # minimum scanlines for confident lock
+    min_line_width_px: 5        # minimum white region width (noise filter)
+    crop_ratio_base: 0.4        # bottom crop ratio (road surface)
+    clahe_enabled: true         # CLAHE adaptive lighting normalization
+    clahe_clip_limit: 2.0       # CLAHE contrast clip limit
+    smoothing_alpha: 0.3        # EMA smoothing factor (Cytron-style)
+    dead_zone: 0.05             # tolerance threshold (Cytron-style)
+    hold_error_frames: 15       # frames to hold last error on lane loss
+    error_decay_rate: 0.92      # decay rate for held error
     show_debug: false
     resize_width: 320
     print_debug: false
