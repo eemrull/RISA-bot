@@ -150,3 +150,9 @@ unset AMENT_PREFIX_PATH && unset CMAKE_PREFIX_PATH && source /opt/ros/humble/set
 
 1. Only `git checkout/pull` inside your package dir — never from workspace root
 2. All documentation changes go on the `main` branch only
+
+---
+
+## Latest Updates
+
+- **Vision Refactor** (currently on `refactor-test` branch): Fully replaced the sliding-window histogram lane detection with a **Cytron-style Differential Scanline** algorithm. Adopts CLAHE preprocessing, Otsu's adaptive thresholding (removing the hardcoded `white_threshold` parameter), and incorporates a steering slew rate limiter (acceleration control) directly into the PID output loop for ultra-smooth curve tracing and shadow resilience.
