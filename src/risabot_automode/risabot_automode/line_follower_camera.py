@@ -196,7 +196,10 @@ class LineFollowerCamera(Node):
         right_points = []
         center_points = []
         valid_count = 0
-        half_w = w // 2
+
+        # Start scanning radially outwards from the track center.
+        # This prevents locking onto parallel adjacent lanes!
+        search_center = w // 2
 
         for i in range(n_scanlines):
             # Distribute scanlines evenly across the crop region
@@ -207,14 +210,15 @@ class LineFollowerCamera(Node):
 
             row = binary[y_in_crop, :]
 
-            # Scan for left lane line: left→right, searching left half primarily
+            # Scan OUTWARDS from the track center.
+            # Scan for left lane line: right→left
             left_x = self._scan_row_for_white_region(
-                row, 0, half_w + half_w // 3, +1, min_width
+                row, min(search_center + 10, w - 1), 0, -1, min_width
             )
 
-            # Scan for right lane line: right→left, searching right half primarily
+            # Scan for right lane line: left→right
             right_x = self._scan_row_for_white_region(
-                row, w - 1, half_w - half_w // 3, -1, min_width
+                row, max(search_center - 10, 0), w, +1, min_width
             )
 
             # Determine lane center
@@ -224,21 +228,25 @@ class LineFollowerCamera(Node):
                     valid_count += 1
                     self.last_lane_width = right_x - left_x
                     center_x = (left_x + right_x) // 2
+                    # Trace the curve: next row up will start from THIS center!
+                    search_center = center_x 
                 else:
                     # Lines crossed (noise) — use last known width
-                    center_x = half_w
-                    left_x = half_w - self.last_lane_width // 2
-                    right_x = half_w + self.last_lane_width // 2
+                    center_x = search_center
+                    left_x = search_center - self.last_lane_width // 2
+                    right_x = search_center + self.last_lane_width // 2
 
             elif left_x is not None and self.last_lane_width > 0:
                 # Only left line found — estimate right from known width
                 right_x = left_x + self.last_lane_width
                 center_x = (left_x + right_x) // 2
+                search_center = center_x
 
             elif right_x is not None and self.last_lane_width > 0:
                 # Only right line found — estimate left from known width
                 left_x = right_x - self.last_lane_width
                 center_x = (left_x + right_x) // 2
+                search_center = center_x
 
             else:
                 # Neither line found — skip this scanline
