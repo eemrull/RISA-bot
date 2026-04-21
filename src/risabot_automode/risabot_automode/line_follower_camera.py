@@ -326,7 +326,7 @@ class LineFollowerCamera(Node):
             # ── 6. Error calculation ────────────────────────────────────────
             # Positive error → lane centre is to the LEFT → steer LEFT
             raw_error = float(
-                np.clip((image_center - avg_center_x) / image_center, -1.0, 1.0)
+                np.clip((avg_center_x - image_center) / image_center, -1.0, 1.0)
             )
 
             # Deadband filter (Cytron tolerance threshold T)
