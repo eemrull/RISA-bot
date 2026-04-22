@@ -210,15 +210,15 @@ class LineFollowerCamera(Node):
 
             row = binary[y_in_crop, :]
 
-            # Scan OUTWARDS from the track center.
-            # Scan for left lane line: right→left
+            # Scan OUTWARDS from the track center — NO OVERLAP.
+            # Left lane: start at center, scan LEFT only
             left_x = self._scan_row_for_white_region(
-                row, min(search_center + 10, w - 1), 0, -1, min_width
+                row, search_center, 0, -1, min_width
             )
 
-            # Scan for right lane line: left→right
+            # Right lane: start at center, scan RIGHT only
             right_x = self._scan_row_for_white_region(
-                row, max(search_center - 10, 0), w, +1, min_width
+                row, search_center, w, +1, min_width
             )
 
             # Determine lane center

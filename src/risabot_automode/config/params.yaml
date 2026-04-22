@@ -14,7 +14,7 @@
 #   min_turn_speed: 0.5 = robot never goes below 50% forward_speed in turns
 auto_driver:
   ros__parameters:
-    forward_speed: 0.12          # m/s maximum speed on a straight
+    forward_speed: 0.20          # m/s maximum speed on a straight
     stale_timeout: 3.0
     dist_lap_complete: 1.0
     enable_subsumption_obstacle: false
