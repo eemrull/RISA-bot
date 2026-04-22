@@ -117,7 +117,7 @@ class LineFollowerCamera(Node):
         # ── Tunable parameters ─────────────────────────────────────────────
         # Scanline detection
         self.declare_parameter('n_scanlines', 8)
-        self.declare_parameter('min_valid_scanlines', 3)
+        self.declare_parameter('min_valid_scanlines', 2)
         self.declare_parameter('min_line_width_px', 5)
         self.declare_parameter('crop_ratio_base', 0.4)
         # CLAHE adaptive lighting
@@ -368,11 +368,13 @@ class LineFollowerCamera(Node):
                     right_x = search_center + self.last_lane_widths.get(i, 0) // 2
 
             elif left_x is not None and self.last_lane_widths.get(i, 0) > 0:
+                valid_count += 1
                 right_x = left_x + self.last_lane_widths[i]
                 center_x = (left_x + right_x) // 2
                 search_center = center_x
 
             elif right_x is not None and self.last_lane_widths.get(i, 0) > 0:
+                valid_count += 1
                 left_x = right_x - self.last_lane_widths[i]
                 center_x = (left_x + right_x) // 2
                 search_center = center_x

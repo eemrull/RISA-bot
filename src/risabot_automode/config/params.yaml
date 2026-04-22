@@ -73,7 +73,7 @@ cmd_safety_controller:
 line_follower_camera:
   ros__parameters:
     n_scanlines: 8
-    min_valid_scanlines: 3
+    min_valid_scanlines: 2
     min_line_width_px: 5
     crop_ratio_base: 0.4
     clahe_enabled: true
