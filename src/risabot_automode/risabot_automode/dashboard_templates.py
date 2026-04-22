@@ -1435,8 +1435,8 @@ const PARAM_TIPS = {
   min_line_width_px:'Min white region width in pixels (noise filter)',
   crop_ratio_base:'Bottom crop ratio — how much of the frame is road',
   clahe_enabled:'Enable CLAHE adaptive lighting normalization', clahe_clip_limit:'CLAHE contrast clip limit',
-  // IPM (Bird\'s Eye View)
-  ipm_enabled:'Enable Bird\'s Eye View perspective warp (MDPI)', ipm_top_width_ratio:'Narrow end of trapezoid (0.2-0.5, lower=stronger warp)',
+  // IPM (Birds Eye View)
+  ipm_enabled:'Enable Birds Eye View perspective warp (MDPI)', ipm_top_width_ratio:'Narrow end of trapezoid (0.2-0.5, lower=stronger warp)',
   ipm_bottom_width_ratio:'Wide end of trapezoid (usually 1.0)',
   // Kalman filter
   kalman_enabled:'Use Kalman filter instead of EMA for lane smoothing',

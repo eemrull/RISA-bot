@@ -285,21 +285,12 @@ class LineFollowerCamera(Node):
         self, row: np.ndarray, start: int, end: int, step: int,
         min_width: int
     ) -> Optional[int]:
-        """Scan a binary row to find the center of the first white region.
-
-        Args:
-            row: 1D array of binary pixel values (0 or 255).
-            start: pixel index to start scanning from.
-            end: pixel index to stop scanning at (exclusive).
-            step: +1 for left→right, -1 for right→left.
-            min_width: minimum consecutive white pixels to count as a line.
-
-        Returns:
-            Center x-coordinate of the detected white region, or None.
-        """
+        """Scan a binary row to find the center of the first white region."""
         in_white = False
         white_start = 0
-        x = start
+        # Clamp start to prevent IndexError if estimating out of bounds
+        x = max(0, min(len(row) - 1, start))
+        
         while (step > 0 and x < end) or (step < 0 and x >= end):
             if row[x] == 255:
                 if not in_white:
