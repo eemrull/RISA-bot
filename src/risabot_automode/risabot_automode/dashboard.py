@@ -787,6 +787,7 @@ def main(args=None) -> None:
     # Start HTTP server in background thread
     class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
         daemon_threads = True
+        allow_reuse_address = True   # Prevent 'Address already in use' after crash
     server = ThreadedHTTPServer(('0.0.0.0', 8080), DashboardHandler)
     http_thread = threading.Thread(target=server.serve_forever, daemon=True)
     http_thread.start()
