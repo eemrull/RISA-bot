@@ -478,7 +478,7 @@ class LineFollowerCamera(Node):
             if valid_count >= conf_min and len(center_pts) > 0:
                 avg_center_x = sum(pt[0] for pt in center_pts) / len(center_pts)
                 raw_error = float(
-                    np.clip((image_center - avg_center_x) / image_center, -1.0, 1.0)
+                    np.clip((avg_center_x - image_center) / image_center, -1.0, 1.0)
                 )
                 measurement_available = True
                 self.frames_lost = 0
@@ -564,11 +564,11 @@ class LineFollowerCamera(Node):
                 if abs(self.lane_error) < 0.05:
                     direction, t_color = 'CENTERED', (0, 255, 0)
                 elif self.lane_error > 0:
-                    # Positive error -> positive angular_z -> counter-clockwise rotation -> steer left
-                    direction, t_color = 'STEER LEFT', (0, 165, 255)
-                else:
-                    # Negative error -> negative angular_z -> clockwise rotation -> steer right
+                    # Positive error -> positive angular_z -> robot physically steers RIGHT
                     direction, t_color = 'STEER RIGHT', (0, 165, 255)
+                else:
+                    # Negative error -> negative angular_z -> robot physically steers LEFT
+                    direction, t_color = 'STEER LEFT', (0, 165, 255)
 
                 steer_deg = abs(self.lane_error) * 50.0
                 put_text(debug, f'{direction} ({steer_deg:.0f} deg)', (10, 20), 0.55, t_color)
