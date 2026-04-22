@@ -1430,12 +1430,20 @@ const PARAM_TIPS = {
   min_circle_radius:'Smallest circle to detect', max_circle_radius:'Largest circle to detect',
   min_pixel_count:'Min colored pixels to trigger', required_confidence:'Consecutive detections required',
   resize_width:'Resize width for CV speed', heartbeat_sec:'Publish heartbeat period',
-  // Line follower (Cytron-style scanline)
+  // Line follower (MDPI-enhanced scanline)
   n_scanlines:'Number of horizontal scanlines to sample', min_valid_scanlines:'Min scanlines for confident lock',
   min_line_width_px:'Min white region width in pixels (noise filter)',
   crop_ratio_base:'Bottom crop ratio — how much of the frame is road',
   clahe_enabled:'Enable CLAHE adaptive lighting normalization', clahe_clip_limit:'CLAHE contrast clip limit',
-  smoothing_alpha:'EMA smoothing (0=smooth, 1=raw)', dead_zone:'Tolerance threshold — ignore error below this',
+  // IPM (Bird\'s Eye View)
+  ipm_enabled:'Enable Bird\'s Eye View perspective warp (MDPI)', ipm_top_width_ratio:'Narrow end of trapezoid (0.2-0.5, lower=stronger warp)',
+  ipm_bottom_width_ratio:'Wide end of trapezoid (usually 1.0)',
+  // Kalman filter
+  kalman_enabled:'Use Kalman filter instead of EMA for lane smoothing',
+  kalman_process_noise:'Q — how much the filter trusts its model (lower=smoother)',
+  kalman_measurement_noise:'R — how much the filter trusts measurements (lower=more reactive)',
+  // Legacy EMA
+  smoothing_alpha:'EMA smoothing (0=smooth, 1=raw) — used when Kalman disabled', dead_zone:'Tolerance threshold — ignore error below this',
   hold_error_frames:'Frames to hold last known error when lines lost',
   error_decay_rate:'Per-frame decay for held error (0.92 = halves in ~9 frames)',
   debug_print_rate:'Seconds between console debug prints',
@@ -1515,6 +1523,8 @@ const PARAM_GROUPS = [
   { node: 'line_follower_camera', label: 'Line Follower', params: [
     'n_scanlines','min_valid_scanlines','min_line_width_px',
     'crop_ratio_base','clahe_enabled','clahe_clip_limit',
+    'ipm_enabled','ipm_top_width_ratio','ipm_bottom_width_ratio',
+    'kalman_enabled','kalman_process_noise','kalman_measurement_noise',
     'smoothing_alpha','dead_zone','hold_error_frames','error_decay_rate',
     'resize_width','print_debug','debug_print_rate','show_debug'
   ]},

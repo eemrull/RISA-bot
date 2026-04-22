@@ -48,7 +48,7 @@ cmd_safety_controller:
     deadband_angular: 0.01
     publish_loop_stats: true
 
-# --- Line Follower Camera (Cytron-style scanline detection) ---
+# --- Line Follower Camera (MDPI-enhanced scanline detection) ---
 # TUNING GUIDE:
 #   n_scanlines      : more scanlines = more robust but slightly slower
 #   min_valid_scanlines: lower = less strict lane lock (may cause false locks)
@@ -56,22 +56,41 @@ cmd_safety_controller:
 #   crop_ratio_base  : increase if robot cuts corners on slight curves
 #   clahe_enabled    : disable if camera already has good auto-exposure
 #   clahe_clip_limit : higher = more contrast boost (good for dim tracks)
+# IPM (Bird's Eye View):
+#   ipm_enabled      : toggle perspective warp on/off
+#   ipm_top_width_ratio : controls the narrow end of the trapezoid (further road)
+#                         lower = more aggressive warp (0.2-0.5 typical)
+#   ipm_bottom_width_ratio : controls the wide end (close road, usually 1.0)
+# KALMAN FILTER:
+#   kalman_enabled         : use Kalman instead of EMA for smoothing
+#   kalman_process_noise   : Q — lower = smoother but slower to react
+#   kalman_measurement_noise: R — lower = trusts measurements more
+# LEGACY EMA (used when kalman_enabled=false):
 #   smoothing_alpha  : EMA factor — lower = smoother but slower response
 #   dead_zone        : tolerance threshold — ignore error below this value
 #   hold_error_frames: frames (~30fps) the last heading is held when lines are lost
-#   error_decay_rate : 0.92 → held error halves every ~9 frames; lower = faster fade
+#   error_decay_rate : 0.92 → held error halves every ~9 frames
 line_follower_camera:
   ros__parameters:
-    n_scanlines: 8              # number of horizontal scanlines
-    min_valid_scanlines: 3      # minimum scanlines for confident lock
-    min_line_width_px: 5        # minimum white region width (noise filter)
-    crop_ratio_base: 0.4        # bottom crop ratio (road surface)
-    clahe_enabled: true         # CLAHE adaptive lighting normalization
-    clahe_clip_limit: 2.0       # CLAHE contrast clip limit
-    smoothing_alpha: 0.3        # EMA smoothing factor (Cytron-style)
-    dead_zone: 0.05             # tolerance threshold (Cytron-style)
-    hold_error_frames: 15       # frames to hold last error on lane loss
-    error_decay_rate: 0.92      # decay rate for held error
+    n_scanlines: 8
+    min_valid_scanlines: 3
+    min_line_width_px: 5
+    crop_ratio_base: 0.4
+    clahe_enabled: true
+    clahe_clip_limit: 2.0
+    # IPM — Bird's Eye View (MDPI-inspired)
+    ipm_enabled: true
+    ipm_top_width_ratio: 0.35    # 0° tilt at 8.5cm height → moderate warp
+    ipm_bottom_width_ratio: 1.0
+    # Kalman filter (MDPI-inspired)
+    kalman_enabled: true
+    kalman_process_noise: 0.01
+    kalman_measurement_noise: 0.1
+    # Legacy EMA (fallback when kalman_enabled=false)
+    smoothing_alpha: 0.3
+    dead_zone: 0.05
+    hold_error_frames: 15
+    error_decay_rate: 0.92
     show_debug: false
     resize_width: 320
     print_debug: false
