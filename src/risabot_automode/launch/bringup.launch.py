@@ -64,42 +64,51 @@ def generate_launch_description():
         ),
 
         # ==================== PERCEPTION ====================
+        # Delayed 3s to give astra_camera time to start publishing
 
         # D. LiDAR obstacle detection
-        Node(
-            package='obstacle_avoidance',
-            executable='obstacle_avoidance',
-            name='obstacle_avoidance_node',
-            output='screen',
-            parameters=[params_file]
-        ),
+        TimerAction(period=3.0, actions=[
+            Node(
+                package='obstacle_avoidance',
+                executable='obstacle_avoidance',
+                name='obstacle_avoidance_node',
+                output='screen',
+                parameters=[params_file]
+            ),
+        ]),
 
         # E. Camera obstacle detection
-        Node(
-            package='obstacle_avoidance_camera',
-            executable='obstacle_avoidance_camera',
-            name='obstacle_avoidance_camera',
-            output='screen',
-            parameters=[params_file]
-        ),
+        TimerAction(period=3.0, actions=[
+            Node(
+                package='obstacle_avoidance_camera',
+                executable='obstacle_avoidance_camera',
+                name='obstacle_avoidance_camera',
+                output='screen',
+                parameters=[params_file]
+            ),
+        ]),
 
         # F. Line follower camera (Cytron-style scanline detection)
-        Node(
-            package='risabot_automode',
-            executable='line_follower_camera',
-            name='line_follower_camera',
-            output='screen',
-            parameters=[params_file]
-        ),
+        TimerAction(period=3.0, actions=[
+            Node(
+                package='risabot_automode',
+                executable='line_follower_camera',
+                name='line_follower_camera',
+                output='screen',
+                parameters=[params_file]
+            ),
+        ]),
 
         # G. Traffic light detector
-        Node(
-            package='risabot_automode',
-            executable='traffic_light_detector',
-            name='traffic_light_detector',
-            output='screen',
-            parameters=[params_file]
-        ),
+        TimerAction(period=3.0, actions=[
+            Node(
+                package='risabot_automode',
+                executable='traffic_light_detector',
+                name='traffic_light_detector',
+                output='screen',
+                parameters=[params_file]
+            ),
+        ]),
 
         # ==================== CONTROL ====================
 

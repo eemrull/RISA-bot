@@ -102,11 +102,23 @@ class ObstacleAvoidanceNode(Node):
             if -math.pi/6 <= angle <= math.pi/6:
                 min_front = min(min_front, r)
 
-        # Temporal smoothing: buffer min_front values
-        self.distance_buffer.append(min_front)
+        # Only add to buffer if we got a valid (non-corrupt) reading
+        # Corrupt LiDAR packets often produce 0.0 or inf — ignore them
+        if min_front < float('inf') and min_front > 0.05:
+            self.distance_buffer.append(min_front)
+        elif min_front == float('inf'):
+            # No valid reading in front arc — treat as clear
+            self.distance_buffer.append(float('inf'))
+
         if len(self.distance_buffer) > self.buffer_size:
             self.distance_buffer.pop(0)
-        smoothed_min = min(self.distance_buffer)  # worst-case from recent readings
+
+        # Use MEDIAN instead of min — one bad packet won't poison the buffer
+        valid = [d for d in self.distance_buffer if d < float('inf')]
+        if valid:
+            smoothed_min = sorted(valid)[len(valid) // 2]  # median
+        else:
+            smoothed_min = float('inf')  # no data = clear
 
         # Publish front-only detection
         front_obstacle = smoothed_min < min_dist

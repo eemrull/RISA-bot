@@ -166,12 +166,12 @@ parking_controller:
 # --- Camera Obstacle Detection ---
 obstacle_avoidance_camera:
   ros__parameters:
-    edge_threshold: 0.02
+    edge_threshold: 0.08        # raised from 0.02 — floor tiles trigger at ~2%, real obstacles at ~10%
     canny_low: 50
     canny_high: 150
     blur_kernel: 5
-    hysteresis_on: 3
-    hysteresis_off: 5
+    hysteresis_on: 5
+    hysteresis_off: 8
     show_debug: false
     resize_width: 320
     print_debug: false
