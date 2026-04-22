@@ -387,16 +387,18 @@ class LineFollowerCamera(Node):
                 expected_left = left_x
                 expected_right = right_x
 
-            elif left_x is not None and self.last_lane_widths.get(i, 0) > 0:
+            elif left_x is not None:
                 valid_count += 1
-                right_x = left_x + self.last_lane_widths[i]
+                width = self.last_lane_widths.get(i, w // 2)
+                right_x = left_x + width
                 center_x = (left_x + right_x) // 2
                 expected_left = left_x
                 expected_right = right_x
 
-            elif right_x is not None and self.last_lane_widths.get(i, 0) > 0:
+            elif right_x is not None:
                 valid_count += 1
-                left_x = right_x - self.last_lane_widths[i]
+                width = self.last_lane_widths.get(i, w // 2)
+                left_x = right_x - width
                 center_x = (left_x + right_x) // 2
                 expected_left = left_x
                 expected_right = right_x
