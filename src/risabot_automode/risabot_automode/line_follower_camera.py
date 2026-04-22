@@ -152,6 +152,8 @@ class LineFollowerCamera(Node):
         self.frames_lost = 0
         self.current_hold_frames = 0
         self.last_lane_widths: Dict[int, int] = {}
+        self._expected_left: Optional[int] = None
+        self._expected_right: Optional[int] = None
         self._last_frame_time = time.monotonic()
 
         # CLAHE object (reused across frames)
@@ -288,57 +290,48 @@ class LineFollowerCamera(Node):
     # Scanline detection — Cytron-style pixel scanning
     # ──────────────────────────────────────────────────────────────────────────
 
-    def _scan_row_for_white_region(
-        self, row: np.ndarray, start: int, end: int, step: int,
-        min_width: int
-    ) -> Optional[int]:
-        """Scan a binary row to find the center of the first white region."""
+    def _find_all_white_regions(self, row: np.ndarray, min_w: int, max_w: int) -> List[int]:
+        """Find the centers of all white regions within a width range to ignore giant background blobs."""
+        centers = []
         in_white = False
         white_start = 0
-        # Clamp start to prevent IndexError if estimating out of bounds
-        x = max(0, min(len(row) - 1, start))
-        
-        while (step > 0 and x < end) or (step < 0 and x >= end):
+        for x in range(len(row)):
             if row[x] == 255:
                 if not in_white:
                     white_start = x
                     in_white = True
             else:
                 if in_white:
-                    white_end = x
-                    width = abs(white_end - white_start)
-                    if width >= min_width:
-                        return (white_start + white_end) // 2
+                    width = x - white_start
+                    if min_w <= width <= max_w:
+                        centers.append((white_start + x) // 2)
                     in_white = False
-            x += step
-
-        # Handle case where white region extends to the edge
         if in_white:
-            white_end = x
-            width = abs(white_end - white_start)
-            if width >= min_width:
-                return (white_start + white_end) // 2
-
-        return None
+            width = len(row) - white_start
+            if min_w <= width <= max_w:
+                centers.append((white_start + len(row)) // 2)
+        return centers
 
     def _detect_scanlines(
         self, binary: np.ndarray, crop_h: int, w: int
     ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]], List[Tuple[int, int]], int]:
-        """Run multi-scanline detection on the binary image.
-
-        Returns:
-            (left_points, right_points, center_points, valid_count)
-        """
+        """Run robust multi-scanline blob matching."""
         n_scanlines = self._param_cache['n_scanlines']
         min_width = self._param_cache['min_line_width_px']
+        max_width = 100  # ignore blobs wider than 100px (walls, huge glare)
 
         left_points = []
         right_points = []
         center_points = []
         valid_count = 0
 
-        # Start scanning radially outwards from the track center.
-        search_center = w // 2
+        # Start from last known good position, or center if completely lost
+        if self._expected_left is None or self._expected_right is None:
+            expected_left = w // 4
+            expected_right = 3 * w // 4
+        else:
+            expected_left = self._expected_left
+            expected_right = self._expected_right
 
         for i in range(n_scanlines):
             y_frac = (i + 0.5) / n_scanlines
@@ -346,45 +339,84 @@ class LineFollowerCamera(Node):
             y_in_crop = max(0, min(crop_h - 1, y_in_crop))
 
             row = binary[y_in_crop, :]
+            regions = self._find_all_white_regions(row, min_width, max_width)
 
-            # Scan OUTWARDS from the track center — NO OVERLAP.
-            left_x = self._scan_row_for_white_region(
-                row, search_center, 0, -1, min_width
-            )
-            right_x = self._scan_row_for_white_region(
-                row, search_center, w, +1, min_width
-            )
+            left_x = None
+            right_x = None
+
+            if len(regions) > 0:
+                if i == 0 and (self._expected_left is None or self._expected_right is None):
+                    # No prior knowledge, find the best pair based on track width
+                    if len(regions) >= 2:
+                        target_w = self.last_lane_widths.get(0, w // 2)
+                        best_pair = None
+                        best_err = 9999
+                        for a in range(len(regions)):
+                            for b in range(a + 1, len(regions)):
+                                err = abs((regions[b] - regions[a]) - target_w)
+                                if err < best_err:
+                                    best_err = err
+                                    best_pair = (regions[a], regions[b])
+                        if best_pair:
+                            left_x, right_x = best_pair
+                    elif len(regions) == 1:
+                        if regions[0] < w // 2: left_x = regions[0]
+                        else: right_x = regions[0]
+                else:
+                    # Match blobs to expected tracks (60px search radius)
+                    best_left = min(regions, key=lambda x: abs(x - expected_left))
+                    if abs(best_left - expected_left) < 60:
+                        left_x = best_left
+                    
+                    best_right = min(regions, key=lambda x: abs(x - expected_right))
+                    if abs(best_right - expected_right) < 60:
+                        right_x = best_right
+                    
+                    # Prevent both lines snapping to the exact same region
+                    if left_x == right_x and left_x is not None:
+                        if abs(left_x - expected_left) < abs(right_x - expected_right):
+                            right_x = None
+                        else:
+                            left_x = None
 
             # Determine lane center
             if left_x is not None and right_x is not None:
-                if right_x > left_x:  # sanity check
-                    valid_count += 1
-                    self.last_lane_widths[i] = right_x - left_x
-                    center_x = (left_x + right_x) // 2
-                    search_center = center_x
-                else:
-                    center_x = search_center
-                    left_x = search_center - self.last_lane_widths.get(i, 0) // 2
-                    right_x = search_center + self.last_lane_widths.get(i, 0) // 2
+                valid_count += 1
+                self.last_lane_widths[i] = right_x - left_x
+                center_x = (left_x + right_x) // 2
+                expected_left = left_x
+                expected_right = right_x
 
             elif left_x is not None and self.last_lane_widths.get(i, 0) > 0:
                 valid_count += 1
                 right_x = left_x + self.last_lane_widths[i]
                 center_x = (left_x + right_x) // 2
-                search_center = center_x
+                expected_left = left_x
+                expected_right = right_x
 
             elif right_x is not None and self.last_lane_widths.get(i, 0) > 0:
                 valid_count += 1
                 left_x = right_x - self.last_lane_widths[i]
                 center_x = (left_x + right_x) // 2
-                search_center = center_x
+                expected_left = left_x
+                expected_right = right_x
 
             else:
                 continue
 
+            # Save the bottom-most valid row as the expectation for the NEXT frame
+            if valid_count == 1:
+                self._expected_left = expected_left
+                self._expected_right = expected_right
+
             left_points.append((int(left_x), y_in_crop))
             right_points.append((int(right_x), y_in_crop))
             center_points.append((int(center_x), y_in_crop))
+
+        # If completely lost, clear expectations so it resets next frame
+        if valid_count == 0:
+            self._expected_left = None
+            self._expected_right = None
 
         return left_points, right_points, center_points, valid_count
 
