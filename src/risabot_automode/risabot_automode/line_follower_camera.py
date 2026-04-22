@@ -36,9 +36,9 @@ from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rclpy.qos import QoSPresetProfiles
 from sensor_msgs.msg import Image
-from std_msgs.msg import Float32
+from std_msgs.msg import Bool, Float32
 
-from .topics import CAMERA_DEBUG_LINE_TOPIC, CAMERA_IMAGE_TOPIC, LANE_ERROR_TOPIC
+from .topics import CAMERA_DEBUG_LINE_TOPIC, CAMERA_IMAGE_TOPIC, LANE_ERROR_TOPIC, LANE_LOST_TOPIC
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -69,7 +69,13 @@ class LaneKalmanFilter:
         Q = np.array([[self.Q_base * dt**2, self.Q_base * dt],
                        [self.Q_base * dt,    self.Q_base]])
         self.x = F @ self.x
+        # Clamp position error to valid range so it doesn't explode when lost
+        self.x[0] = np.clip(self.x[0], -1.0, 1.0)
         self.P = F @ self.P @ F.T + Q
+
+    def decay_velocity(self, factor: float = 0.9) -> None:
+        """Decay velocity when lane is lost to gently stop predicting."""
+        self.x[1] *= factor
 
     def update(self, measurement: float) -> None:
         """Update step: correct state with a new measurement."""
@@ -143,9 +149,9 @@ class LineFollowerCamera(Node):
         self._last_debug_print = 0.0
 
         # ── Internal state ──────────────────────────────────────────────────
+        self.frames_lost = 0
         self.current_hold_frames = 0
-        self.frames_since_valid = 0
-        self.last_lane_width = 0
+        self.last_lane_widths: Dict[int, int] = {}
         self._last_frame_time = time.monotonic()
 
         # CLAHE object (reused across frames)
@@ -167,6 +173,7 @@ class LineFollowerCamera(Node):
 
         # ── ROS publishers / subscribers ────────────────────────────────────
         self.error_pub = self.create_publisher(Float32, LANE_ERROR_TOPIC, 10)
+        self.lane_lost_pub = self.create_publisher(Bool, LANE_LOST_TOPIC, 10)
         self.debug_pub = self.create_publisher(Image, CAMERA_DEBUG_LINE_TOPIC, 10)
         self.bridge = CvBridge()
         self.color_sub = self.create_subscription(
@@ -352,21 +359,21 @@ class LineFollowerCamera(Node):
             if left_x is not None and right_x is not None:
                 if right_x > left_x:  # sanity check
                     valid_count += 1
-                    self.last_lane_width = right_x - left_x
+                    self.last_lane_widths[i] = right_x - left_x
                     center_x = (left_x + right_x) // 2
                     search_center = center_x
                 else:
                     center_x = search_center
-                    left_x = search_center - self.last_lane_width // 2
-                    right_x = search_center + self.last_lane_width // 2
+                    left_x = search_center - self.last_lane_widths.get(i, 0) // 2
+                    right_x = search_center + self.last_lane_widths.get(i, 0) // 2
 
-            elif left_x is not None and self.last_lane_width > 0:
-                right_x = left_x + self.last_lane_width
+            elif left_x is not None and self.last_lane_widths.get(i, 0) > 0:
+                right_x = left_x + self.last_lane_widths[i]
                 center_x = (left_x + right_x) // 2
                 search_center = center_x
 
-            elif right_x is not None and self.last_lane_width > 0:
-                left_x = right_x - self.last_lane_width
+            elif right_x is not None and self.last_lane_widths.get(i, 0) > 0:
+                left_x = right_x - self.last_lane_widths[i]
                 center_x = (left_x + right_x) // 2
                 search_center = center_x
 
@@ -438,11 +445,14 @@ class LineFollowerCamera(Node):
                     np.clip((avg_center_x - image_center) / image_center, -1.0, 1.0)
                 )
                 measurement_available = True
+                self.frames_lost = 0
                 self.current_hold_frames = self._param_cache['hold_error_frames']
-                self.frames_since_valid = 0
+                self.lane_lost_pub.publish(Bool(data=False))
             else:
+                self.frames_lost += 1
+                if self.frames_lost >= self._param_cache['hold_error_frames']:
+                    self.lane_lost_pub.publish(Bool(data=True))
                 raw_error = 0.0
-                self.frames_since_valid += 1
 
             # ── 7. Filtering: Kalman or EMA ─────────────────────────────────
             if self._param_cache['kalman_enabled']:

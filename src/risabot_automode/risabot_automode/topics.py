@@ -16,6 +16,7 @@ DASH_CTRL_TOPIC = '/dashboard_ctrl'
 
 # Perception inputs
 LANE_ERROR_TOPIC = '/lane_error'
+LANE_LOST_TOPIC = '/lane_lost'
 OBSTACLE_LIDAR_TOPIC = '/obstacle_front'
 OBSTACLE_CAMERA_TOPIC = '/obstacle_detected_camera'
 OBSTACLE_FUSED_TOPIC = '/obstacle_detected_fused'

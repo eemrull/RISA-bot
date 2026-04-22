@@ -36,6 +36,7 @@ from .topics import (
     CMD_SAFETY_STATUS_TOPIC,
     DASH_STATE_TOPIC,
     LANE_ERROR_TOPIC,
+    LANE_LOST_TOPIC,
     LOOP_STATS_TOPIC,
     OBSTACLE_CAMERA_TOPIC,
     OBSTACLE_FUSED_TOPIC,
@@ -68,6 +69,7 @@ class ChallengeState(Enum):
     REVERSE_ADJUST = 9       # Backing up from close obstacle
     EMERGENCY_STOP = 10      # External e-stop asserted
     ROUNDABOUT = 11          # Traversing roundabout (lane follow on Lap 1)
+    LANE_RECOVERY = 12       # Reversing after losing the lane
 
 
 class AutoDriver(Node):
@@ -100,6 +102,7 @@ class AutoDriver(Node):
         self.obstacle_active = False
         self.stop_reason = ''
         self.lane_error = 0.0
+        self.lane_lost = False
         self.cmd_safety_estop = False
         self.cmd_safety_last_time = 0.0
 
@@ -191,6 +194,10 @@ class AutoDriver(Node):
         )
         self.lane_sub = self.create_subscription(
             Float32, LANE_ERROR_TOPIC, self.lane_callback,
+            QoSPresetProfiles.SENSOR_DATA.value
+        )
+        self.lane_lost_sub = self.create_subscription(
+            Bool, LANE_LOST_TOPIC, self.lane_lost_callback,
             QoSPresetProfiles.SENSOR_DATA.value
         )
 
@@ -291,8 +298,10 @@ class AutoDriver(Node):
         self.update_combined_obstacle_state()
 
     def lane_callback(self, msg: Float32) -> None:
-        """Store latest lane error."""
         self.lane_error = msg.data
+
+    def lane_lost_callback(self, msg: Bool) -> None:
+        self.lane_lost = msg.data
 
     def mode_callback(self, msg: Bool) -> None:
         """Store auto/manual mode flag."""
@@ -587,6 +596,13 @@ class AutoDriver(Node):
         # elif self.traffic_light_state in ('red', 'yellow') and self._tl_armed:
         #     target_state = ChallengeState.TRAFFIC_LIGHT
         #     self.stop_reason = f'TRAFFIC LIGHT {self.traffic_light_state.upper()}'
+
+        # Priority 8.5: Lane recovery (lost lane)
+        elif self.lane_lost:
+            target_state = ChallengeState.LANE_RECOVERY
+            self.stop_reason = 'LANE LOST - REVERSING'
+            cmd.linear.x = -self._param_cache['forward_speed'] * 0.8
+            cmd.angular.z = 0.0
 
         # Priority 9: Default — Lane Follow
         else:
