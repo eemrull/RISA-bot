@@ -540,14 +540,15 @@ class LineFollowerCamera(Node):
                     if valid_count >= conf_min
                     else (f'HOLD({self.current_hold_frames})'
                           if self.current_hold_frames > 0
-                          else f'LOST({self.frames_since_valid}f)')
+                          else f'LOST({self.frames_lost}f)')
                 )
                 ipm_str = 'IPM' if self._param_cache['ipm_enabled'] else 'RAW'
                 kf_str = 'KF' if self._param_cache['kalman_enabled'] else 'EMA'
                 put_text(debug, f'{status_str} [{ipm_str}|{kf_str}]', (10, 42), 0.45, (0, 255, 255))
 
-                if self.last_lane_width > 0:
-                    lane_w_cm = self.last_lane_width * 40.0 / (w * 0.4)
+                if len(self.last_lane_widths) > 0:
+                    avg_w = sum(self.last_lane_widths.values()) / len(self.last_lane_widths)
+                    lane_w_cm = avg_w * 40.0 / (w * 0.4)
                     put_text(debug, f'W={lane_w_cm:.0f}cm', (10, 60), 0.45, (0, 255, 255))
 
                 # Kalman velocity indicator
