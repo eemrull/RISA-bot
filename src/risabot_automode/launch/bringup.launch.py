@@ -1,25 +1,38 @@
 """
-Bringup Launch File — RISA-bot (Main Branch)
-Minimal launch for individual node testing. Starts LiDAR + TF + auto_driver.
-Camera, joystick, and line follower must be launched separately.
+Bringup Launch File — RISA-bot (refactor-test)
+Launches ALL nodes in one command — no separate terminals needed.
   Usage: ros2 launch risabot_automode bringup.launch.py
 """
 
 import os
 
 from launch import LaunchDescription
-from launch.actions import TimerAction
+from launch.actions import IncludeLaunchDescription, TimerAction
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
+
 def generate_launch_description():
+    astra_pkg = get_package_share_directory('astra_camera')
     risabot_pkg = get_package_share_directory('risabot_automode')
     params_file = os.path.join(risabot_pkg, 'config', 'params.yaml')
+
     # --- Serial port mapping ---
     lidar_port = '/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0'
 
     return LaunchDescription([
-        # --- A. YDLiDAR Tmini Plus (direct node — matches tested alias) ---
+
+        # ==================== SENSORS ====================
+
+        # A. Astra Mini Camera
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(astra_pkg, 'launch', 'astra_mini.launch.py')
+            )
+        ),
+
+        # B. YDLiDAR Tmini Plus
         Node(
             package='ydlidar_ros2_driver',
             executable='ydlidar_ros2_driver_node',
@@ -42,7 +55,7 @@ def generate_launch_description():
             }],
         ),
 
-        # --- B. TF Publisher ---
+        # C. TF: base_link → laser_frame
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
@@ -50,7 +63,47 @@ def generate_launch_description():
             arguments=['0', '0', '0.12', '0', '0', '0', 'base_link', 'laser_frame']
         ),
 
-        # --- C. Motor Driver (Locked to 1a86 Chip) ---
+        # ==================== PERCEPTION ====================
+
+        # D. LiDAR obstacle detection
+        Node(
+            package='obstacle_avoidance',
+            executable='obstacle_avoidance',
+            name='obstacle_avoidance_node',
+            output='screen',
+            parameters=[params_file]
+        ),
+
+        # E. Camera obstacle detection
+        Node(
+            package='obstacle_avoidance_camera',
+            executable='obstacle_avoidance_camera',
+            name='obstacle_avoidance_camera',
+            output='screen',
+            parameters=[params_file]
+        ),
+
+        # F. Line follower camera (Cytron-style scanline detection)
+        Node(
+            package='risabot_automode',
+            executable='line_follower_camera',
+            name='line_follower_camera',
+            output='screen',
+            parameters=[params_file]
+        ),
+
+        # G. Traffic light detector
+        Node(
+            package='risabot_automode',
+            executable='traffic_light_detector',
+            name='traffic_light_detector',
+            output='screen',
+            parameters=[params_file]
+        ),
+
+        # ==================== CONTROL ====================
+
+        # H. Auto Driver (brain — delayed 5s to let sensors initialize)
         TimerAction(
             period=5.0,
             actions=[
@@ -63,13 +116,8 @@ def generate_launch_description():
                 )
             ]
         ),
-        Node(
-            package='risabot_automode',
-            executable='health_monitor',
-            name='health_monitor',
-            output='screen',
-            parameters=[params_file]
-        ),
+
+        # I. Command safety controller
         Node(
             package='risabot_automode',
             executable='cmd_safety_controller',
@@ -78,6 +126,43 @@ def generate_launch_description():
             parameters=[params_file]
         ),
 
-        # Note: Camera (astra_camera), joystick (joy_node), and line_follower_camera
-        # are launched separately via CLI aliases (see main_branch.md).
+        # J. Joystick driver
+        Node(
+            package='joy',
+            executable='joy_node',
+            name='joy_node',
+            output='screen',
+            parameters=[{
+                'deadzone': 0.12,
+                'autorepeat_rate': 20.0,
+                'coalesce_interval_ms': 1,
+            }]
+        ),
+
+        # K. Servo controller (motor + steering hardware bridge)
+        Node(
+            package='control_servo',
+            executable='servo_controller',
+            name='servo_controller',
+            output='screen',
+            parameters=[params_file]
+        ),
+
+        # L. Health monitor
+        Node(
+            package='risabot_automode',
+            executable='health_monitor',
+            name='health_monitor',
+            output='screen',
+            parameters=[params_file]
+        ),
+
+        # M. Dashboard (web UI at http://<robot_ip>:8080)
+        Node(
+            package='risabot_automode',
+            executable='dashboard',
+            name='dashboard',
+            output='screen',
+            parameters=[params_file]
+        ),
     ])
