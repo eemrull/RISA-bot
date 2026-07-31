@@ -1,0 +1,17 @@
+[Unit]
+Description=RISA-Bot: hostapd Access Point (ap0)
+After=risabot-ap-interface.service
+Requires=risabot-ap-interface.service
+BindsTo=risabot-ap-interface.service
+
+[Service]
+Type=forking
+PIDFile=/run/hostapd.pid
+ExecStart=/usr/sbin/hostapd -B -P /run/hostapd.pid /etc/risabot/hostapd.conf
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

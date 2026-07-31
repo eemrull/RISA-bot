@@ -210,4 +210,18 @@ def generate_launch_description():
             output='screen',
             parameters=[params_file]
         ),
+
+        # N. go2rtc camera bridge (replaces OpenCV MJPEG server in dashboard.py)
+        #    Serves MJPEG on :1985; go2rtc pulls from it and republishes on :1984.
+        Node(
+            package='risabot_automode',
+            executable='ros2go2rtc_bridge',
+            name='ros2go2rtc_bridge',
+            output='screen',
+            parameters=[{
+                'active_view':  'raw',
+                'jpeg_quality': 60,
+                'resize_width': 320,
+            }]
+        ),
     ])

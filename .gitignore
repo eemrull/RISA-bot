@@ -29,3 +29,7 @@ tools/extract_html.py
 tools/test_motors.py
 tools/pid_logger.py
 
+# .NET MAUI companion app build artifacts (~265 MB)
+RisaBotApp/bin/
+RisaBotApp/obj/
+

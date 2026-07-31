@@ -1,0 +1,15 @@
+[Unit]
+Description=RISA-Bot: Create virtual AP interface (ap0)
+After=network.target
+Before=risabot-hostapd.service risabot-dnsmasq.service risabot-wifi-portal.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/risabot-ap0-setup.sh
+ExecStop=/sbin/ip link delete ap0 2>/dev/null || true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

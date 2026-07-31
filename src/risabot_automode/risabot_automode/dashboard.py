@@ -18,7 +18,6 @@ import time
 import os
 import yaml
 
-import cv2
 import rclpy
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
@@ -26,7 +25,7 @@ from rcl_interfaces.msg import Parameter as RosParameter, ParameterType, Paramet
 from rcl_interfaces.srv import GetParameters, SetParameters
 from rclpy.node import Node
 from rclpy.qos import QoSPresetProfiles
-from sensor_msgs.msg import Image, Joy, LaserScan
+from sensor_msgs.msg import Joy, LaserScan
 from std_msgs.msg import Bool, Float32, String
 
 from .topics import (
@@ -34,10 +33,6 @@ from .topics import (
     AUTO_MODE_TOPIC,
     BOOM_GATE_TOPIC,
     CMD_SAFETY_STATUS_TOPIC,
-    CAMERA_DEBUG_LINE_TOPIC,
-    CAMERA_DEBUG_OBS_TOPIC,
-    CAMERA_DEBUG_TL_TOPIC,
-    CAMERA_IMAGE_TOPIC,
     CMD_VEL_TOPIC,
     DASH_CTRL_TOPIC,
     DASH_STATE_TOPIC,
@@ -54,7 +49,6 @@ from .topics import (
     PARKING_COMPLETE_TOPIC,
     HEALTH_STATUS_TOPIC,
     SET_CHALLENGE_TOPIC,
-    SIGNAGE_DEBUG_TOPIC,
     TRAFFIC_LIGHT_TOPIC,
     TUNNEL_DETECTED_TOPIC,
     PARKING_SIGN_TOPIC,
@@ -62,10 +56,6 @@ from .topics import (
     RECORD_PLAYBACK_CMD_TOPIC,
 )
 
-try:
-    from cv_bridge import CvBridge
-except ImportError:
-    CvBridge = None
 
 # ======================== HTML Dashboard ========================
 
@@ -325,12 +315,6 @@ class DashboardNode(Node):
         self.declare_parameter('hw_odom_scale', 1.0)
         self.declare_parameter('hw_odom_yaw_scale', 1.0)
 
-        # CV Bridge for camera
-        self.bridge = CvBridge() if CvBridge else None
-        self.latest_jpeg = None
-        self.jpeg_condition = threading.Condition()
-        self.frame_id = 0
-        self.active_camera_view = 'raw'
         self.initial_joy_axes = None
 
         # LiDAR scan storage for 2D visualization
@@ -342,9 +326,6 @@ class DashboardNode(Node):
         self.tunnel_debug = ''  # "left,right,error,angular_z"
         self.tunnel_debug_lock = threading.Lock()
         
-        # Client tracking for performance
-        self.num_camera_clients = 0
-        self.camera_clients_lock = threading.Lock()
 
         # Shared state (read by HTTP handler)
         self.data = {
@@ -453,12 +434,6 @@ class DashboardNode(Node):
         # Also listen to auto commands for display
         self.create_subscription(Twist, AUTO_CMD_VEL_TOPIC, self._cmd_cb, 10)
 
-        # Camera subscriptions (SENSOR_DATA QoS to match camera publisher)
-        self.create_subscription(Image, CAMERA_IMAGE_TOPIC, lambda msg: self._image_cb(msg, 'raw'), qos)
-        self.create_subscription(Image, CAMERA_DEBUG_LINE_TOPIC, lambda msg: self._image_cb(msg, 'line_follower'), qos)
-        # Single subscription covers both 'signage' and 'traffic_light' dashboard views
-        self.create_subscription(Image, SIGNAGE_DEBUG_TOPIC, lambda msg: self._image_cb(msg, 'signage'), qos)
-        self.create_subscription(Image, CAMERA_DEBUG_OBS_TOPIC, lambda msg: self._image_cb(msg, 'obstacle'), qos)
 
         # Parking signboard detection flag
         self.create_subscription(Bool, PARKING_SIGN_TOPIC, self._parking_sign_cb, 10)
@@ -780,33 +755,6 @@ class DashboardNode(Node):
         except Exception:
             pass
 
-    def _image_cb(self, msg: Image, view_name: str) -> None:
-        """Convert ROS Image to JPEG conditionally, tracking active view and clients."""
-        active = self.active_camera_view
-        if self.bridge is None:
-            return
-        # 'signage' topic covers both the 'signage' and 'traffic_light' dashboard views
-        if view_name != active and not (view_name == 'signage' and active == 'traffic_light'):
-            return
-            
-        with self.camera_clients_lock:
-            if self.num_camera_clients == 0:
-                return  # Skip processing entirely if nobody is watching
-                
-        try:
-            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-            # Force to fixed 320x240 — prevents visual jumping when source sends varying sizes
-            ih, iw = cv_image.shape[:2]
-            if iw != 320 or ih != 240:
-                cv_image = cv2.resize(cv_image, (320, 240))
-            _, jpeg = cv2.imencode('.jpg', cv_image, [cv2.IMWRITE_JPEG_QUALITY, 60])
-            
-            with self.jpeg_condition:
-                self.latest_jpeg = jpeg.tobytes()
-                self.frame_id += 1
-                self.jpeg_condition.notify_all()
-        except Exception:
-            pass
 
     def get_json(self) -> str:
         with self.data_lock:
@@ -838,10 +786,6 @@ class DashboardNode(Node):
                 
         return json.dumps(d)
 
-    def get_jpeg(self) -> None:
-        # We no longer use this standalone method because do_GET
-        # manages the condition variable directly to block until new frame.
-        pass
 
 
 # ======================== HTTP Server ========================
@@ -1100,75 +1044,35 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(json.dumps(payload).encode())
-        elif self.path.startswith('/camera_feed'):
-            self.send_response(200)
-            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
-            self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
-            self.send_header('Connection', 'close')
-            self.send_header('Pragma', 'no-cache')
-            self.end_headers()
-            
-            if not _node_ref:
-                return
-                
-            with _node_ref.camera_clients_lock:
-                _node_ref.num_camera_clients += 1
-                
-            try:
-                last_frame_id = -1
-                while True:
-                    jpeg_bytes = None
-                    with _node_ref.jpeg_condition:
-                        # Wait until a new frame has been generated (up to 1s to keep conn alive)
-                        if _node_ref.frame_id == last_frame_id:
-                            _node_ref.jpeg_condition.wait(timeout=1.0)
-                        
-                        if _node_ref.frame_id != last_frame_id and _node_ref.latest_jpeg:
-                            last_frame_id = _node_ref.frame_id
-                            jpeg_bytes = _node_ref.latest_jpeg
-                            
-                    if jpeg_bytes:
-                        frame = (b'--frame\r\n'
-                                 b'Content-Type: image/jpeg\r\n'
-                                 b'Content-Length: ' + str(len(jpeg_bytes)).encode() + b'\r\n'
-                                 b'\r\n' + jpeg_bytes + b'\r\n')
-                        self.wfile.write(frame)
-                    else:
-                        # Timeout fired but no new frame
-                        pass
-            except Exception:
-                pass
-            finally:
-                with _node_ref.camera_clients_lock:
-                    _node_ref.num_camera_clients = max(0, _node_ref.num_camera_clients - 1)
         elif self.path.startswith('/api/set_cam_view'):
             from urllib.parse import urlparse, parse_qs
-            import threading
             qs = parse_qs(urlparse(self.path).query)
             view = qs.get('view', ['raw'])[0]
-            if _node_ref:
-                _node_ref.active_camera_view = view
-                with _node_ref.jpeg_condition:
-                    _node_ref.latest_jpeg = None
-                    # Force the condition to wake any blocked clients
-                    _node_ref.frame_id += 1
-                    _node_ref.jpeg_condition.notify_all()
-            
-            # Auto-toggle show_debug for performance 
+
+            # Forward view change to ros2go2rtc_bridge node via ROS parameter
+            threading.Thread(
+                target=_ros_set_param,
+                args=('ros2go2rtc_bridge', 'active_view', view),
+                daemon=True
+            ).start()
+
+            # Auto-toggle show_debug on the relevant perception node
             def auto_toggle_debug(selected_view):
                 nodes_to_enable = set()
                 if selected_view == 'line_follower':
                     nodes_to_enable.add('line_follower_camera')
                 elif selected_view == 'obstacle':
                     nodes_to_enable.add('obstacle_avoidance_camera')
-                elif selected_view in ('traffic_light', 'signage'):
+                elif selected_view in ('signage', 'traffic_light'):
+                    # signage_detector renders both overlays — traffic_light_detector
+                    # is not launched, so it has no debug topic of its own.
                     nodes_to_enable.add('signage_detector')
-                
+
                 all_nodes = {'line_follower_camera', 'obstacle_avoidance_camera', 'signage_detector'}
                 for node_name in all_nodes:
                     val_str = 'true' if node_name in nodes_to_enable else 'false'
                     _ros_set_param(node_name, 'show_debug', val_str)
-                    
+
             threading.Thread(target=auto_toggle_debug, args=(view,), daemon=True).start()
 
             self.send_response(200)

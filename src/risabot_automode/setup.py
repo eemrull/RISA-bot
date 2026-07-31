@@ -38,6 +38,7 @@ setup(
             'cmd_safety_controller = risabot_automode.cmd_safety_controller:main',
             'bag_regression_validator = risabot_automode.bag_regression_validator:main',
             'signage_detector = risabot_automode.signage_detector:main',
+            'ros2go2rtc_bridge = risabot_automode.ros2go2rtc_bridge:main',
         ],
     },
 )

@@ -1,0 +1,11 @@
+streams:
+  astra_camera: mjpeg:http://127.0.0.1:1985/mjpeg
+
+api:
+  listen: ":1984"
+
+rtsp:
+  listen: ":8554"
+
+log:
+  level: warn

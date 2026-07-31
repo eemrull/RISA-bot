@@ -1259,7 +1259,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           <div class="icon">📷</div>
           Click above to enable
         </div>
-        <img id="camImg" src="" alt="Camera" style="display:none;">
+        <img id="camImg" src="" alt="Camera" style="display:none;"
+             onerror="camOnError()" onload="camOnLoad()">
       </div>
     </div>
 
@@ -1504,6 +1505,50 @@ function updateFlow(currentState) {
   });
 }
 
+// ── Camera: MJPEG served by go2rtc (:1984), fed by ros2go2rtc_bridge (:1985) ──
+// Host is derived from the page origin so this works over LAN, Tailscale and the
+// 192.168.4.1 captive portal alike. The stream name never changes — switching
+// views changes what the bridge publishes into it, so the <img> is never reloaded.
+const GO2RTC_URL = `http://${location.hostname}:1984/api/stream.mjpeg?src=astra_camera`;
+let camRetryTimer = null;
+
+function camStart() {
+  const off = document.getElementById('camOff');
+  const img = document.getElementById('camImg');
+  if (camRetryTimer) { clearTimeout(camRetryTimer); camRetryTimer = null; }
+  // Reveal the img up front rather than waiting on onload — a multipart MJPEG
+  // stream is not guaranteed to fire load, and onerror still covers failure.
+  off.style.display = 'none';
+  img.style.display = 'block';
+  img.src = GO2RTC_URL + '&t=' + Date.now();
+}
+
+function camStop() {
+  const img = document.getElementById('camImg');
+  if (camRetryTimer) { clearTimeout(camRetryTimer); camRetryTimer = null; }
+  // Dropping the src closes the connection, so go2rtc releases the bridge and
+  // JPEG encoding stops entirely while nobody is watching.
+  img.src = '';
+}
+
+function camOnLoad() {
+  document.getElementById('camImg').style.display = 'block';
+  document.getElementById('camOff').style.display = 'none';
+}
+
+function camOnError() {
+  // Ignore the error that firing src='' produces when the user disables the camera.
+  if (!document.getElementById('camBtn').classList.contains('active')) return;
+  const off = document.getElementById('camOff');
+  document.getElementById('camImg').style.display = 'none';
+  off.style.display = 'flex';
+  off.innerHTML = '<div class="icon">' + String.fromCodePoint(0x2205) + '</div>NO SIGNAL - retrying...';
+  // go2rtc may not be up yet on a fresh boot; keep trying while the panel is open.
+  if (!camRetryTimer) {
+    camRetryTimer = setTimeout(() => { camRetryTimer = null; camStart(); }, 3000);
+  }
+}
+
 function toggleCam() {
   const b = document.getElementById('camBtn');
   const d = document.getElementById('camContainer');
@@ -1516,16 +1561,15 @@ function toggleCam() {
     d.classList.remove('active');
     t.style.display = 'none';
     off.style.display = 'flex';
+    off.innerHTML = '<div class="icon">' + String.fromCodePoint(0x1F4F7) + '</div>Click above to enable';
     img.style.display = 'none';
-    img.src = '';
+    camStop();
   } else {
     b.classList.add('active');
     b.textContent = String.fromCodePoint(0x1F4F7) + ' Disable Camera';
     d.classList.add('active');
     t.style.display = 'flex';
-    off.style.display = 'none';
-    img.style.display = 'block';
-    img.src = '/camera_feed?' + new Date().getTime();
+    camStart();
     // Trigger auto_toggle_debug on initial enable (default view is 'raw')
     fetch('/api/set_cam_view?view=raw');
   }
@@ -1534,13 +1578,8 @@ function toggleCam() {
 function setCamView(view, btn) {
   document.querySelectorAll('.cam-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  fetch('/api/set_cam_view?view=' + encodeURIComponent(view)).then(() => {
-    // Reload MJPEG stream to pick up the new view immediately
-    const img = document.getElementById('camImg');
-    if (img && img.style.display !== 'none') {
-      img.src = '/camera_feed?' + Date.now();
-    }
-  });
+  // No stream reload — the bridge swaps the source topic behind the same stream.
+  fetch('/api/set_cam_view?view=' + encodeURIComponent(view));
 }
 
 function rpCmd(action) {
@@ -3163,8 +3202,8 @@ TEACH_HTML = """<!DOCTYPE html>
     <!-- Camera Feed -->
     <div class="cam-panel">
       <div class="cam-container">
-        <img id="camStream" src="/camera_feed?v=raw" alt="Camera Feed Offline"
-             onerror="this.style.display='none'; document.getElementById('camOff').style.display='flex';"
+        <img id="camStream" src="" alt="Camera Feed Offline"
+             onerror="camOnError()"
              onload="this.style.display='block'; document.getElementById('camOff').style.display='none';"/>
         <div id="camOff" style="display:none; color:#555; width:100%; height:100%; align-items:center; justify-content:center; flex-direction:column; font-size:1.2em; font-weight:700; min-height:240px;">
           <div style="font-size:2em; margin-bottom:8px; opacity:0.4;">∅</div>
@@ -3299,15 +3338,38 @@ TEACH_HTML = """<!DOCTYPE html>
 </div>
 
 <script>
+// ── Camera: MJPEG from go2rtc (:1984), fed by ros2go2rtc_bridge (:1985) ──
+// Host comes from the page origin so this works over LAN, Tailscale and the
+// captive portal. Switching views never reloads the stream — the bridge just
+// starts publishing a different source topic into the same go2rtc stream.
+const GO2RTC_URL = `http://${location.hostname}:1984/api/stream.mjpeg?src=astra_camera`;
+let camRetryTimer = null;
+
+function camStart() {
+  if (camRetryTimer) { clearTimeout(camRetryTimer); camRetryTimer = null; }
+  document.getElementById('camStream').src = GO2RTC_URL + '&t=' + Date.now();
+}
+
+function camOnError() {
+  const img = document.getElementById('camStream');
+  img.style.display = 'none';
+  document.getElementById('camOff').style.display = 'flex';
+  // go2rtc may still be starting on a fresh boot — keep retrying.
+  if (!camRetryTimer) {
+    camRetryTimer = setTimeout(() => { camRetryTimer = null; camStart(); }, 3000);
+  }
+}
+
 // ── Camera View Switching ──
 function setCam(viewName) {
   fetch('/api/set_cam_view?view=' + viewName);
-  document.getElementById('camStream').src = '/camera_feed?v=' + viewName + '&t=' + Date.now();
   ['raw', 'line_follower', 'obstacle', 'signage'].forEach(v => {
     const el = document.getElementById('btn-' + v);
     if (el) el.classList.toggle('active', v === viewName);
   });
 }
+
+camStart();
 
 // ── Reset Odometry ──
 function resetOdom() {

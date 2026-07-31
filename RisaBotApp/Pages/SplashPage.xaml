@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="RisaBotApp.Pages.SplashPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    BackgroundColor="{StaticResource SplashBackground}"
+    Shell.NavBarIsVisible="False">
+
+    <Grid RowDefinitions="*, Auto, *">
+
+        <!-- Logo + Branding centred in the middle row -->
+        <VerticalStackLayout
+            Grid.Row="1"
+            Spacing="20"
+            HorizontalOptions="Center"
+            VerticalOptions="Center">
+
+            <!-- Robot icon placeholder (replaced with actual SVG logo in Resources) -->
+            <Border
+                WidthRequest="100"
+                HeightRequest="100"
+                StrokeShape="RoundRectangle 24"
+                BackgroundColor="{StaticResource AccentBlue}"
+                Padding="16">
+                <Label
+                    Text="🤖"
+                    FontSize="48"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center" />
+            </Border>
+
+            <Label
+                Text="RISA-Bot"
+                FontFamily="InterBold"
+                FontSize="36"
+                TextColor="White"
+                HorizontalOptions="Center" />
+
+            <Label
+                Text="Robot Intelligent System Assistant"
+                FontFamily="InterRegular"
+                FontSize="14"
+                TextColor="{StaticResource TextMuted}"
+                HorizontalOptions="Center" />
+
+        </VerticalStackLayout>
+
+        <!-- Loading indicator at bottom -->
+        <VerticalStackLayout
+            Grid.Row="2"
+            Spacing="12"
+            HorizontalOptions="Center"
+            VerticalOptions="End"
+            Margin="0,0,0,48">
+
+            <ActivityIndicator
+                x:Name="LoadingIndicator"
+                IsRunning="True"
+                Color="{StaticResource AccentBlue}"
+                WidthRequest="32"
+                HeightRequest="32"
+                HorizontalOptions="Center" />
+
+            <Label
+                Text="Starting up…"
+                FontFamily="InterRegular"
+                FontSize="12"
+                TextColor="{StaticResource TextMuted}"
+                HorizontalOptions="Center" />
+
+        </VerticalStackLayout>
+
+    </Grid>
+
+</ContentPage>

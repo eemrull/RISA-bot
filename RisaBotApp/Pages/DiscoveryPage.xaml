@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="RisaBotApp.Pages.DiscoveryPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:models="clr-namespace:RisaBotApp.Models"
+    xmlns:vm="clr-namespace:RisaBotApp.ViewModels"
+    x:DataType="vm:DiscoveryViewModel"
+    BackgroundColor="{StaticResource PageBackground}"
+    Shell.NavBarIsVisible="False">
+
+    <Grid RowDefinitions="Auto, *, Auto">
+
+        <!-- ── Header ─────────────────────────────────────────────────────── -->
+        <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Padding="24,40,24,16" VerticalOptions="Center">
+            <VerticalStackLayout Grid.Column="0" Spacing="2">
+                <Label Text="RISA-Bot Machines" FontFamily="InterBold" FontSize="26" TextColor="{StaticResource TextPrimary}" />
+                <Label Text="Select an available robot on your network to connect" FontFamily="InterRegular" FontSize="13" TextColor="{StaticResource TextMuted}" />
+            </VerticalStackLayout>
+
+            <!-- Rescan Network Button -->
+            <Button
+                Grid.Column="1"
+                Text="🔄  Rescan"
+                Command="{Binding RescanNetworkCommand}"
+                BackgroundColor="{StaticResource CardBackground}"
+                TextColor="{StaticResource TextPrimary}"
+                FontFamily="InterSemiBold"
+                FontSize="13"
+                CornerRadius="10"
+                HeightRequest="40"
+                Padding="16,0"
+                VerticalOptions="Center" />
+        </Grid>
+
+        <!-- ── Main Content Area ─────────────────────────────────────────── -->
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Padding="24,0,24,20" Spacing="16">
+
+                <!-- Loading Bar during Scan -->
+                <VerticalStackLayout Spacing="8" IsVisible="{Binding IsScanning}">
+                    <ActivityIndicator IsRunning="{Binding IsScanning}" Color="{StaticResource AccentBlue}" HeightRequest="28" />
+                    <Label
+                        Text="{Binding StatusHint}"
+                        FontFamily="InterRegular"
+                        FontSize="13"
+                        TextColor="{StaticResource TextMuted}"
+                        HorizontalOptions="Center"
+                        HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
+
+                <!-- Status Hint (when not actively scanning) -->
+                <Label
+                    Text="{Binding StatusHint}"
+                    FontFamily="InterRegular"
+                    FontSize="13"
+                    TextColor="{StaticResource TextMuted}"
+                    IsVisible="{Binding IsScanning, Converter={StaticResource InvertBoolConverter}}" />
+
+                <!-- Error Banner -->
+                <Border
+                    StrokeShape="RoundRectangle 10"
+                    BackgroundColor="{StaticResource ErrorBackground}"
+                    Padding="14,10"
+                    IsVisible="{Binding HasError}">
+                    <Label
+                        Text="{Binding ErrorMessage}"
+                        FontFamily="InterRegular"
+                        FontSize="13"
+                        TextColor="{StaticResource ErrorText}"
+                        LineBreakMode="WordWrap" />
+                </Border>
+
+                <!-- ── NoMachine-style Discovered Robots Grid ────────────────── -->
+                <CollectionView
+                    ItemsSource="{Binding DiscoveredRobots}"
+                    SelectionMode="None"
+                    IsVisible="{Binding HasRobots}">
+                    <CollectionView.ItemsLayout>
+                        <GridItemsLayout Orientation="Vertical" Span="2" HorizontalItemSpacing="14" VerticalItemSpacing="14" />
+                    </CollectionView.ItemsLayout>
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="models:DiscoveredRobotDevice">
+                            <Border
+                                Stroke="{StaticResource AccentBlue}"
+                                StrokeThickness="1"
+                                StrokeShape="RoundRectangle 16"
+                                BackgroundColor="{StaticResource CardBackground}"
+                                Padding="16">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer
+                                        Command="{Binding BindingContext.SelectRobotCommand, Source={RelativeSource AncestorType={x:Type ContentPage}}}"
+                                        CommandParameter="{Binding .}" />
+                                </Border.GestureRecognizers>
+
+                                <Grid ColumnDefinitions="Auto, *" RowDefinitions="Auto, Auto, Auto" ColumnSpacing="14" RowSpacing="6">
+
+                                    <!-- Robot Emoji Icon Box -->
+                                    <Border
+                                        Grid.Column="0"
+                                        Grid.RowSpan="3"
+                                        StrokeShape="RoundRectangle 14"
+                                        BackgroundColor="{StaticResource PageBackground}"
+                                        WidthRequest="56"
+                                        HeightRequest="56"
+                                        VerticalOptions="Center"
+                                        HorizontalOptions="Center">
+                                        <Label
+                                            Text="{Binding IconEmoji}"
+                                            FontSize="28"
+                                            HorizontalOptions="Center"
+                                            VerticalOptions="Center" />
+                                    </Border>
+
+                                    <!-- Robot Display Name -->
+                                    <Label
+                                        Grid.Column="1"
+                                        Grid.Row="0"
+                                        Text="{Binding DisplayName}"
+                                        FontFamily="InterBold"
+                                        FontSize="17"
+                                        TextColor="{StaticResource TextPrimary}"
+                                        LineBreakMode="TailTruncation" />
+
+                                    <!-- Model Info -->
+                                    <Label
+                                        Grid.Column="1"
+                                        Grid.Row="1"
+                                        Text="{Binding DisplayModel}"
+                                        FontFamily="InterRegular"
+                                        FontSize="13"
+                                        TextColor="{StaticResource TextMuted}"
+                                        LineBreakMode="TailTruncation" />
+
+                                    <!-- Network Status Badge -->
+                                    <HorizontalStackLayout Grid.Column="1" Grid.Row="2" Spacing="6" VerticalOptions="Center">
+                                        <Border
+                                            StrokeShape="RoundRectangle 6"
+                                            BackgroundColor="{Binding StatusBadgeColor, Converter={StaticResource StringToColorConverter}}"
+                                            Padding="8,2"
+                                            VerticalOptions="Center">
+                                            <Label
+                                                Text="{Binding StatusText}"
+                                                FontFamily="InterSemiBold"
+                                                FontSize="11"
+                                                TextColor="Black" />
+                                        </Border>
+                                    </HorizontalStackLayout>
+
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <!-- ── Toggle Manual Entry / Hotspot Setup Button ────────────── -->
+                <Button
+                    Text="{Binding ShowManualEntry, Converter={StaticResource InvertBoolConverter}, StringFormat='⚙️  Add Machine / Manual Host'}"
+                    Command="{Binding ToggleManualEntryCommand}"
+                    BackgroundColor="Transparent"
+                    TextColor="{StaticResource AccentBlue}"
+                    FontFamily="InterSemiBold"
+                    FontSize="13"
+                    HorizontalOptions="Center"
+                    Margin="0,8,0,0" />
+
+                <!-- ── Manual Host/IP Entry Card (Collapsible) ──────────────── -->
+                <Border
+                    StrokeShape="RoundRectangle 16"
+                    BackgroundColor="{StaticResource CardBackground}"
+                    Padding="20"
+                    IsVisible="{Binding ShowManualEntry}">
+                    <VerticalStackLayout Spacing="12">
+                        <Label
+                            Text="Connect via Hostname or IP"
+                            FontFamily="InterSemiBold"
+                            FontSize="15"
+                            TextColor="{StaticResource TextPrimary}" />
+                        <Label
+                            Text="If your RISA-Bot is on another subnet, enter its hostname (e.g. risabot10.local) or IP address below."
+                            FontFamily="InterRegular"
+                            FontSize="12"
+                            TextColor="{StaticResource TextMuted}"
+                            LineBreakMode="WordWrap" />
+                        <Entry
+                            Placeholder="e.g. risabot10.local or 192.168.1.150"
+                            Text="{Binding ManualHostInput}"
+                            FontFamily="InterRegular"
+                            FontSize="14"
+                            TextColor="{StaticResource TextPrimary}"
+                            PlaceholderColor="{StaticResource TextMuted}"
+                            BackgroundColor="{StaticResource PageBackground}" />
+                        <Button
+                            Text="Connect to Target Machine"
+                            Command="{Binding ManualConnectCommand}"
+                            BackgroundColor="{StaticResource AccentBlue}"
+                            TextColor="White"
+                            FontFamily="InterSemiBold"
+                            FontSize="14"
+                            CornerRadius="10"
+                            HeightRequest="44" />
+                    </VerticalStackLayout>
+                </Border>
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- ── Footer ──────────────────────────────────────────────────────── -->
+        <Border Grid.Row="2" BackgroundColor="{StaticResource CardBackground}" Padding="20,12" StrokeThickness="0">
+            <Label
+                Text="🔒 Network Details &amp; mDNS IPs are managed securely behind the scenes."
+                FontFamily="InterRegular"
+                FontSize="11"
+                TextColor="{StaticResource TextMuted}"
+                HorizontalOptions="Center" />
+        </Border>
+
+    </Grid>
+
+</ContentPage>

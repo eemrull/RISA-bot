@@ -1,0 +1,17 @@
+[Unit]
+Description=RISA-Bot: dnsmasq DHCP + DNS hijack (ap0)
+After=risabot-ap-interface.service
+Requires=risabot-ap-interface.service
+BindsTo=risabot-ap-interface.service
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/dnsmasq -C /etc/risabot/dnsmasq.conf --no-daemon
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

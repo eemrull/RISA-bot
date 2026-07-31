@@ -1,0 +1,367 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="RisaBotApp.Pages.DashboardPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:models="clr-namespace:RisaBotApp.Models"
+    xmlns:vm="clr-namespace:RisaBotApp.ViewModels"
+    x:DataType="vm:DashboardViewModel"
+    BackgroundColor="{StaticResource PageBackground}"
+    Shell.NavBarIsVisible="False">
+
+    <Grid RowDefinitions="Auto, *, Auto">
+
+        <!-- ── Top Header ─────────────────────────────────────────────────── -->
+        <Grid Grid.Row="0" Padding="24,40,24,12" ColumnDefinitions="*, Auto">
+            <VerticalStackLayout Grid.Column="0" Spacing="2">
+                <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                    <Label Text="{Binding RobotName}" FontFamily="InterBold" FontSize="22" TextColor="{StaticResource TextPrimary}" />
+                    <Border StrokeShape="RoundRectangle 8" BackgroundColor="{StaticResource CardBackground}" Padding="8,2" VerticalOptions="Center">
+                        <Label Text="{Binding StateName}" FontFamily="InterSemiBold" FontSize="11" TextColor="{StaticResource AccentBlue}" />
+                    </Border>
+                </HorizontalStackLayout>
+                <Label Text="{Binding RobotMdns}" FontFamily="InterRegular" FontSize="12" TextColor="{StaticResource TextMuted}" />
+            </VerticalStackLayout>
+
+            <!-- ROS 2 Live Status Badge -->
+            <Border
+                Grid.Column="1"
+                StrokeShape="RoundRectangle 20"
+                BackgroundColor="{Binding RosActive, Converter={StaticResource BoolToBadgeColorConverter}}"
+                Padding="14,6"
+                VerticalOptions="Center">
+                <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                    <Label Text="●" FontSize="10" TextColor="White" VerticalOptions="Center" />
+                    <Label
+                        Text="{Binding RosActive, Converter={StaticResource BoolToRosStatusConverter}}"
+                        FontFamily="InterSemiBold"
+                        FontSize="11"
+                        TextColor="White" />
+                </HorizontalStackLayout>
+            </Border>
+        </Grid>
+
+        <!-- ── Main Tab Content Area ─────────────────────────────────────── -->
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Padding="24,12" Spacing="16">
+
+                <!-- ═════════════════ TELEMETRY TAB ═════════════════ -->
+                <VerticalStackLayout x:Name="TelemetryTab" Spacing="14">
+
+                    <!-- Row 1: Speed, Distance & State Card -->
+                    <Border StrokeShape="RoundRectangle 16" BackgroundColor="{StaticResource CardBackground}" Padding="20">
+                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
+                            <VerticalStackLayout Grid.Column="0" Spacing="4">
+                                <Label Text="🚀 Speed" FontSize="11" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                                <Label Text="{Binding Speed, StringFormat='{0:F2} m/s'}" FontSize="20" FontFamily="InterBold" TextColor="{StaticResource AccentGreen}" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                <Label Text="📏 Distance" FontSize="11" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                                <Label Text="{Binding Distance, StringFormat='{0:F2} m'}" FontSize="20" FontFamily="InterBold" TextColor="{StaticResource AccentBlue}" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Grid.Column="2" Spacing="4">
+                                <Label Text="🏁 Lap" FontSize="11" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                                <Label Text="{Binding Lap, StringFormat='Lap {0}'}" FontSize="20" FontFamily="InterBold" TextColor="{StaticResource TextPrimary}" />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </Border>
+
+                    <!-- Row 2: 3-Axis IMU Orientation Card -->
+                    <Border StrokeShape="RoundRectangle 16" BackgroundColor="{StaticResource CardBackground}" Padding="20">
+                        <VerticalStackLayout Spacing="12">
+                            <Label Text="📐 3-Axis IMU Orientation" FontFamily="InterSemiBold" FontSize="14" TextColor="{StaticResource TextMuted}" />
+                            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
+                                <VerticalStackLayout Grid.Column="0" Spacing="4">
+                                    <Label Text="Roll" FontSize="11" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                                    <Label Text="{Binding ImuRoll, StringFormat='{0:F1}°'}" FontSize="18" FontFamily="InterBold" TextColor="{StaticResource AccentBlue}" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                    <Label Text="Pitch" FontSize="11" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                                    <Label Text="{Binding ImuPitch, StringFormat='{0:F1}°'}" FontSize="18" FontFamily="InterBold" TextColor="{StaticResource AccentOrange}" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Column="2" Spacing="4">
+                                    <Label Text="Yaw (Heading)" FontSize="11" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                                    <Label Text="{Binding ImuYaw, StringFormat='{0:F1}°'}" FontSize="18" FontFamily="InterBold" TextColor="{StaticResource AccentGreen}" />
+                                </VerticalStackLayout>
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- Row 3: Odometry Position Card -->
+                    <Border StrokeShape="RoundRectangle 16" BackgroundColor="{StaticResource CardBackground}" Padding="20">
+                        <VerticalStackLayout Spacing="12">
+                            <Label Text="🗺️ Odometry Position (Dead Reckoning)" FontFamily="InterSemiBold" FontSize="14" TextColor="{StaticResource TextMuted}" />
+                            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
+                                <VerticalStackLayout Grid.Column="0" Spacing="4">
+                                    <Label Text="Odom X" FontSize="11" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                                    <Label Text="{Binding OdomX, StringFormat='{0:F2} m'}" FontSize="16" FontFamily="InterBold" TextColor="{StaticResource TextPrimary}" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                    <Label Text="Odom Y" FontSize="11" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                                    <Label Text="{Binding OdomY, StringFormat='{0:F2} m'}" FontSize="16" FontFamily="InterBold" TextColor="{StaticResource TextPrimary}" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Column="2" Spacing="4">
+                                    <Label Text="Odom Yaw" FontSize="11" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                                    <Label Text="{Binding OdomYaw, StringFormat='{0:F2} rad'}" FontSize="16" FontFamily="InterBold" TextColor="{StaticResource TextPrimary}" />
+                                </VerticalStackLayout>
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- Row 4: Perception Badges & Lane Error Card -->
+                    <Border StrokeShape="RoundRectangle 16" BackgroundColor="{StaticResource CardBackground}" Padding="20">
+                        <VerticalStackLayout Spacing="12">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <Label Grid.Column="0" Text="👁️ Perception &amp; Lane Follower" FontFamily="InterSemiBold" FontSize="14" TextColor="{StaticResource TextMuted}" VerticalOptions="Center" />
+                                <Label Grid.Column="1" Text="{Binding LaneError, StringFormat='Err: {0:F3} m'}" FontFamily="InterBold" FontSize="13" TextColor="{StaticResource AccentBlue}" VerticalOptions="Center" />
+                            </Grid>
+                            <BoxView HeightRequest="1" BackgroundColor="{StaticResource Divider}" />
+                            <FlexLayout Wrap="Wrap" JustifyContent="Start" AlignItems="Center">
+                                <!-- Traffic Light Badge -->
+                                <Border StrokeShape="RoundRectangle 8" BackgroundColor="#2A3B5C" Padding="10,6" Margin="0,4,8,4">
+                                    <HorizontalStackLayout Spacing="6">
+                                        <Label Text="🚦 Light:" FontSize="12" FontFamily="InterRegular" TextColor="{StaticResource TextMuted}" />
+                                        <Label Text="{Binding TrafficLight}" FontSize="12" FontFamily="InterBold" TextColor="{StaticResource AccentGreen}" />
+                                    </HorizontalStackLayout>
+                                </Border>
+                                <!-- Boom Gate Badge -->
+                                <Border StrokeShape="RoundRectangle 8" BackgroundColor="#2A3B5C" Padding="10,6" Margin="0,4,8,4">
+                                    <HorizontalStackLayout Spacing="6">
+                                        <Label Text="🚧 Boom Gate:" FontSize="12" FontFamily="InterRegular" TextColor="{StaticResource TextMuted}" />
+                                        <Label Text="{Binding BoomGate, Converter={StaticResource BoolToOnlineConverter}}" FontSize="12" FontFamily="InterBold" TextColor="White" />
+                                    </HorizontalStackLayout>
+                                </Border>
+                                <!-- Tunnel Badge -->
+                                <Border StrokeShape="RoundRectangle 8" BackgroundColor="#2A3B5C" Padding="10,6" Margin="0,4,8,4">
+                                    <HorizontalStackLayout Spacing="6">
+                                        <Label Text="🚇 Tunnel:" FontSize="12" FontFamily="InterRegular" TextColor="{StaticResource TextMuted}" />
+                                        <Label Text="{Binding TunnelDetected, Converter={StaticResource BoolToOnlineConverter}}" FontSize="12" FontFamily="InterBold" TextColor="White" />
+                                    </HorizontalStackLayout>
+                                </Border>
+                                <!-- Parking Sign Badge -->
+                                <Border StrokeShape="RoundRectangle 8" BackgroundColor="#2A3B5C" Padding="10,6" Margin="0,4,8,4">
+                                    <HorizontalStackLayout Spacing="6">
+                                        <Label Text="🅿️ Parking Sign:" FontSize="12" FontFamily="InterRegular" TextColor="{StaticResource TextMuted}" />
+                                        <Label Text="{Binding ParkingSignDetected, Converter={StaticResource BoolToOnlineConverter}}" FontSize="12" FontFamily="InterBold" TextColor="White" />
+                                    </HorizontalStackLayout>
+                                </Border>
+                            </FlexLayout>
+                        </VerticalStackLayout>
+                    </Border>
+
+                </VerticalStackLayout>
+
+                <!-- ═════════════════ CAMERA TAB ═════════════════ -->
+                <VerticalStackLayout x:Name="CameraTab" Spacing="14" IsVisible="False">
+
+                    <!-- Camera View Switcher Buttons -->
+                    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="8">
+                        <Button Grid.Column="0" Text="📷 Raw"
+                            Command="{Binding SelectCamViewCommand}" CommandParameter="raw"
+                            BackgroundColor="{StaticResource CardBackground}" TextColor="{StaticResource TextPrimary}"
+                            FontFamily="InterSemiBold" FontSize="12" CornerRadius="10" HeightRequest="40" Padding="0" />
+                        <Button Grid.Column="1" Text="🛤️ Line"
+                            Command="{Binding SelectCamViewCommand}" CommandParameter="line_follower"
+                            BackgroundColor="{StaticResource CardBackground}" TextColor="{StaticResource TextPrimary}"
+                            FontFamily="InterSemiBold" FontSize="12" CornerRadius="10" HeightRequest="40" Padding="0" />
+                        <Button Grid.Column="2" Text="🚦 Sign"
+                            Command="{Binding SelectCamViewCommand}" CommandParameter="sign"
+                            BackgroundColor="{StaticResource CardBackground}" TextColor="{StaticResource TextPrimary}"
+                            FontFamily="InterSemiBold" FontSize="12" CornerRadius="10" HeightRequest="40" Padding="0" />
+                        <Button Grid.Column="3" Text="🚧 Obstacle"
+                            Command="{Binding SelectCamViewCommand}" CommandParameter="obstacle"
+                            BackgroundColor="{StaticResource CardBackground}" TextColor="{StaticResource TextPrimary}"
+                            FontFamily="InterSemiBold" FontSize="12" CornerRadius="10" HeightRequest="40" Padding="0" />
+                    </Grid>
+
+                    <!-- Live MJPEG Stream Container -->
+                    <Border StrokeShape="RoundRectangle 16" BackgroundColor="{StaticResource CardBackground}" Padding="4" HeightRequest="340">
+                        <WebView Source="{Binding CameraStreamUrl}" HorizontalOptions="Fill" VerticalOptions="Fill" />
+                    </Border>
+
+                    <Label
+                        Text="Live camera stream via go2rtc (port 1984 · MJPEG)"
+                        FontSize="11"
+                        TextColor="{StaticResource TextMuted}"
+                        FontFamily="InterRegular"
+                        HorizontalOptions="Center" />
+
+                </VerticalStackLayout>
+
+                <!-- ═════════════════ CONTROLS TAB ═════════════════ -->
+                <VerticalStackLayout x:Name="ControlsTab" Spacing="14" IsVisible="False">
+
+                    <!-- Competition & Odometry Action Card -->
+                    <Border StrokeShape="RoundRectangle 16" BackgroundColor="{StaticResource CardBackground}" Padding="20">
+                        <VerticalStackLayout Spacing="14">
+                            <Label Text="🏎️ Competition &amp; Robot Actions" FontFamily="InterSemiBold" FontSize="14" TextColor="{StaticResource TextMuted}" />
+
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                <Button Grid.Column="0" Text="↺  Reset Odom"
+                                    Command="{Binding ResetOdometryCommand}"
+                                    BackgroundColor="{StaticResource AccentBlue}"
+                                    TextColor="White" FontFamily="InterSemiBold" CornerRadius="12" HeightRequest="46" />
+                                <Button Grid.Column="1" Text="🏁  Reset Comp"
+                                    Command="{Binding SendCompetitionCommandCommand}" CommandParameter="RESET"
+                                    BackgroundColor="{StaticResource AccentOrange}"
+                                    TextColor="White" FontFamily="InterSemiBold" CornerRadius="12" HeightRequest="46" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                <Button Grid.Column="0" Text="▶  Start Lap 1"
+                                    Command="{Binding SendCompetitionCommandCommand}" CommandParameter="LAP1"
+                                    BackgroundColor="{StaticResource CardBackground}" BorderColor="{StaticResource AccentGreen}" BorderWidth="1"
+                                    TextColor="{StaticResource AccentGreen}" FontFamily="InterSemiBold" CornerRadius="12" HeightRequest="42" />
+                                <Button Grid.Column="1" Text="▶  Start Lap 2"
+                                    Command="{Binding SendCompetitionCommandCommand}" CommandParameter="LAP2"
+                                    BackgroundColor="{StaticResource CardBackground}" BorderColor="{StaticResource AccentGreen}" BorderWidth="1"
+                                    TextColor="{StaticResource AccentGreen}" FontFamily="InterSemiBold" CornerRadius="12" HeightRequest="42" />
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- ROS 2 Systemctl Launch Control Card -->
+                    <Border StrokeShape="RoundRectangle 16" BackgroundColor="{StaticResource CardBackground}" Padding="20">
+                        <VerticalStackLayout Spacing="14">
+                            <Label Text="⚙️ System Bringup Service" FontFamily="InterSemiBold" FontSize="14" TextColor="{StaticResource TextMuted}" />
+
+                            <ActivityIndicator IsRunning="{Binding IsActionBusy}" IsVisible="{Binding IsActionBusy}" Color="{StaticResource AccentBlue}" HorizontalOptions="Center" />
+
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                <Button Grid.Column="0" Text="▶  Start Bringup"
+                                    Command="{Binding StartLaunchCommand}"
+                                    IsEnabled="{Binding LaunchActive, Converter={StaticResource InvertBoolConverter}}"
+                                    BackgroundColor="{StaticResource AccentGreen}"
+                                    TextColor="White" FontFamily="InterSemiBold" CornerRadius="12" HeightRequest="46" />
+                                <Button Grid.Column="1" Text="■  Stop Bringup"
+                                    Command="{Binding StopLaunchCommand}"
+                                    IsEnabled="{Binding LaunchActive}"
+                                    BackgroundColor="{StaticResource ErrorText}"
+                                    TextColor="White" FontFamily="InterSemiBold" CornerRadius="12" HeightRequest="46" />
+                            </Grid>
+
+                            <Button Text="↺  Restart ROS"
+                                Command="{Binding RestartRosCommand}"
+                                BackgroundColor="{StaticResource AccentOrange}"
+                                TextColor="White" FontFamily="InterSemiBold" CornerRadius="12" HeightRequest="46" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- Logs Card -->
+                    <Border StrokeShape="RoundRectangle 16" BackgroundColor="{StaticResource CardBackground}" Padding="20">
+                        <VerticalStackLayout Spacing="12">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <Label Grid.Column="0" Text="Service Journal Logs" FontFamily="InterSemiBold" FontSize="14" TextColor="{StaticResource TextMuted}" VerticalOptions="Center" />
+                                <Button Grid.Column="1" Text="Refresh" Command="{Binding LoadLogsCommand}"
+                                    BackgroundColor="Transparent" TextColor="{StaticResource AccentBlue}"
+                                    FontFamily="InterSemiBold" FontSize="13" Padding="0" HeightRequest="32" />
+                            </Grid>
+                            <Label Text="{Binding LogsSummary}" FontSize="12" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                            <CollectionView ItemsSource="{Binding Logs}" HeightRequest="180">
+                                <CollectionView.ItemTemplate>
+                                    <DataTemplate x:DataType="models:LogEntry">
+                                        <Label
+                                            Text="{Binding Text}"
+                                            FontSize="11"
+                                            FontFamily="InterRegular"
+                                            TextColor="{Binding IsError, Converter={StaticResource BoolToColorConverter}, ConverterParameter='#FF5252,#888899'}"
+                                            LineBreakMode="CharacterWrap"
+                                            Padding="0,2" />
+                                    </DataTemplate>
+                                </CollectionView.ItemTemplate>
+                            </CollectionView>
+                        </VerticalStackLayout>
+                    </Border>
+
+                </VerticalStackLayout>
+
+                <!-- ═════════════════ SETTINGS TAB ═════════════════ -->
+                <VerticalStackLayout x:Name="SettingsTab" Spacing="14" IsVisible="False">
+                    <Border StrokeShape="RoundRectangle 16" BackgroundColor="{StaticResource CardBackground}" Padding="20">
+                        <VerticalStackLayout Spacing="14">
+                            <Label Text="Paired Robot" FontFamily="InterSemiBold" FontSize="14" TextColor="{StaticResource TextMuted}" />
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                                <Label Grid.Column="0" Text="🤖" FontSize="40" VerticalOptions="Start" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                    <Label Text="{Binding RobotName}" FontFamily="InterBold" FontSize="18" TextColor="{StaticResource TextPrimary}" />
+                                    <Label Text="{Binding RobotModel}" FontSize="13" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                                    <Label Text="{Binding RobotMdns}" FontSize="13" TextColor="{StaticResource AccentBlue}" FontFamily="InterRegular" />
+                                </VerticalStackLayout>
+                            </Grid>
+                            <BoxView HeightRequest="1" BackgroundColor="{StaticResource Divider}" />
+                            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" RowSpacing="12">
+                                <VerticalStackLayout Grid.Row="0" Grid.Column="0">
+                                    <Label Text="Serial" FontSize="11" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                                    <Label Text="{Binding RobotSerial}" FontSize="14" TextColor="{StaticResource TextPrimary}" FontFamily="InterSemiBold" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Row="0" Grid.Column="1">
+                                    <Label Text="Firmware" FontSize="11" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                                    <Label Text="{Binding RobotFirmware}" FontSize="14" TextColor="{StaticResource TextPrimary}" FontFamily="InterSemiBold" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Row="1" Grid.Column="0">
+                                    <Label Text="Paired" FontSize="11" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                                    <Label Text="{Binding PairedAt}" FontSize="14" TextColor="{StaticResource TextPrimary}" FontFamily="InterSemiBold" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Row="1" Grid.Column="1">
+                                    <Label Text="App Version" FontSize="11" TextColor="{StaticResource TextMuted}" FontFamily="InterRegular" />
+                                    <Label Text="{Binding AppVersion}" FontSize="14" TextColor="{StaticResource TextPrimary}" FontFamily="InterSemiBold" />
+                                </VerticalStackLayout>
+                            </Grid>
+                            <Button
+                                Text="Forget Robot"
+                                Command="{Binding ForgetRobotCommand}"
+                                BackgroundColor="{StaticResource ErrorBackground}"
+                                TextColor="{StaticResource ErrorText}"
+                                FontFamily="InterSemiBold"
+                                CornerRadius="12"
+                                HeightRequest="48"
+                                BorderColor="{StaticResource ErrorText}"
+                                BorderWidth="1" />
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- ── Bottom Tab Bar ─────────────────────────────────────────────── -->
+        <Border
+            Grid.Row="2"
+            StrokeShape="RoundRectangle 0"
+            BackgroundColor="{StaticResource TabBarBackground}"
+            Padding="8,12,8,28">
+            <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="0">
+                <VerticalStackLayout Grid.Column="0" Spacing="4" x:Name="TabTelemetry">
+                    <Label Text="📊" FontSize="22" HorizontalOptions="Center" />
+                    <Label Text="Telemetry" FontSize="10" TextColor="{StaticResource AccentBlue}" FontFamily="InterSemiBold" HorizontalOptions="Center" />
+                    <VerticalStackLayout.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnTabTapped" CommandParameter="Telemetry" />
+                    </VerticalStackLayout.GestureRecognizers>
+                </VerticalStackLayout>
+                <VerticalStackLayout Grid.Column="1" Spacing="4" x:Name="TabCamera" Opacity="0.5">
+                    <Label Text="📷" FontSize="22" HorizontalOptions="Center" />
+                    <Label Text="Camera" FontSize="10" TextColor="{StaticResource TextMuted}" FontFamily="InterSemiBold" HorizontalOptions="Center" />
+                    <VerticalStackLayout.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnTabTapped" CommandParameter="Camera" />
+                    </VerticalStackLayout.GestureRecognizers>
+                </VerticalStackLayout>
+                <VerticalStackLayout Grid.Column="2" Spacing="4" x:Name="TabControls" Opacity="0.5">
+                    <Label Text="🎛️" FontSize="22" HorizontalOptions="Center" />
+                    <Label Text="Controls" FontSize="10" TextColor="{StaticResource TextMuted}" FontFamily="InterSemiBold" HorizontalOptions="Center" />
+                    <VerticalStackLayout.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnTabTapped" CommandParameter="Controls" />
+                    </VerticalStackLayout.GestureRecognizers>
+                </VerticalStackLayout>
+                <VerticalStackLayout Grid.Column="3" Spacing="4" x:Name="TabSettings" Opacity="0.5">
+                    <Label Text="⚙️" FontSize="22" HorizontalOptions="Center" />
+                    <Label Text="Settings" FontSize="10" TextColor="{StaticResource TextMuted}" FontFamily="InterSemiBold" HorizontalOptions="Center" />
+                    <VerticalStackLayout.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnTabTapped" CommandParameter="Settings" />
+                    </VerticalStackLayout.GestureRecognizers>
+                </VerticalStackLayout>
+            </Grid>
+        </Border>
+
+    </Grid>
+
+</ContentPage>
