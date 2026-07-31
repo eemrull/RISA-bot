@@ -48,7 +48,23 @@ elif [ -f "$HOME/ros2_ws/install/setup.bash" ]; then
     source "$HOME/ros2_ws/install/setup.bash"
 fi
 
-# Wait for network & hardware to settle
+# Wait for the LiDAR's USB-serial adapter to enumerate before launching.
+# A fixed sleep is a race: at boot the CP2102 is often not ready in a few
+# seconds, and the driver then reads garbage ("Check Sum X != Y", followed by
+# "-1 Device Failed"). auto_reconnect usually recovers it, but not always.
+LIDAR_DEV=/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0
+echo "[RISABOT] Waiting for LiDAR at $LIDAR_DEV ..."
+for i in $(seq 1 30); do
+    [ -e "$LIDAR_DEV" ] && break
+    sleep 1
+done
+if [ -e "$LIDAR_DEV" ]; then
+    echo "[RISABOT] LiDAR present after ${i}s"
+else
+    echo "[RISABOT] WARNING: LiDAR not found after 30s — launching anyway"
+fi
+
+# Let the adapter settle once enumerated, and give the motor board the same grace.
 sleep 3
 
 echo "[RISABOT] Starting full ROS 2 bringup..."

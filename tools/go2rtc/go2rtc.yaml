@@ -1,5 +1,8 @@
 streams:
-  astra_camera: mjpeg:http://127.0.0.1:1985/mjpeg
+  # ros2go2rtc_bridge serves multipart MJPEG here. Use the plain "http" scheme —
+  # go2rtc sniffs the content type; there is no "mjpeg:" scheme and it errors with
+  # "unsupported scheme" if you use one.
+  astra_camera: http://127.0.0.1:1985/mjpeg
 
 api:
   listen: ":1984"

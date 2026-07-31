@@ -19,6 +19,7 @@ import cv2
 from cv_bridge import CvBridge
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSPresetProfiles
 from rcl_interfaces.msg import SetParametersResult
 from sensor_msgs.msg import Image
 
@@ -135,12 +136,17 @@ class Go2rtcBridgeNode(Node):
         # (e.g. 'signage' and 'traffic_light'), and subscribing twice would
         # double the callback work for no benefit.
         self._subs: Dict[str, rclpy.subscription.Subscription] = {}
+        # SENSOR_DATA (BEST_EFFORT) is required: the Astra driver publishes
+        # /camera/color/image_raw with sensor QoS, and a RELIABLE subscriber is
+        # incompatible with it — the subscription binds but receives nothing.
+        # BEST_EFFORT also accepts the RELIABLE debug-image publishers, so one
+        # profile covers every view.
         for topic in sorted(set(VIEW_TOPICS.values())):
             self._subs[topic] = self.create_subscription(
                 Image,
                 topic,
                 lambda msg, t=topic: self._image_cb(msg, t),
-                10,
+                QoSPresetProfiles.SENSOR_DATA.value,
             )
 
         self.get_logger().info(
