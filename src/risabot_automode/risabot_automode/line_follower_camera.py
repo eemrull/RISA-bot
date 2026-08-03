@@ -310,25 +310,29 @@ class LineFollowerCamera(Node):
         """Find all white regions within a width range.
         Returns list of (center, start, end) tuples.
         """
-        regions = []
-        in_white = False
-        white_start = 0
-        for x in range(len(row)):
-            if row[x] == 255:
-                if not in_white:
-                    white_start = x
-                    in_white = True
-            else:
-                if in_white:
-                    width = x - white_start
-                    if min_w <= width <= max_w:
-                        regions.append(((white_start + x) // 2, white_start, x))
-                    in_white = False
-        if in_white:
-            width = len(row) - white_start
-            if min_w <= width <= max_w:
-                regions.append(((white_start + len(row)) // 2, white_start, len(row)))
-        return regions
+        # Vectorised run-length scan. The obvious `for x in range(len(row))` costs ~27 ms
+        # per frame across 8 scanlines here — every element access boxes a numpy scalar —
+        # which alone held color_callback under the camera's 30 Hz. Finding run edges with
+        # diff is ~20x faster and returns identical regions.
+        mask = row == 255
+        if not mask.any():
+            return []
+
+        edges = np.diff(mask.view(np.int8))
+        starts = (np.flatnonzero(edges == 1) + 1).tolist()
+        ends = (np.flatnonzero(edges == -1) + 1).tolist()
+
+        # A run touching either border has no edge transition to mark it.
+        if mask[0]:
+            starts.insert(0, 0)
+        if mask[-1]:
+            ends.append(len(row))
+
+        return [
+            ((s + e) // 2, s, e)
+            for s, e in zip(starts, ends)
+            if min_w <= e - s <= max_w
+        ]
 
     def _detect_scanlines(
         self, binary: np.ndarray, crop_h: int, w: int
