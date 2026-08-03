@@ -62,7 +62,24 @@ public partial class DashboardViewModel : ObservableObject, IAsyncDisposable
     // ── Camera Tab Properties & Controls ────────────────────────────────────
 
     [ObservableProperty] private string _cameraStreamUrl      = string.Empty;
+    [ObservableProperty] private string _cameraStreamHtml     = string.Empty;
+    [ObservableProperty] private string _cameraStreamBaseUrl  = string.Empty;
     [ObservableProperty] private string _activeCamView        = "raw";
+
+    /// <summary>
+    /// Wraps the MJPEG endpoint in a minimal document rather than navigating the WebView
+    /// straight at it. Android's WebView does not reliably render a multipart/x-mixed-replace
+    /// response as a top-level navigation, but does render it as an &lt;img&gt; source.
+    /// BaseUrl is set to the go2rtc origin so the stream is same-origin with the document.
+    /// </summary>
+    private static string BuildStreamHtml(string streamUrl) =>
+        $"""
+        <!DOCTYPE html>
+        <html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+        <body style="margin:0;height:100%;background:#0B1F3A;overflow:hidden">
+        <img src="{streamUrl}" style="width:100%;height:100%;object-fit:contain;display:block" alt="">
+        </body></html>
+        """;
 
     // ── Controls Tab ────────────────────────────────────────────────────────
 
@@ -87,7 +104,9 @@ public partial class DashboardViewModel : ObservableObject, IAsyncDisposable
 
     public void StartPolling()
     {
-        CameraStreamUrl = _api.CameraStreamUrl;
+        CameraStreamUrl     = _api.CameraStreamUrl;
+        CameraStreamBaseUrl = _api.Go2rtcBaseUrl;
+        CameraStreamHtml    = BuildStreamHtml(_api.CameraStreamUrl);
         _pollCts = new CancellationTokenSource();
         _ = Task.Run(() => PollLoopAsync(_pollCts.Token));
     }

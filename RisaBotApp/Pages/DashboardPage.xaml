@@ -165,7 +165,7 @@
                             BackgroundColor="{StaticResource CardBackground}" TextColor="{StaticResource TextPrimary}"
                             FontFamily="InterSemiBold" FontSize="12" CornerRadius="10" HeightRequest="40" Padding="0" />
                         <Button Grid.Column="2" Text="🚦 Sign"
-                            Command="{Binding SelectCamViewCommand}" CommandParameter="sign"
+                            Command="{Binding SelectCamViewCommand}" CommandParameter="signage"
                             BackgroundColor="{StaticResource CardBackground}" TextColor="{StaticResource TextPrimary}"
                             FontFamily="InterSemiBold" FontSize="12" CornerRadius="10" HeightRequest="40" Padding="0" />
                         <Button Grid.Column="3" Text="🚧 Obstacle"
@@ -176,7 +176,11 @@
 
                     <!-- Live MJPEG Stream Container -->
                     <Border StrokeShape="RoundRectangle 16" BackgroundColor="{StaticResource CardBackground}" Padding="4" HeightRequest="340">
-                        <WebView Source="{Binding CameraStreamUrl}" HorizontalOptions="Fill" VerticalOptions="Fill" />
+                        <WebView HorizontalOptions="Fill" VerticalOptions="Fill">
+                            <WebView.Source>
+                                <HtmlWebViewSource Html="{Binding CameraStreamHtml}" BaseUrl="{Binding CameraStreamBaseUrl}" />
+                            </WebView.Source>
+                        </WebView>
                     </Border>
 
                     <Label

@@ -83,8 +83,10 @@ public class ApiClient
     /// MJPEG stream URL served by go2rtc on port 1984.
     /// Single stream slot (astra_camera) — URL never changes between view switches.
     /// View switching is handled server-side by ros2go2rtc_bridge via ROS parameter.
+    /// Hits the raw endpoint rather than go2rtc's stream.html player page: the WebView
+    /// renders the multipart stream directly instead of loading a JS player on top of it.
     /// </summary>
-    public string CameraStreamUrl => $"{Go2rtcBaseUrl}/stream.html?src=astra_camera&mode=mjpeg";
+    public string CameraStreamUrl => $"{Go2rtcBaseUrl}/api/stream.mjpeg?src=astra_camera";
 
     // ── Port 8080 ROS 2 Live Endpoints ────────────────────────────────────────
 
