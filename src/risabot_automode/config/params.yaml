@@ -322,6 +322,17 @@ servo_controller:
     steering_max_deg: 50.0
     odom_vel_alpha: 0.3
     odom_velocity_deadband: 0.02
+    # ── Odometry sampling ────────────────────────────────────────────────────
+    # The motor board refreshes its encoder packet every 40 ms, so a per-sample
+    # distance/dt aliases by +-100% at a constant speed. Position integrates the
+    # raw tick delta (immune to this), while velocity differences the cumulative
+    # path length over odom_vel_window_sec, bounding the error at one board
+    # period per window. Publishing at 50 Hz keeps window endpoints within
+    # ~20 ms of a true counter update.
+    odom_publish_rate: 50.0         # Hz; read once at construction
+    odom_vel_window_sec: 0.2
+    encoder_resync_samples: 10      # consecutive rejected jumps before assuming a board reset
+    odom_debug_rate: 2.0            # Hz on /odom/debug; 0 disables. Used to calibrate ticks_per_meter
     publish_loop_stats: true
     odom_frame_id: "odom"
     base_frame_id: "base_link"

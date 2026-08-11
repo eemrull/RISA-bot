@@ -21,6 +21,7 @@ Controls:
   RB (Btn 7):                Next Challenge State
 """
 
+import collections
 import json
 import math
 import os
@@ -33,7 +34,7 @@ from nav_msgs.msg import Odometry
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
-from std_msgs.msg import Bool, String, Float32
+from std_msgs.msg import Bool, String, Float32, Float64
 
 from Rosmaster_Lib import Rosmaster
 from .topics import (
@@ -44,7 +45,9 @@ from .topics import (
     DASH_CTRL_TOPIC,
     JOY_TOPIC,
     LOOP_STATS_TOPIC,
+    ODOM_DEBUG_TOPIC,
     ODOM_FRAME,
+    ODOM_PATH_LENGTH_TOPIC,
     ODOM_TOPIC,
     SET_CHALLENGE_TOPIC,
     IMU_PITCH_TOPIC,
@@ -142,6 +145,14 @@ class ServoControllerV9(Node):
         self.declare_parameter('steering_max_deg', 50.0)
         self.declare_parameter('odom_vel_alpha', 0.3)
         self.declare_parameter('odom_velocity_deadband', 0.02)
+        # Odometry sampling. The Rosmaster board refreshes each report packet every
+        # 40 ms, so polling faster than that is what keeps the velocity window's
+        # endpoints close to a real counter update. The read is a memory fetch —
+        # Rosmaster_Lib's RX thread does the serial work — so 50 Hz is nearly free.
+        self.declare_parameter('odom_publish_rate', 50.0)
+        self.declare_parameter('odom_vel_window_sec', 0.2)
+        self.declare_parameter('encoder_resync_samples', 10)
+        self.declare_parameter('odom_debug_rate', 2.0)
         self.declare_parameter('publish_loop_stats', True)
         self.declare_parameter('odom_frame_id', ODOM_FRAME)
         self.declare_parameter('base_frame_id', BASE_FRAME)
@@ -187,6 +198,8 @@ class ServoControllerV9(Node):
         self.challenge_pub = self.create_publisher(String, SET_CHALLENGE_TOPIC, 10)
         self.cmd_vel_pub = self.create_publisher(Twist, CMD_VEL_TOPIC, 10)
         self.odom_pub = self.create_publisher(Odometry, ODOM_TOPIC, 10)
+        self.path_len_pub = self.create_publisher(Float64, ODOM_PATH_LENGTH_TOPIC, 10)
+        self.odom_debug_pub = self.create_publisher(String, ODOM_DEBUG_TOPIC, 10)
         self.loop_stats_pub = self.create_publisher(String, LOOP_STATS_TOPIC, 10)
         self.pitch_pub = self.create_publisher(Float32, IMU_PITCH_TOPIC, 10)
         self.imu_data_pub = self.create_publisher(String, IMU_DATA_TOPIC, 10)
@@ -214,9 +227,11 @@ class ServoControllerV9(Node):
         self.create_timer(0.1, self._hardware_update_loop)
 
         # Odometry Odometry properties
-        # Ackermann kinematics parameters for RISA-Bot 
-        # Ticks to meters needs calibration based on exact gear ratio and wheel diameter
-        # Using a default scaling factor for now
+        # Ackermann kinematics parameters for RISA-Bot
+        # ticks_per_meter has never been calibrated. To measure it: echo
+        # /odom/debug before and after a tape-measured straight run and take
+        # (raw_after - raw_before) / metres. Changing it rescales every distance
+        # threshold in auto_driver and parking_controller, so re-tune those too.
         self.wheel_base = float(self._param_cache['wheel_base'])
         self.ticks_per_meter = float(self._param_cache['ticks_per_meter'])
 
@@ -230,11 +245,26 @@ class ServoControllerV9(Node):
         self._last_glitch_warn_t = 0.0
         self.last_encoder_ticks = [0, 0, 0, 0] # FL, FR, RL, RR
         self.encoder_first_read = True
+        # Signed cumulative metres. This, not the pose, is the exact record of
+        # travel: it is a running sum of raw tick deltas and never passes through
+        # the clamp, deadband or velocity filter.
+        self._path_length = 0.0
+        self._raw_tick_total = 0.0
+        self._vel_hist = collections.deque()
+        self._consec_glitches = 0
+        self._last_debug_pub = 0.0
         self.encoder_loop_monitor = LoopMonitor('servo_encoder', 20.0)
         self.hw_loop_monitor = LoopMonitor('servo_hw', 10.0)
 
-        # Fast encoder loop (20 Hz)
+        # IMU + record/playback sampling loop (20 Hz).
+        # The rate is load-bearing: _playback_step replays on a hard-coded 0.05 s
+        # timer and durations are computed as len(buffer) * 0.05, so recording must
+        # keep appending exactly one sample per 50 ms. Odometry runs separately.
         self.create_timer(0.05, self._encoder_read_loop)
+
+        odom_rate = float(self._param_cache['odom_publish_rate'])
+        self.odom_loop_monitor = LoopMonitor('servo_odom', odom_rate)
+        self.create_timer(1.0 / odom_rate, self._odom_loop)
 
         # Debounce
         self.prev_buttons = [0] * 15
@@ -326,6 +356,10 @@ class ServoControllerV9(Node):
             'steering_max_deg': float(self.get_parameter('steering_max_deg').value),
             'odom_vel_alpha': float(self.get_parameter('odom_vel_alpha').value),
             'odom_velocity_deadband': float(self.get_parameter('odom_velocity_deadband').value),
+            'odom_publish_rate': float(self.get_parameter('odom_publish_rate').value),
+            'odom_vel_window_sec': float(self.get_parameter('odom_vel_window_sec').value),
+            'encoder_resync_samples': int(self.get_parameter('encoder_resync_samples').value),
+            'odom_debug_rate': float(self.get_parameter('odom_debug_rate').value),
             'publish_loop_stats': bool(self.get_parameter('publish_loop_stats').value),
             'odom_frame_id': str(self.get_parameter('odom_frame_id').value),
             'base_frame_id': str(self.get_parameter('base_frame_id').value),
@@ -392,7 +426,7 @@ class ServoControllerV9(Node):
         """Publish loop timing diagnostics."""
         if not bool(self._param_cache['publish_loop_stats']):
             return
-        for monitor in (self.encoder_loop_monitor, self.hw_loop_monitor):
+        for monitor in (self.encoder_loop_monitor, self.hw_loop_monitor, self.odom_loop_monitor):
             payload = monitor.snapshot()
             payload['node'] = self.get_name()
             self.loop_stats_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
@@ -737,7 +771,7 @@ class ServoControllerV9(Node):
         return math.degrees(math.atan2(sin_avg, cos_avg))
 
     def _encoder_read_loop(self) -> None:
-        """Read hardware encoders and compute/publish /odom"""
+        """Sample the IMU and feed the record buffer at a steady 20 Hz."""
         self.encoder_loop_monitor.tick()
 
         # Steady 20Hz recording loop
@@ -746,14 +780,6 @@ class ServoControllerV9(Node):
                 'motor_pwm': self.target_motor_val,
                 'servo_angle': self.target_servo_val
             })
-
-        now = time.monotonic()
-        dt = now - self.last_odom_time
-        
-        # Don't divide by zero if timer fires too fast
-        if dt <= 0.001 or dt > 0.3:
-            self.last_odom_time = now
-            return
 
         # Read IMU Pitch + full RPY
         try:
@@ -807,120 +833,156 @@ class ServoControllerV9(Node):
         except Exception as e:
             self.get_logger().error(f"Failed to read/publish IMU pitch: {e}")
 
+    def _steering_angle_rad(self) -> float:
+        """Infer the steering angle from the commanded servo position."""
+        # Asymmetric left/right ranges: pick the one for the side we are on.
+        servo_delta = self.servo_center - self.target_servo_val
+        if servo_delta >= 0:
+            effective_range = float(self.servo_range_left)
+        else:
+            effective_range = float(self.servo_range_right)
+        if effective_range < 1.0:
+            effective_range = 1.0
+        steer_norm = max(-1.0, min(1.0, servo_delta / effective_range))
+        return math.radians(steer_norm * float(self._param_cache['steering_max_deg']))
+
+    def _odom_loop(self) -> None:
+        """Integrate encoder ticks into /odom.
+
+        Position is integrated from the raw tick delta, which is exact and
+        telescopes across any sampling schedule. Velocity is derived separately
+        and may be clamped and filtered freely, because nothing feeds it back
+        into the pose.
+        """
+        self.odom_loop_monitor.tick()
+
+        if self.ticks_per_meter <= 0:
+            return
         try:
-            # Reads 4 motors: FL, FR, RL, RR 
-            ticks = self.bot.get_motor_encoder()
-            
-            # First initialization
-            if self.encoder_first_read or ticks is None or len(ticks) < 4:
-                if ticks and len(ticks) == 4:
-                    self.last_encoder_ticks = list(ticks)
-                    self.encoder_first_read = False
-                self.last_odom_time = now
-                return
-            
-            # Calculate delta ticks
-            d_ticks = [
-                ticks[0] - self.last_encoder_ticks[0],
-                ticks[1] - self.last_encoder_ticks[1],
-                ticks[2] - self.last_encoder_ticks[2],
-                ticks[3] - self.last_encoder_ticks[3]
-            ]
+            ticks = self.bot.get_motor_encoder()  # FL, FR, RL, RR
+        except Exception as e:
+            self.get_logger().error(f"Failed to read encoders: {e}")
+            return
+        if ticks is None or len(ticks) < 4:
+            return
+
+        now = time.monotonic()
+        # RISA-Bot uses a single drive motor. Only that channel's encoder is
+        # meaningful — the other three are undriven and return garbage.
+        motor_idx = int(self._param_cache['drive_motor_index'])
+        raw = int(ticks[motor_idx])
+
+        if self.encoder_first_read:
             self.last_encoder_ticks = list(ticks)
             self.last_odom_time = now
-            jump_thresh = float(self._param_cache['encoder_jump_threshold'])
-            valid_d_ticks = []
-            for d in d_ticks:
-                if abs(d) > jump_thresh:
-                    valid_d_ticks.append(0.0)
-                    self._encoder_glitch_count += 1
-                else:
-                    valid_d_ticks.append(float(d))
-            if self._encoder_glitch_count > 0 and now - self._last_glitch_warn_t > 1.0:
+            self.encoder_first_read = False
+            self._vel_hist.clear()
+            self._vel_hist.append((now, self._path_length))
+            return
+
+        d_raw = raw - int(self.last_encoder_ticks[motor_idx])
+
+        # Reject the whole sample rather than zeroing the delta: leaving
+        # last_encoder_ticks untouched means these ticks survive into the next
+        # pass instead of being lost. Persistent rejection means the counter
+        # really did reset (board reboot), so resync and drop one delta.
+        if abs(d_raw) > float(self._param_cache['encoder_jump_threshold']):
+            self._encoder_glitch_count += 1
+            self._consec_glitches += 1
+            if now - self._last_glitch_warn_t > 1.0:
                 self.get_logger().warn(f'Encoder jump filtered, count={self._encoder_glitch_count}')
                 self._last_glitch_warn_t = now
                 self._encoder_glitch_count = 0
-
-            # RISA-Bot uses a single rear-drive motor (motor index 0).
-            # Only use that motor's encoder — the other 3 channels are undriven
-            # and return noise/garbage that corrupts the odometry.
-            motor_idx = int(self._param_cache['drive_motor_index'])
-            avg_ticks = valid_d_ticks[motor_idx]
-            if bool(self._param_cache['odom_reverse_polarity']):
-                avg_ticks = -avg_ticks
-
-            # Convert to distance
-            if self.ticks_per_meter <= 0:
+            if self._consec_glitches < int(self._param_cache['encoder_resync_samples']):
                 return
-            distance = (avg_ticks / self.ticks_per_meter) * float(self._param_cache['odom_distance_scale'])
-            linear_velocity = distance / dt
-            max_lin = float(self._param_cache['max_linear_velocity'])
-            if abs(linear_velocity) > max_lin:
-                linear_velocity = max(-max_lin, min(max_lin, linear_velocity))
-                distance = linear_velocity * dt
-            vel_deadband = float(self._param_cache['odom_velocity_deadband'])
-            if abs(linear_velocity) < vel_deadband:
-                linear_velocity = 0.0
-                distance = 0.0
+            self.get_logger().warn('Encoder counter resync (board reset?)')
+            self.last_encoder_ticks = list(ticks)
+            self.last_odom_time = now
+            self._consec_glitches = 0
+            return
+        self._consec_glitches = 0
 
-            # Calculate steering angle from servo command (for Ackermann kinematics)
-            # Use asymmetric left/right ranges based on which side of center
-            servo_delta = self.servo_center - self.target_servo_val
-            if servo_delta >= 0:
-                effective_range = float(self.servo_range_left)
-            else:
-                effective_range = float(self.servo_range_right)
-            if effective_range < 1.0:
-                effective_range = 1.0
-            steer_norm = servo_delta / effective_range
-            steer_norm = max(-1.0, min(1.0, steer_norm))
-            steering_angle_deg = steer_norm * float(self._param_cache['steering_max_deg'])
-            steering_angle_rad = math.radians(steering_angle_deg)
-            
-            # Ackermann kinematics: w = v / R, where R = L / tan(delta)
-            # L is wheel base, delta is steering angle
-            if abs(steering_angle_rad) > 0.01:
-                turning_radius = self.wheel_base / math.tan(steering_angle_rad)
-                angular_velocity = linear_velocity / turning_radius
-            else:
-                angular_velocity = 0.0
-            angular_velocity *= float(self._param_cache['odom_yaw_scale'])
-            max_ang = float(self._param_cache['max_angular_velocity'])
-            angular_velocity = max(-max_ang, min(max_ang, angular_velocity))
+        self.last_encoder_ticks = list(ticks)
+        self.last_odom_time = now
 
-            alpha = float(self._param_cache['odom_vel_alpha'])
-            self._filtered_linear = alpha * linear_velocity + (1 - alpha) * self._filtered_linear
-            self._filtered_angular = alpha * angular_velocity + (1 - alpha) * self._filtered_angular
+        # ── Position: exact. No clamp, deadband or filter on this path. ──
+        d_ticks = float(d_raw)
+        if bool(self._param_cache['odom_reverse_polarity']):
+            d_ticks = -d_ticks
+        distance = (d_ticks / self.ticks_per_meter) * float(self._param_cache['odom_distance_scale'])
 
-            yaw_delta = self._filtered_angular * dt
+        steering_rad = self._steering_angle_rad()
 
-            # Update pose
-            self.odom_yaw += yaw_delta
-            self.odom_yaw = math.atan2(math.sin(self.odom_yaw), math.cos(self.odom_yaw))
-            self.odom_x += self._filtered_linear * math.cos(self.odom_yaw) * dt
-            self.odom_y += self._filtered_linear * math.sin(self.odom_yaw) * dt
+        # dyaw = w*dt = (v*tan(d)/L)*dt = distance*tan(d)/L, so the heading
+        # increment carries no dependence on dt at all.
+        d_yaw = 0.0
+        if abs(steering_rad) > 1e-3:
+            d_yaw = distance * math.tan(steering_rad) / self.wheel_base
+        d_yaw *= float(self._param_cache['odom_yaw_scale'])
 
-            # Build and publish Odometry message
-            odom = Odometry()
-            odom.header.stamp = self.get_clock().now().to_msg()
-            odom.header.frame_id = str(self._param_cache['odom_frame_id'])
-            odom.child_frame_id = str(self._param_cache['base_frame_id'])
+        yaw_mid = self.odom_yaw + 0.5 * d_yaw  # midpoint of the arc, not Euler
+        self.odom_x += distance * math.cos(yaw_mid)
+        self.odom_y += distance * math.sin(yaw_mid)
+        self.odom_yaw = math.atan2(math.sin(self.odom_yaw + d_yaw),
+                                   math.cos(self.odom_yaw + d_yaw))
+        self._path_length += distance
+        self._raw_tick_total += d_ticks
 
-            odom.pose.pose.position.x = self.odom_x
-            odom.pose.pose.position.y = self.odom_y
-            odom.pose.pose.position.z = 0.0
-            
-            # Quaternion from yaw
-            odom.pose.pose.orientation.z = math.sin(self.odom_yaw / 2.0)
-            odom.pose.pose.orientation.w = math.cos(self.odom_yaw / 2.0)
+        # ── Velocity: filtered freely, never fed back into the pose. ──
+        # The board refreshes the counter every 40 ms, so a per-sample
+        # delta/dt aliases badly. Differencing the cumulative path length over
+        # a fixed window bounds that error at one board period per window.
+        self._vel_hist.append((now, self._path_length))
+        window = float(self._param_cache['odom_vel_window_sec'])
+        while len(self._vel_hist) > 2 and (now - self._vel_hist[1][0]) >= window:
+            self._vel_hist.popleft()
+        t0, s0 = self._vel_hist[0]
+        span = now - t0
+        linear_velocity = (self._path_length - s0) / span if span > 1e-3 else 0.0
 
-            odom.twist.twist.linear.x = self._filtered_linear
-            odom.twist.twist.angular.z = self._filtered_angular
+        max_lin = float(self._param_cache['max_linear_velocity'])
+        linear_velocity = max(-max_lin, min(max_lin, linear_velocity))
+        if abs(linear_velocity) < float(self._param_cache['odom_velocity_deadband']):
+            linear_velocity = 0.0
 
-            self.odom_pub.publish(odom)
+        angular_velocity = 0.0
+        if abs(steering_rad) > 1e-3:
+            angular_velocity = linear_velocity * math.tan(steering_rad) / self.wheel_base
+        angular_velocity *= float(self._param_cache['odom_yaw_scale'])
+        max_ang = float(self._param_cache['max_angular_velocity'])
+        angular_velocity = max(-max_ang, min(max_ang, angular_velocity))
 
-        except Exception as e:
-            self.get_logger().error(f"Failed to read encoders: {e}")
+        alpha = float(self._param_cache['odom_vel_alpha'])
+        self._filtered_linear = alpha * linear_velocity + (1 - alpha) * self._filtered_linear
+        self._filtered_angular = alpha * angular_velocity + (1 - alpha) * self._filtered_angular
+
+        odom = Odometry()
+        odom.header.stamp = self.get_clock().now().to_msg()
+        odom.header.frame_id = str(self._param_cache['odom_frame_id'])
+        odom.child_frame_id = str(self._param_cache['base_frame_id'])
+
+        odom.pose.pose.position.x = self.odom_x
+        odom.pose.pose.position.y = self.odom_y
+        odom.pose.pose.position.z = 0.0
+        odom.pose.pose.orientation.z = math.sin(self.odom_yaw / 2.0)
+        odom.pose.pose.orientation.w = math.cos(self.odom_yaw / 2.0)
+
+        odom.twist.twist.linear.x = self._filtered_linear
+        odom.twist.twist.angular.z = self._filtered_angular
+
+        self.odom_pub.publish(odom)
+        self.path_len_pub.publish(Float64(data=self._path_length))
+
+        debug_rate = float(self._param_cache['odom_debug_rate'])
+        if debug_rate > 0.0 and now - self._last_debug_pub >= 1.0 / debug_rate:
+            self._last_debug_pub = now
+            self.odom_debug_pub.publish(String(data=json.dumps({
+                'raw': raw,
+                'd_cum': round(self._raw_tick_total, 1),
+                'path_m': round(self._path_length, 4),
+                'tpm': self.ticks_per_meter,
+                'glitch': self._encoder_glitch_count,
+            }, separators=(',', ':'))))
 
     # ─────────── Record & Playback methods ───────────
 

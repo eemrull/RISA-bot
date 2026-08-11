@@ -7,7 +7,11 @@ topic -- so this node is the entire odometry interface to SLAM.
 
 servo_controller integrates its heading from the *commanded* servo position with
 no steering feedback, so its published orientation drifts without bound. This
-node keeps only the distance travelled from /odom and takes heading from the IMU.
+node keeps only the distance travelled and takes heading from the IMU.
+
+Distance comes from /odom/path_length (signed cumulative metres, straight off the
+encoder ticks). An older control_servo does not publish it, so the /odom pose
+chord remains as a fallback until the first path-length message arrives.
 """
 
 import json
@@ -20,12 +24,13 @@ from nav_msgs.msg import Odometry
 import rclpy
 from rclpy.node import Node
 
-from std_msgs.msg import String
+from std_msgs.msg import Float64, String
 
 from tf2_ros import TransformBroadcaster
 
 
 ODOM_TOPIC = '/odom'
+ODOM_PATH_LENGTH_TOPIC = '/odom/path_length'
 IMU_RPY_TOPIC = '/imu/rpy'
 
 
@@ -61,11 +66,14 @@ class OdomTfPublisher(Node):
         self._yaw_raw_prev = None
         self._yaw_offset = None
         self._odom_prev = None
+        self._path_prev = None
+        self._use_path_length = False
 
         self.br = TransformBroadcaster(self)
 
         self.create_subscription(String, IMU_RPY_TOPIC, self._imu_cb, 10)
         self.create_subscription(Odometry, ODOM_TOPIC, self._odom_cb, 10)
+        self.create_subscription(Float64, ODOM_PATH_LENGTH_TOPIC, self._path_cb, 10)
 
         # Broadcast on an independent timer rather than from _odom_cb:
         # servo_controller's encoder loop early-returns on a long dt or on its
@@ -100,8 +108,26 @@ class OdomTfPublisher(Node):
         self._yaw_raw_prev = raw
         self.yaw = self._yaw_unwrapped - self._yaw_offset
 
+    def _path_cb(self, msg: Float64) -> None:
+        """Advance the pose by servo_controller's signed cumulative path length."""
+        if not self._use_path_length:
+            self._use_path_length = True
+            self.get_logger().info('/odom/path_length seen; chord fallback disabled')
+
+        path = float(msg.data)
+        prev = self._path_prev
+        self._path_prev = path
+
+        if prev is None or self._yaw_offset is None:
+            return
+
+        self._advance(path - prev)
+
     def _odom_cb(self, msg: Odometry) -> None:
-        """Advance the pose by the distance /odom travelled, along the IMU heading."""
+        """Recover distance from the pose chord, for a control_servo without path length."""
+        if self._use_path_length:
+            return
+
         p = msg.pose.pose.position
         prev = self._odom_prev
         self._odom_prev = (p.x, p.y)
@@ -109,18 +135,21 @@ class OdomTfPublisher(Node):
         if prev is None or self._yaw_offset is None:
             return
 
-        # servo_controller builds its pose as x += v*cos(yaw)*dt, y += v*sin(yaw)*dt,
-        # so the chord between consecutive poses recovers |v*dt| exactly regardless
-        # of how wrong its yaw was. This also reuses its own monotonic dt, keeping
-        # every timing concern out of this node.
+        # The chord between consecutive poses recovers |v*dt| regardless of how
+        # wrong servo_controller's own yaw was, but the sign has to come from the
+        # twist -- which lags through zero, so a reversal is briefly wrong. That
+        # is why path length is preferred whenever it is available.
         ds = math.hypot(p.x - prev[0], p.y - prev[1])
-
-        if ds > self.max_odom_step:
-            self.get_logger().warn(f'Ignoring {ds:.2f} m odom jump (publisher restart?)')
-            return
-
         if msg.twist.twist.linear.x < 0.0:
             ds = -ds
+
+        self._advance(ds)
+
+    def _advance(self, ds: float) -> None:
+        """Move the pose ds metres along the current IMU heading."""
+        if abs(ds) > self.max_odom_step:
+            self.get_logger().warn(f'Ignoring {ds:.2f} m odom jump (publisher restart?)')
+            return
 
         self.x += ds * math.cos(self.yaw)
         self.y += ds * math.sin(self.yaw)
