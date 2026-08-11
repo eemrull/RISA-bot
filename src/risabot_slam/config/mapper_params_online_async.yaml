@@ -1,0 +1,84 @@
+# slam_toolbox (async) tuned for RISA-bot.
+#
+# Robot context that drove the non-default values:
+#   - YDLiDAR T-mini Plus, 360 deg, 10 Hz, mounted 0.12 m above base_link
+#   - small indoor Ackermann car -- CANNOT rotate in place
+#   - low speed, and odometry whose heading comes from an EMA-filtered IMU
+#   - RDK X5: modest CPU, shared with nothing else in the isolated test launch
+#
+# Async (not sync) so the mapper drops scans under load instead of blocking.
+#
+# The two knobs to reach for on hardware are the variance penalties:
+#   map shears during turns      -> raise  angle_variance_penalty
+#   map ghosts/doubles on straights -> lower distance_variance_penalty
+
+slam_toolbox:
+  ros__parameters:
+
+    # ---- Plugins ----
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    ceres_dogleg_type: TRADITIONAL_DOGLEG
+    ceres_loss_function: None
+
+    # ---- Frames / topics ----
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_link
+    scan_topic: /scan            # launch overrides to /scan_restamped when restamp:=true
+    mode: mapping
+    use_sim_time: false
+
+    # ---- Rates ----
+    debug_logging: false
+    throttle_scans: 1
+    transform_publish_period: 0.02   # 50 Hz map->odom, must be well under the scan period
+    map_update_interval: 2.0         # the OccupancyGrid dominates WiFi bandwidth to RViz
+    resolution: 0.05                 # 5 cm, standard for a small indoor arena
+    max_laser_range: 12.0            # NOT the sensor's 16.0 -- long returns are noisy
+    minimum_time_interval: 0.2       # process at 5 Hz from a 10 Hz scan, leaves CPU headroom
+    transform_timeout: 0.5           # generous, covers the driver's scan-stamp lag
+    tf_buffer_duration: 30.0
+    stack_size_to_use: 40000000
+    enable_interactive_mode: true
+
+    # ---- Node insertion ----
+    use_scan_matching: true
+    use_scan_barycenter: true
+    minimum_travel_distance: 0.10    # default 0.5 is far too coarse for a few-metre track
+    # Heading only changes while translating on an Ackermann car, so the distance
+    # gate above nearly always fires first and this is close to inert. Kept small
+    # because it is the only lever that densifies nodes through tight arcs.
+    minimum_travel_heading: 0.10
+    scan_buffer_size: 30
+    scan_buffer_maximum_scan_distance: 12.0
+    link_match_minimum_response_fine: 0.1
+    link_scan_maximum_distance: 1.5
+    loop_search_maximum_distance: 3.0
+    do_loop_closing: true
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_coarse: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine: 0.45
+
+    # ---- Correlation ----
+    correlation_search_space_dimension: 0.5
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.1
+
+    # ---- Loop closure search ----
+    loop_search_space_dimension: 8.0
+    loop_search_space_resolution: 0.05
+    loop_search_space_smear_deviation: 0.03
+
+    # ---- Scan matcher ----
+    distance_variance_penalty: 0.5
+    angle_variance_penalty: 1.0
+    fine_search_angle_offset: 0.00349
+    coarse_search_angle_offset: 0.349
+    coarse_angle_resolution: 0.0349
+    minimum_angle_penalty: 0.9
+    minimum_distance_penalty: 0.5
+    use_response_expansion: true
