@@ -310,14 +310,19 @@ servo_controller:
     unlock_neutral_threshold: 0.15
     hw_heartbeat_sec: 1.0
     hw_fail_limit: 5
-    ticks_per_meter: 1050.0
+    # Measured 2026-08-11 over six taped 2 m legs: 6322/6141/6307/6174/6338/6216.
+    # Forward legs read 2.4% high against reverse, so both directions are averaged.
+    # The previous 1050.0 was an uncalibrated guess and inflated every distance 5.9x.
+    ticks_per_meter: 6249.0
     drive_motor_index: 0        # which encoder channel to use (0=FL, 1=FR, 2=RL, 3=RR)
     odom_distance_scale: 1.0
     odom_yaw_scale: 1.0
     encoder_jump_threshold: 800.0
     max_linear_velocity: 1.0
     max_angular_velocity: 6.0
-    odom_reverse_polarity: false
+    # Driving forward decrements the encoder counter, so distance must be negated
+    # or SLAM maps the robot travelling backwards.
+    odom_reverse_polarity: true
     wheel_base: 0.14
     steering_max_deg: 50.0
     odom_vel_alpha: 0.3
