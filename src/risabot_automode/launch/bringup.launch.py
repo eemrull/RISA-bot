@@ -272,6 +272,17 @@ def generate_launch_description():
         # P. slam_toolbox (async: drops scans under load rather than blocking).
         #    Delayed 8 s -- after perception (3 s) and auto_driver (5 s) -- so the
         #    scan matcher is not competing with node startup for the X5's CPU.
+        #
+        #    respawn is what makes "Restart Mapping" possible. This build advertises
+        #    no reset service (ros2 service list: save_map, pause_new_measurements,
+        #    serialize/deserialize, clear_changes -- and nothing else), and there is
+        #    no other way to clear the pose graph in place. So the dashboard clears
+        #    it by signalling this process and letting launch bring it back with an
+        #    empty map, which takes ~2 s instead of restarting the whole stack.
+        #
+        #    It is also the right setting on its own merits: slam_toolbox is the one
+        #    node here that can be killed by the OOM reaper under memory pressure
+        #    without taking the robot with it, and coming back beats staying dead.
         TimerAction(period=8.0, actions=[
             Node(
                 package='slam_toolbox',
@@ -280,6 +291,8 @@ def generate_launch_description():
                 output='screen',
                 parameters=[slam_params],
                 condition=IfCondition(slam),
+                respawn=True,
+                respawn_delay=2.0,
             ),
         ]),
     ])

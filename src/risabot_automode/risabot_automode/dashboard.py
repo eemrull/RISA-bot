@@ -12,6 +12,7 @@ import csv
 import http.server
 import json
 import math
+import signal
 import socketserver
 import struct
 import threading
@@ -1220,25 +1221,108 @@ def _slam_save_map(name: str) -> dict:
     return {'ok': False, 'error': f'save_map failed (result={result})'}
 
 
-def _slam_restart() -> dict:
-    """Clear the pose graph so mapping restarts from the current pose."""
+def _slam_reset_service_ready() -> bool:
+    """Whether a reset service is both installed and advertised.
+
+    Two independent things have to hold: the srv type has to be importable, and
+    the running node has to advertise it. They are not the same — this robot's
+    Humble build has neither, but a build could ship the type without
+    advertising it, and the type check alone would then promise a working reset.
+    """
     Reset = _slam_srv_type('Reset')
     if Reset is None:
-        # Older slam_toolbox builds have no reset service and no equivalent —
-        # re-initialisation is not exposed at all. Say so plainly rather than
-        # silently doing nothing; the app greys the button out on this error.
-        return {'ok': False,
-                'error': 'This slam_toolbox build has no reset service; '
-                         'restart the stack to clear the map'}
-    req = Reset.Request()
-    if hasattr(req, 'pause_new_measurements'):
-        req.pause_new_measurements = False
-    res, err = _slam_call('/slam_toolbox/reset', 'Reset', req)
-    if err:
-        return {'ok': False, 'error': err}
+        return False
+    client = _slam_client('/slam_toolbox/reset', Reset)
+    return client is not None and client.service_is_ready()
+
+
+def _slam_toolbox_pid():
+    """PID of the running async_slam_toolbox_node, or None.
+
+    Read from /proc rather than shelling out to pgrep: dashboard.py has no
+    subprocess import today and its lean import list is worth keeping, and
+    returning the PID lets the caller decide whether a restart is possible
+    *before* acting, instead of firing a blind pkill and hoping.
+    """
+    try:
+        for entry in os.listdir('/proc'):
+            if not entry.isdigit():
+                continue
+            try:
+                with open('/proc/%s/cmdline' % entry, 'rb') as fh:
+                    if b'async_slam_toolbox_node' in fh.read():
+                        return int(entry)
+            except OSError:
+                continue    # process exited between listdir and open, or not ours
+    except Exception:
+        pass
+    return None
+
+
+def _slam_restart_supported() -> bool:
+    """Whether Restart Mapping can do anything on this robot.
+
+    Either route counts: a real reset service, or a live process we can signal
+    and have launch respawn. The second is how it actually works here.
+    """
+    return _slam_reset_service_ready() or _slam_toolbox_pid() is not None
+
+
+def _slam_restart() -> dict:
+    """Clear the pose graph so mapping restarts from the current pose."""
     global _slam_paused
-    _slam_paused = False
-    return {'ok': True, 'msg': 'Pose graph cleared'}
+
+    # Preferred route, when a build has it: in-process, no gap in coverage.
+    if _slam_reset_service_ready():
+        Reset = _slam_srv_type('Reset')
+        req = Reset.Request()
+        if hasattr(req, 'pause_new_measurements'):
+            req.pause_new_measurements = False
+        res, err = _slam_call('/slam_toolbox/reset', 'Reset', req)
+        if err:
+            return {'ok': False, 'error': err}
+        _slam_paused = False
+        return {'ok': True, 'msg': 'Pose graph cleared'}
+
+    # Fallback, and the live path on this robot: signal the node and let launch
+    # respawn it with an empty map. Depends on respawn=True in
+    # bringup.launch.py -- without that the node stays dead, so the outcome is
+    # verified below rather than assumed.
+    pid = _slam_toolbox_pid()
+    if pid is None:
+        return {'ok': False,
+                'error': 'slam_toolbox is not running, so there is no map to clear'}
+
+    try:
+        # SIGINT, not SIGKILL: rclpy unwinds cleanly, so the node deregisters
+        # from the graph instead of leaving a stale entry for launch to trip on.
+        os.kill(pid, signal.SIGINT)
+    except OSError as e:
+        return {'ok': False, 'error': 'Could not signal slam_toolbox: %s' % e}
+
+    # respawn_delay is 2 s; allow generously more, since the node also has to
+    # re-read its params and re-advertise before it is genuinely back.
+    deadline = time.time() + 15.0
+    while time.time() < deadline:
+        time.sleep(0.25)
+        new_pid = _slam_toolbox_pid()
+        if new_pid is not None and new_pid != pid:
+            _slam_paused = False
+            # The map cache still holds the old grid. Clearing it here means the
+            # app's next poll reports no map rather than serving the map that was
+            # just discarded -- which would look exactly like a restart that
+            # silently failed.
+            if _node_ref is not None:
+                with _node_ref.map_lock:
+                    _node_ref.map_info = None
+                    _node_ref.map_cells = None
+                    _node_ref.map_seq = 0
+                    _node_ref.map_time = 0.0
+            return {'ok': True, 'msg': 'Mapping restarted from the current pose'}
+
+    return {'ok': False,
+            'error': 'slam_toolbox was stopped but did not come back within 15 s. '
+                     'Check that bringup.launch.py sets respawn=True on it'}
 
 
 def _slam_set_paused(want_paused: bool) -> dict:
@@ -1306,6 +1390,9 @@ def _slam_status() -> dict:
         'ok': True,
         'running': running,
         'paused': _slam_paused,
+        # Advertised so the app can retire Restart Mapping on arrival rather
+        # than offering a button whose only outcome is an error dialog.
+        'restart_supported': _slam_restart_supported(),
         'map_seq': seq,
         'map_age_sec': round(age, 2),
         'width': int(info.width) if info else 0,

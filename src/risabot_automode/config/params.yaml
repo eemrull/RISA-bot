@@ -417,5 +417,11 @@ odom_tf_publisher:
     odom_frame: odom
     base_frame: base_link
     yaw_sign: 1.0                 # flip to -1.0 if the IMU reports clockwise-positive yaw
-    publish_rate: 50.0            # must stay well above the 10 Hz scan rate
+    # 25 Hz, down from the 50 Hz slam_test.launch.py used. That launch had the box to
+    # itself; under bringup this node measured 44% of a core to broadcast one transform,
+    # on a system already at 4.8% idle. slam_toolbox interpolates TF between the two
+    # samples bracketing each scan stamp, so what matters is spacing relative to the 10 Hz
+    # scan, not absolute rate — 40 ms still brackets every scan with room to spare.
+    # Nothing else consumes odom -> base_link, so this trades nothing away.
+    publish_rate: 25.0
     max_odom_step: 0.5            # metres; a larger jump means a publisher restarted
