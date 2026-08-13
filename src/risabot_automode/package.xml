@@ -13,7 +13,11 @@
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>cv_bridge</depend>
+  <depend>tf2_ros</depend>
   <exec_depend>joy</exec_depend>
+  <!-- bringup.launch.py starts the SLAM stack (slam:=true by default) -->
+  <exec_depend>risabot_slam</exec_depend>
+  <exec_depend>slam_toolbox</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
 

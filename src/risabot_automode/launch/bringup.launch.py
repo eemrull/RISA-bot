@@ -2,13 +2,29 @@
 Bringup Launch File — RISA-bot (refactor-test)
 Launches ALL nodes in one command — no separate terminals needed.
   Usage: ros2 launch risabot_automode bringup.launch.py
+         ros2 launch risabot_automode bringup.launch.py slam:=false
+
+SLAM (slam_toolbox + odom_tf_publisher) runs here so the dashboard on :8080 —
+and therefore the companion app — can see the map. risabot_slam's own
+slam_test.launch.py remains for standalone RViz debugging; the two cannot run
+at once because both claim the LiDAR and the motor board.
+
+Pass slam:=false to drop the scan matcher if it starves the camera/YOLO
+pipeline on competition day.
 """
 
 import os
 
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction, SetEnvironmentVariable
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    TimerAction,
+    SetEnvironmentVariable,
+)
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
@@ -16,7 +32,11 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     astra_pkg = get_package_share_directory('astra_camera')
     risabot_pkg = get_package_share_directory('risabot_automode')
+    slam_pkg = get_package_share_directory('risabot_slam')
     params_file = os.path.join(risabot_pkg, 'config', 'params.yaml')
+    slam_params = os.path.join(slam_pkg, 'config', 'mapper_params_online_async.yaml')
+
+    slam = LaunchConfiguration('slam')
 
     # --- Disable FastRTPS shared memory to prevent /dev/shm corruption ---
     shm_xml = os.path.join(risabot_pkg, 'config', 'disable_shm.xml')
@@ -25,6 +45,8 @@ def generate_launch_description():
     lidar_port = '/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0'
 
     return LaunchDescription([
+
+        DeclareLaunchArgument('slam', default_value='true'),
 
         # Disable shared memory transport (prevents DDS communication failures)
         SetEnvironmentVariable('FASTRTPS_DEFAULT_PROFILES_FILE', shm_xml),
@@ -56,7 +78,11 @@ def generate_launch_description():
                 'angle_max': 180.0,
                 'angle_min': -180.0,
                 'range_max': 16.0,
-                'range_min': 0.02,
+                # 0.15, not 0.02: a 360 deg scanner 0.12 m above base_link ranges
+                # the chassis itself. Those self-hits smear the SLAM map and poison
+                # scan matching, and obstacle_avoidance was taking them as real
+                # returns too -- it filters on the driver's declared range_min.
+                'range_min': 0.15,
                 'frequency': 10.0,
                 'fixed_resolution': True,
                 'reversion': True,
@@ -224,4 +250,36 @@ def generate_launch_description():
                 'resize_width': 320,
             }]
         ),
+
+        # ==================== SLAM ====================
+
+        # O. odom → base_link TF. The entire odometry interface to slam_toolbox,
+        #    which consumes TF and /scan only. servo_controller broadcasts no TF
+        #    itself, so this is the sole source of the edge -- tf2 silently drops
+        #    a second transform sharing a stamp. Delayed 2 s so servo_controller
+        #    is already publishing /odom/path_length and /imu/rpy.
+        TimerAction(period=2.0, actions=[
+            Node(
+                package='risabot_slam',
+                executable='odom_tf_publisher',
+                name='odom_tf_publisher',
+                output='screen',
+                parameters=[params_file],
+                condition=IfCondition(slam),
+            ),
+        ]),
+
+        # P. slam_toolbox (async: drops scans under load rather than blocking).
+        #    Delayed 8 s -- after perception (3 s) and auto_driver (5 s) -- so the
+        #    scan matcher is not competing with node startup for the X5's CPU.
+        TimerAction(period=8.0, actions=[
+            Node(
+                package='slam_toolbox',
+                executable='async_slam_toolbox_node',
+                name='slam_toolbox',
+                output='screen',
+                parameters=[slam_params],
+                condition=IfCondition(slam),
+            ),
+        ]),
     ])

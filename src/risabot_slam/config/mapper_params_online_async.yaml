@@ -4,7 +4,10 @@
 #   - YDLiDAR T-mini Plus, 360 deg, 10 Hz, mounted 0.12 m above base_link
 #   - small indoor Ackermann car -- CANNOT rotate in place
 #   - low speed, and odometry whose heading comes from an EMA-filtered IMU
-#   - RDK X5: modest CPU, shared with nothing else in the isolated test launch
+#   - RDK X5: modest CPU. bringup.launch.py now runs this alongside the Astra
+#     camera and the YOLO signage detector, so the scan matcher no longer has
+#     the board to itself -- launch with slam:=false if perception starves.
+#     slam_test.launch.py still runs it in isolation.
 #
 # Async (not sync) so the mapper drops scans under load instead of blocking.
 #
@@ -35,7 +38,8 @@ slam_toolbox:
     debug_logging: false
     throttle_scans: 1
     transform_publish_period: 0.02   # 50 Hz map->odom, must be well under the scan period
-    map_update_interval: 2.0         # the OccupancyGrid dominates WiFi bandwidth to RViz
+    map_update_interval: 1.0         # 1 Hz so the app's Map page feels live; the
+                                     # OccupancyGrid is the heaviest thing on the wire
     resolution: 0.05                 # 5 cm, standard for a small indoor arena
     max_laser_range: 12.0            # NOT the sensor's 16.0 -- long returns are noisy
     minimum_time_interval: 0.2       # process at 5 Hz from a 10 Hz scan, leaves CPU headroom

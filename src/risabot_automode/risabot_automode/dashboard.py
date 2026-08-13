@@ -13,18 +13,26 @@ import http.server
 import json
 import math
 import socketserver
+import struct
 import threading
 import time
 import os
 import yaml
+import zlib
 
 import rclpy
 from geometry_msgs.msg import Twist
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import OccupancyGrid, Odometry
 from rcl_interfaces.msg import Parameter as RosParameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import GetParameters, SetParameters
 from rclpy.node import Node
-from rclpy.qos import QoSPresetProfiles
+from rclpy.qos import (
+    QoSDurabilityPolicy,
+    QoSHistoryPolicy,
+    QoSPresetProfiles,
+    QoSProfile,
+    QoSReliabilityPolicy,
+)
 from sensor_msgs.msg import Joy, LaserScan
 from std_msgs.msg import Bool, Float32, String
 
@@ -325,7 +333,29 @@ class DashboardNode(Node):
         # Tunnel debug info for LiDAR overlay
         self.tunnel_debug = ''  # "left,right,error,angular_z"
         self.tunnel_debug_lock = threading.Lock()
-        
+
+        # ── SLAM occupancy grid (the app's Map page) ──
+        # Only the metadata and the raw cell array are kept; the PNG is rendered
+        # on demand in the HTTP handler so a client that never asks costs nothing.
+        self.map_lock = threading.Lock()
+        self.map_info = None      # nav_msgs/MapMetaData
+        self.map_cells = None     # array of int8, row-major from the bottom-left
+        self.map_seq = 0          # bumped on every /map message; the app's cache key
+        self.map_time = 0.0       # monotonic stamp of the last /map, for liveness
+
+        # map -> base_link comes from TF, not from self.data's odom pose: the odom
+        # pose misses the map -> odom correction, which is exactly what jumps at
+        # loop closure and is what makes the marker sit right on the map.
+        self.tf_buffer = None
+        self.tf_listener = None
+        try:
+            from tf2_ros import Buffer as _TfBuffer, TransformListener as _TfListener
+            self.tf_buffer = _TfBuffer()
+            self.tf_listener = _TfListener(self.tf_buffer, self)
+        except Exception as exc:  # tf2_ros missing — dashboard still serves everything else
+            self.get_logger().warn(f'TF listener unavailable, robot marker disabled: {exc}')
+
+
 
         # Shared state (read by HTTP handler)
         self.data = {
@@ -446,6 +476,19 @@ class DashboardNode(Node):
 
         # Tunnel debug for LiDAR overlay
         self.create_subscription(String, '/tunnel_debug', self._tunnel_debug_cb, 10)
+
+        # SLAM occupancy grid. slam_toolbox latches /map (reliable + transient
+        # local, depth 1) so this must match, or a subscriber that joins between
+        # map updates sees nothing until the next one.
+        self.create_subscription(
+            OccupancyGrid, '/map', self._map_cb,
+            QoSProfile(
+                depth=1,
+                history=QoSHistoryPolicy.KEEP_LAST,
+                reliability=QoSReliabilityPolicy.RELIABLE,
+                durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            ),
+        )
 
         # Record & Playback state from servo_controller
         self.create_subscription(String, RECORD_PLAYBACK_STATE_TOPIC, self._rp_state_cb, 10)
@@ -723,6 +766,33 @@ class DashboardNode(Node):
         """Store tunnel debug info for dashboard overlay."""
         with self.tunnel_debug_lock:
             self.tunnel_debug = msg.data
+
+    def _map_cb(self, msg: OccupancyGrid) -> None:
+        """Cache the latest SLAM occupancy grid for /api/slam/map.png."""
+        with self.map_lock:
+            self.map_info = msg.info
+            self.map_cells = msg.data
+            self.map_seq += 1
+            self.map_time = time.monotonic()
+
+    def get_map_pose(self):
+        """Look up map -> base_link. Returns (x, y, yaw) or None if unavailable."""
+        if self.tf_buffer is None:
+            return None
+        try:
+            from rclpy.time import Time as _Time
+            # Time() means "latest available" -- asking for now() would fail
+            # whenever slam_toolbox's map -> odom is a few ms behind.
+            tf = self.tf_buffer.lookup_transform('map', 'base_link', _Time())
+        except Exception:
+            return None
+        t = tf.transform.translation
+        q = tf.transform.rotation
+        yaw = math.atan2(
+            2.0 * (q.w * q.z + q.x * q.y),
+            1.0 - 2.0 * (q.y * q.y + q.z * q.z),
+        )
+        return (t.x, t.y, yaw)
 
     def _rp_state_cb(self, msg: String) -> None:
         """Update record/playback state from servo_controller."""
@@ -1003,6 +1073,259 @@ def _save_params_to_yaml():
         return {'ok': False, 'error': str(e)}
 
 
+# ======================== SLAM: PNG encoding ========================
+# Written against zlib/struct rather than numpy or cv2 on purpose: dashboard.py
+# imports nothing heavier than the stdlib plus ROS messages, and a 300x300 grid
+# encodes in a few milliseconds. As JSON the same grid is ~250 KB; as a greyscale
+# PNG a mostly-unknown map is 5-20 KB.
+
+MAPS_DIR = os.path.expanduser('~/risabot_maps')
+
+# OccupancyGrid occupancy 0..100 -> greyscale 255 (free) .. 0 (occupied).
+_OCC_LUT = bytes(max(0, min(255, 255 - int(v * 2.55 + 0.5))) for v in range(101))
+_UNKNOWN_GREY = 127
+
+
+def _png_chunk(tag: bytes, payload: bytes) -> bytes:
+    """Frame one PNG chunk: length, type, data, CRC32 over type+data."""
+    return (struct.pack('>I', len(payload)) + tag + payload
+            + struct.pack('>I', zlib.crc32(tag + payload) & 0xFFFFFFFF))
+
+
+def _encode_png_gray(width: int, height: int, rows) -> bytes:
+    """Build an 8-bit greyscale PNG from an iterable of `height` row bytestrings."""
+    # Filter type 0 (None) on every row -- the map is blocky, so the fancier
+    # filters buy little and cost a pass over every pixel.
+    raw = b''.join(b'\x00' + row for row in rows)
+    return (b'\x89PNG\r\n\x1a\n'
+            + _png_chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 0, 0, 0, 0))
+            + _png_chunk(b'IDAT', zlib.compress(raw, 6))
+            + _png_chunk(b'IEND', b''))
+
+
+def _render_map_png(info, cells) -> bytes:
+    """Render a cached OccupancyGrid as a greyscale PNG, top-row-first.
+
+    OccupancyGrid is row-major from the BOTTOM-left origin; PNG rows run top
+    down. Emitting the rows in reverse is the whole difference between a correct
+    map and one that is vertically mirrored.
+    """
+    w = int(info.width)
+    h = int(info.height)
+    lut = _OCC_LUT
+    unknown = _UNKNOWN_GREY
+
+    def rows():
+        for r in range(h - 1, -1, -1):
+            base = r * w
+            yield bytes(
+                lut[c] if 0 <= c <= 100 else unknown
+                for c in cells[base:base + w]
+            )
+
+    return _encode_png_gray(w, h, rows())
+
+
+# ======================== SLAM: service calls ========================
+# Every call goes through _param_helper_node, never the dashboard node: the
+# dashboard spins on a MultiThreadedExecutor and these run on HTTP handler
+# threads, so calling from here onto the main node risks a deadlock. The helper
+# node has its own SingleThreadedExecutor spun by its own thread.
+
+_slam_clients = {}
+_slam_clients_lock = threading.Lock()
+_slam_srv_cache = {}
+
+# slam_toolbox exposes no way to query whether it is paused, so the toggle's own
+# reported status is tracked here. It is advisory: a restart of slam_toolbox
+# resets the real state without telling us.
+_slam_paused = False
+
+
+def _slam_srv_type(name):
+    """Lazily import a slam_toolbox service type. None when not installed."""
+    if name not in _slam_srv_cache:
+        try:
+            mod = __import__('slam_toolbox.srv', fromlist=[name])
+            _slam_srv_cache[name] = getattr(mod, name)
+        except Exception:
+            _slam_srv_cache[name] = None
+    return _slam_srv_cache[name]
+
+
+def _slam_client(service, srv_type):
+    """Get or create a cached client for a slam_toolbox service."""
+    with _slam_clients_lock:
+        if service not in _slam_clients:
+            if _param_helper_node is None:
+                return None
+            _slam_clients[service] = _param_helper_node.create_client(srv_type, service)
+    return _slam_clients[service]
+
+
+def _slam_call(service, type_name, request, timeout=8.0):
+    """Call a slam_toolbox service. Returns (response, error_string)."""
+    srv_type = _slam_srv_type(type_name)
+    if srv_type is None:
+        return None, f'slam_toolbox/srv/{type_name} not available on this install'
+    client = _slam_client(service, srv_type)
+    if client is None:
+        return None, 'Dashboard helper node not ready'
+    if not client.service_is_ready():
+        if not client.wait_for_service(timeout_sec=0.5):
+            return None, 'slam_toolbox not running'
+    try:
+        future = client.call_async(request)
+        deadline = time.time() + timeout
+        while not future.done() and time.time() < deadline:
+            time.sleep(0.02)
+        if not future.done():
+            return None, 'Timeout waiting for slam_toolbox'
+        return future.result(), None
+    except Exception as e:
+        return None, str(e)
+
+
+def _safe_map_name(name: str) -> str:
+    """Reduce a user-supplied map name to a bare, path-free filename stem."""
+    cleaned = ''.join(c for c in (name or '').strip() if c.isalnum() or c in '_-')
+    return cleaned[:64] or time.strftime('map_%Y%m%d_%H%M%S')
+
+
+def _slam_save_map(name: str) -> dict:
+    """Ask slam_toolbox to write <MAPS_DIR>/<name>.pgm + .yaml."""
+    SaveMap = _slam_srv_type('SaveMap')
+    if SaveMap is None:
+        return {'ok': False, 'error': 'slam_toolbox/srv/SaveMap not available'}
+    stem = _safe_map_name(name)
+    try:
+        os.makedirs(MAPS_DIR, exist_ok=True)
+    except Exception as e:
+        return {'ok': False, 'error': f'Cannot create {MAPS_DIR}: {e}'}
+
+    req = SaveMap.Request()
+    # SaveMap.name is a std_msgs/String, and slam_toolbox passes it to map_saver
+    # as a path prefix. An absolute path is required: slam_toolbox's cwd is
+    # wherever the launch was run from, which is not where the app looks.
+    req.name = String(data=os.path.join(MAPS_DIR, stem))
+    res, err = _slam_call('/slam_toolbox/save_map', 'SaveMap', req)
+    if err:
+        return {'ok': False, 'error': err}
+    # RESULT_SUCCESS = 0, RESULT_NO_MAP_RECEIVED = 1, RESULT_UNDEFINED_FAILURE = 255
+    result = int(getattr(res, 'result', 255))
+    if result == 0:
+        return {'ok': True, 'name': stem, 'path': os.path.join(MAPS_DIR, stem)}
+    if result == 1:
+        return {'ok': False, 'error': 'slam_toolbox has no map yet'}
+    return {'ok': False, 'error': f'save_map failed (result={result})'}
+
+
+def _slam_restart() -> dict:
+    """Clear the pose graph so mapping restarts from the current pose."""
+    Reset = _slam_srv_type('Reset')
+    if Reset is None:
+        # Older slam_toolbox builds have no reset service and no equivalent —
+        # re-initialisation is not exposed at all. Say so plainly rather than
+        # silently doing nothing; the app greys the button out on this error.
+        return {'ok': False,
+                'error': 'This slam_toolbox build has no reset service; '
+                         'restart the stack to clear the map'}
+    req = Reset.Request()
+    if hasattr(req, 'pause_new_measurements'):
+        req.pause_new_measurements = False
+    res, err = _slam_call('/slam_toolbox/reset', 'Reset', req)
+    if err:
+        return {'ok': False, 'error': err}
+    global _slam_paused
+    _slam_paused = False
+    return {'ok': True, 'msg': 'Pose graph cleared'}
+
+
+def _slam_set_paused(want_paused: bool) -> dict:
+    """Drive slam_toolbox to the requested pause state.
+
+    /slam_toolbox/pause_new_measurements is a TOGGLE with an empty request, so
+    the desired state is reached by toggling and reading back the reported
+    status — at most twice, which also re-syncs us if the tracked state drifted.
+    """
+    global _slam_paused
+    Pause = _slam_srv_type('Pause')
+    if Pause is None:
+        return {'ok': False, 'error': 'slam_toolbox/srv/Pause not available'}
+
+    for _ in range(2):
+        if _slam_paused == want_paused:
+            return {'ok': True, 'paused': _slam_paused}
+        res, err = _slam_call('/slam_toolbox/pause_new_measurements', 'Pause',
+                              Pause.Request())
+        if err:
+            return {'ok': False, 'error': err}
+        _slam_paused = bool(getattr(res, 'status', not _slam_paused))
+
+    return {'ok': _slam_paused == want_paused, 'paused': _slam_paused}
+
+
+def _slam_list_maps() -> list:
+    """List saved maps in MAPS_DIR, newest first."""
+    out = []
+    try:
+        for fname in os.listdir(MAPS_DIR):
+            if not fname.endswith('.pgm'):
+                continue
+            fpath = os.path.join(MAPS_DIR, fname)
+            st = os.stat(fpath)
+            out.append({
+                'name': fname[:-4],
+                'mtime': int(st.st_mtime),
+                'size': int(st.st_size),
+                'has_yaml': os.path.exists(fpath[:-4] + '.yaml'),
+            })
+    except FileNotFoundError:
+        return []
+    except Exception:
+        return out
+    out.sort(key=lambda m: m['mtime'], reverse=True)
+    return out
+
+
+def _slam_status() -> dict:
+    """Snapshot of map metadata, robot pose and liveness for the app."""
+    if _node_ref is None:
+        return {'ok': False, 'running': False, 'error': 'Dashboard node not ready'}
+
+    with _node_ref.map_lock:
+        info = _node_ref.map_info
+        seq = _node_ref.map_seq
+        age = (time.monotonic() - _node_ref.map_time) if _node_ref.map_time else -1.0
+
+    # No separate liveness probe: slam_toolbox republishes /map on its own timer
+    # (map_update_interval, 1 s), so a stale map means it is gone or paused.
+    running = seq > 0 and 0.0 <= age < 30.0
+
+    res = {
+        'ok': True,
+        'running': running,
+        'paused': _slam_paused,
+        'map_seq': seq,
+        'map_age_sec': round(age, 2),
+        'width': int(info.width) if info else 0,
+        'height': int(info.height) if info else 0,
+        'resolution': float(info.resolution) if info else 0.0,
+        'origin_x': float(info.origin.position.x) if info else 0.0,
+        'origin_y': float(info.origin.position.y) if info else 0.0,
+    }
+
+    pose = _node_ref.get_map_pose()
+    if pose:
+        res['robot_x'], res['robot_y'], res['robot_yaw'] = (
+            round(pose[0], 3), round(pose[1], 3), round(pose[2], 4))
+        res['robot_valid'] = True
+    else:
+        res['robot_x'] = res['robot_y'] = res['robot_yaw'] = 0.0
+        res['robot_valid'] = False
+    return res
+
+
 _node_ref = None
 
 class DashboardHandler(http.server.BaseHTTPRequestHandler):
@@ -1098,6 +1421,51 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(json.dumps(result).encode())
+        elif self.path.startswith('/api/slam/status'):
+            res = _slam_status()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(res).encode())
+        elif self.path.startswith('/api/slam/map.png'):
+            info = cells = None
+            seq = 0
+            if _node_ref:
+                # Copy the reference under the lock and render outside it: the
+                # PNG pass takes milliseconds and must not stall the /map callback.
+                with _node_ref.map_lock:
+                    info, cells, seq = _node_ref.map_info, _node_ref.map_cells, _node_ref.map_seq
+            if info is None or cells is None or info.width == 0 or info.height == 0:
+                self.send_response(404)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                return
+            try:
+                png = _render_map_png(info, cells)
+            except Exception as e:
+                if _node_ref:
+                    _node_ref.get_logger().warn(f'Map PNG encode failed: {e}')
+                self.send_response(500)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header('Content-Type', 'image/png')
+            self.send_header('Content-Length', str(len(png)))
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('X-Map-Seq', str(seq))
+            self.send_header('Access-Control-Expose-Headers', 'X-Map-Seq')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(png)
+        elif self.path.startswith('/api/slam/maps'):
+            res = {'ok': True, 'maps': _slam_list_maps(), 'dir': MAPS_DIR}
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(res).encode())
         elif self.path.startswith('/api/logger/status'):
             res = {'ok': False}
             if _node_ref and hasattr(_node_ref, 'data_logger'):
@@ -1288,6 +1656,42 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                     resp = {'ok': ok, 'data' if ok else 'error': msg}
                 else:
                     resp = {'ok': False, 'error': 'Logger not initialized'}
+            except Exception as e:
+                resp = {'ok': False, 'error': str(e)}
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(resp).encode())
+        elif self.path == '/api/slam/save':
+            content_len = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_len) if content_len > 0 else b'{}'
+            try:
+                data = json.loads(body) if body else {}
+                resp = _slam_save_map(str(data.get('name', '')))
+            except Exception as e:
+                resp = {'ok': False, 'error': str(e)}
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(resp).encode())
+        elif self.path == '/api/slam/restart':
+            try:
+                resp = _slam_restart()
+            except Exception as e:
+                resp = {'ok': False, 'error': str(e)}
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(resp).encode())
+        elif self.path == '/api/slam/pause':
+            content_len = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_len) if content_len > 0 else b'{}'
+            try:
+                data = json.loads(body) if body else {}
+                resp = _slam_set_paused(bool(data.get('paused', True)))
             except Exception as e:
                 resp = {'ok': False, 'error': str(e)}
             self.send_response(200)

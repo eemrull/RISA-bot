@@ -401,3 +401,21 @@ signage_detector:
     color_bumper:     '0,140,255'   # Orange  (unused — class disabled)
     color_obstacle:   '0,255,255'   # Yellow  (unused — class disabled)
     color_roundabout: '255,255,255' # White   (unused — class disabled)
+
+# --- Odometry TF (SLAM) ---
+# Publishes odom -> base_link, the entire odometry interface to slam_toolbox
+# (which consumes TF and /scan only, never an odometry topic). Launched from
+# bringup.launch.py under slam:=true. servo_controller broadcasts no TF itself,
+# so this is the sole source of the edge — tf2 silently drops a second
+# transform sharing a stamp.
+#
+# Distance comes from /odom/path_length; heading comes from the IMU, because
+# servo_controller integrates heading from the *commanded* servo angle with no
+# steering feedback and drifts without bound.
+odom_tf_publisher:
+  ros__parameters:
+    odom_frame: odom
+    base_frame: base_link
+    yaw_sign: 1.0                 # flip to -1.0 if the IMU reports clockwise-positive yaw
+    publish_rate: 50.0            # must stay well above the 10 Hz scan rate
+    max_odom_step: 0.5            # metres; a larger jump means a publisher restarted
