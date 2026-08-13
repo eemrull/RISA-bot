@@ -103,11 +103,23 @@ def generate_launch_description():
         ),
 
         # B. TF: base_link → laser_frame
+        #
+        # yaw = pi. The LiDAR's 0 deg points to the rear of the car, which
+        # params.yaml records as `lidar_angle_offset: 3.1416` for every node that
+        # reads /scan directly. slam_toolbox takes the mounting from TF instead,
+        # so a zero yaw here put each return reflected through the robot -- fine
+        # while parked, ruinous the moment the robot translates, because a fixed
+        # wall then appears to move with the robot at twice its speed.
+        #
+        # Kept identical to bringup.launch.py; the two must not disagree or a map
+        # debugged here will not reproduce in the full stack.
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
             name='base_to_laser',
-            arguments=['0', '0', '0.12', '0', '0', '0', 'base_link', 'laser_frame']
+            # positional form is: x y z yaw pitch roll frame_id child_frame_id
+            arguments=['0', '0', '0.12', '3.14159265', '0', '0',
+                       'base_link', 'laser_frame']
         ),
 
         # C. Scan restamper (only when the driver's stamps are unusable)

@@ -95,11 +95,30 @@ def generate_launch_description():
         ),
 
         # C. TF: base_link → laser_frame
+        #
+        # The yaw is pi, not 0. The LiDAR is mounted backwards -- its 0 deg points
+        # to the rear of the car -- which params.yaml has recorded all along as
+        # `lidar_angle_offset: 3.1416` on boom_gate_detector, tunnel_wall_follower
+        # and obstruction_avoidance (and hardcoded in dashboard.py's scan callback).
+        #
+        # Those nodes subscribe to /scan and rotate the angles themselves, so they
+        # never needed this transform to be right. slam_toolbox is the first
+        # consumer that takes the mounting from TF instead, and with a zero yaw it
+        # placed every return reflected through the robot: p_hat = 2t - p. A parked
+        # robot still maps a plausible room that way (the reflection of a rectangle
+        # is a rectangle), but the moment it translates, a stationary wall appears
+        # to slide the same way the robot did at twice the speed, and the scan
+        # matcher shreds the map trying to reconcile it.
+        #
+        # Changing this affects TF consumers only -- the perception nodes above
+        # apply their own offset to the raw scan and are untouched.
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
             name='base_to_laser',
-            arguments=['0', '0', '0.12', '0', '0', '0', 'base_link', 'laser_frame']
+            # positional form is: x y z yaw pitch roll frame_id child_frame_id
+            arguments=['0', '0', '0.12', '3.14159265', '0', '0',
+                       'base_link', 'laser_frame']
         ),
 
         # ==================== PERCEPTION ====================
