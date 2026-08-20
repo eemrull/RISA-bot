@@ -1,117 +1,154 @@
 # RISA-Bot Architecture
 
-Competition-mode autonomous vehicle built on ROS 2 Humble.
+Competition-mode autonomous vehicle platform built on **ROS 2 Humble** and hosted on the **Horizon Sunrise RDK X5**.
 
-## Node / Topic Graph
+---
+
+## 1. Node & Topic Communication Graph
 
 ```mermaid
 graph TD
-    subgraph Sensors
+    subgraph Sensors ["Sensors & Hardware"]
         CAM["Astra Mini Camera"]
         LIDAR["YDLiDAR Tmini Plus"]
-        JOY["Joy Node"]
+        IMU["Rosmaster IMU (Pitch/RPY)"]
+        JOY["Joy Node (/dev/input/js0)"]
+        BOARD["Rosmaster Motor Board (CH340)"]
     end
 
-    subgraph Perception
-        LF["line_follower_camera"]
-        OA_LID["obstacle_avoidance"]
-        OA_CAM["obstacle_avoidance_camera"]
-        TL["traffic_light_detector"]
-        BG["boom_gate_detector"]
-        TUN["tunnel_wall_follower"]
+    subgraph Perception ["Perception Nodes"]
+        LF["line_follower_camera (31 Hz)"]
+        OA_LID["obstacle_avoidance (LiDAR)"]
+        OA_CAM["obstacle_avoidance_camera (Canny)"]
+        TL["traffic_light_detector (HSV)"]
+        BG["boom_gate_detector (LiDAR + Camera Red Bar)"]
+        TUN["tunnel_wall_follower (RANSAC)"]
         OBS["obstruction_avoidance"]
-        PARK["parking_controller"]
-        SIG["signage_detector (YOLO)"]
+        PARK["parking_controller (Odom + Record/Playback)"]
+        SIG["signage_detector (Horizon BPU YOLOv5s)"]
     end
 
-    subgraph Control
-        AD["auto_driver"]
+    subgraph SLAM_Stack ["SLAM & Transform Stack"]
+        TF_LASER["base_to_laser (Static TF, yaw=pi)"]
+        TF_ODOM["odom_tf_publisher (25 Hz)"]
+        SLAM["slam_toolbox (async_slam_toolbox_node)"]
+    end
+
+    subgraph Control ["Decision, Safety & Hardware Bridge"]
+        AD["auto_driver (50 Hz Brain)"]
         CSC["cmd_safety_controller"]
         SC["servo_controller"]
         HM["health_monitor"]
     end
 
-    subgraph Interface
-        DASH["dashboard (port 8080)"]
+    subgraph Interface ["Services & Companion Interface"]
+        DASH["ROS Web Dashboard (:8080)"]
+        PORTAL["FastAPI WiFi & Model Portal (:8000)"]
+        BRIDGE["ros2go2rtc_bridge (:1985)"]
+        G2R["go2rtc Streaming Server (:1984)"]
+        APP["RisaBotApp (Desktop Companion)"]
     end
 
+    %% Sensor to Perception / Bridge
     CAM -->|"/camera/color/image_raw"| LF
     CAM -->|"/camera/color/image_raw"| OA_CAM
     CAM -->|"/camera/color/image_raw"| TL
+    CAM -->|"/camera/color/image_raw"| BG
     CAM -->|"/camera/color/image_raw"| SIG
-    CAM -->|"/camera/color/image_raw"| DASH
+    CAM -->|"/camera/color/image_raw"| BRIDGE
 
     LIDAR -->|"/scan"| OA_LID
     LIDAR -->|"/scan"| BG
     LIDAR -->|"/scan"| TUN
     LIDAR -->|"/scan"| OBS
+    LIDAR -->|"/scan"| SLAM
     LIDAR -->|"/scan"| DASH
 
+    %% Perception to Auto Driver
     LF -->|"/lane_error + /lane_lost"| AD
-    LF -->|"/camera/debug/line_follower"| DASH
-    
     OA_LID -->|"/obstacle_front"| AD
-    OA_LID -->|"/obstacle_front"| DASH
-    
     OA_CAM -->|"/obstacle_detected_camera"| AD
-    OA_CAM -->|"/obstacle_detected_camera + /camera/debug/obstacle"| DASH
-    
     TL -->|"/traffic_light_state"| AD
-    TL -->|"/traffic_light_state + /camera/debug/traffic_light"| DASH
-    
     BG -->|"/boom_gate_open"| AD
-    BG -->|"/boom_gate_open"| DASH
-    
     TUN -->|"/tunnel_detected + /tunnel_cmd_vel"| AD
-    TUN -->|"/tunnel_detected"| DASH
-    
     OBS -->|"/obstruction_active + /obstruction_cmd_vel"| AD
-    OBS -->|"/obstruction_active"| DASH
-    
     PARK -->|"/parking_cmd_vel + /parking_complete + /parking_status"| AD
-    PARK -->|"/parking_complete"| DASH
-    
     SIG -->|"/parking_signboard_detected + /hill_sign_detected + /traffic_light_state"| AD
-    SIG -->|"/parking_signboard_detected + /traffic_light_state + /camera/debug/signage"| DASH
 
+    %% SLAM Connections
+    SC -->|"/odom/path_length"| TF_ODOM
+    SC -->|"/imu/rpy"| TF_ODOM
+    TF_ODOM -->|"TF: odom -> base_link"| SLAM
+    TF_LASER -->|"TF: base_link -> laser_frame (pi)"| SLAM
+    SLAM -->|"/map (OccupancyGrid)"| DASH
+    DASH -->|"/api/slam/map.png"| APP
+
+    %% Auto Driver to Safety to Hardware
     AD -->|"/cmd_vel_auto_raw"| CSC
     AD -->|"/parking_command"| PARK
-    AD -->|"/obstacle_detected_fused"| DASH
-    AD -->|"/dashboard_state"| DASH
-    AD -->|"/loop_stats"| DASH
     AD -->|"/record_playback_cmd"| SC
-    
+    AD -->|"/obstacle_detected_fused + /dashboard_state + /loop_stats"| DASH
+
     CSC -->|"/cmd_vel_auto"| SC
     CSC -->|"/cmd_safety_status + /loop_stats"| DASH
-    
+
     JOY -->|"/joy"| SC
     JOY -->|"/joy"| DASH
-    
-    SC -->|"Rosmaster_Lib (serial)"| HW["Motor Board"]
-    SC -->|"/cmd_vel"| DASH
-    SC -->|"/auto_mode"| AD
-    SC -->|"/auto_mode"| DASH
-    SC -->|"/set_challenge"| AD
-    SC -->|"/set_challenge"| DASH
-    SC -->|"/odom"| DASH
-    SC -->|"/odom"| AD
+
+    SC -->|"Rosmaster_Lib (serial /dev/myserial)"| BOARD
+    SC -->|"/cmd_vel + /odom + /imu/pitch + /auto_mode + /set_challenge"| DASH
+    SC -->|"/auto_mode + /set_challenge + /odom + /imu/pitch"| AD
     SC -->|"/odom"| PARK
-    SC -->|"/imu/pitch + /record_playback_state + /loop_stats"| AD
-    SC -->|"/record_playback_state"| DASH
-    SC -->|"/dashboard_ctrl"| DASH
-    SC -->|"/loop_stats"| DASH
-    
-    DASH -->|"/record_playback_cmd"| SC
-    
+
+    %% Diagnostics & Video Streaming
     HM -->|"/health_status"| DASH
+    BRIDGE -->|"MJPEG :1985"| G2R
+    G2R -->|"WebRTC/MJPEG :1984"| DASH & APP
+    PORTAL <-->|"REST API :8000"| APP
 ```
 
-## AI / BPU Model Architecture
+---
 
-The `signage_detector` node leverages a custom-trained **YOLOv5s** model running hardware-accelerated inference on the RDK X5 BPU (using `hobot_dnn` / `pyeasy_dnn`).
+## 2. Multi-Service Network Architecture
 
-### 1. Offline Compilation & Deployment Flow
-This graph shows the lifecycle of the AI model from dataset labeling to robot compilation and deployment:
+| Port | Service | Process / Host | Description |
+|---|---|---|---|
+| **8000** | Provisioning & Launch Portal | `tools/wifi_provisioning/backend/app.py` (FastAPI + uvicorn) | WiFi setup, BPU model upload/info/rollback, and `systemctl start/stop risabot` |
+| **8080** | ROS 2 Web Dashboard | `dashboard.py` + `dashboard_templates.py` (stdlib HTTP) | Telemetry HUD, live parameter Get/Set/Save Defaults, SLAM PNG map stream, Data Logger, camera view router |
+| **1984** | go2rtc Streaming Server | `tools/go2rtc/` (go2rtc binary) | Low-latency WebRTC/MJPEG streaming to browsers and desktop app |
+| **1985** | Camera Stream Bridge | `ros2go2rtc_bridge.py` | ROS image topic subscriber serving MJPEG on `:1985` for go2rtc |
+
+---
+
+## 3. Autonomous State Machine (`auto_driver`)
+
+The central brain (`auto_driver.py`) runs a priority-ordered state machine on a **50 Hz timer** (`0.02 s`). It evaluates priorities strictly from top to bottom on each tick and selects exactly one behavior:
+
+| Priority | State Enum | Trigger / Gating Condition | Action / Velocity Source |
+|---|---|---|---|
+| **1** | `MANUAL` | `/auto_mode == false` | No autonomous `/cmd_vel` published (RC pass-through) |
+| **2** | `FINISHED` | Lap 2 + final perpendicular parking maneuver completed | Full stop |
+| **2.5** | `TRAFFIC_LIGHT` | Red or Yellow light detected (AI BPU / HSV) | Full stop; latches until green light confirmed |
+| **2.6** | `BOOM_GATE` | Gate barrier detected closed (LiDAR variance + camera red bar) | Full stop until gate clears for hysteresis duration |
+| **3** | `EMERGENCY_STOP` | `/cmd_safety_status` e-stop active or safety timeout | Full stop |
+| **4** | `OBSTRUCTION` | LiDAR obstacle in lane closer than `detect_dist` | Uses `/obstruction_cmd_vel` (lateral dodge trajectory) |
+| **4.5** | `REVERSE_ADJUST` | Front obstacle too close (< minimum clearance) | Reverse slowly with center steering |
+| **5** | `ROUNDABOUT` | Lap 1 + after obstruction clears | Lane follow for `t_roundabout_sec` with exit bias |
+| **6** | `PARKING_IDLE` | Lap 2 + parking signboard detected | Full stop for `parking_idle_duration` before maneuver |
+| **6.5** | `PARKING_PLAYBACK` | Parking idle complete / teach-and-playback trigger | Replays recorded 20 Hz trajectory via `servo_controller` |
+| **7** | `TUNNEL` | Both corridor walls detected by LiDAR | Uses `/tunnel_cmd_vel` (RANSAC PD wall centering) |
+| **9.5** | `HILL` | IMU pitch > `hill_pitch_threshold` (primed by hill sign) | Dynamic speed boost proportional to pitch angle |
+| **9.6** | `DESCENT` | IMU pitch < negative threshold (downhill slope) | Controlled braking speed with lane tracking |
+| **10** | `LANE_RECOVERY` | `/lane_lost == true` (no valid scanline detection) | Holds last known heading briefly, then stops |
+| **11** | `LANE_FOLLOW` | Default autonomous state | Steers using `/lane_error` via PID controller |
+
+---
+
+## 4. AI / BPU Hardware Acceleration Architecture
+
+The `signage_detector` node leverages a custom-trained **YOLOv5s** model running hardware-accelerated INT8 inference on the Horizon RDK X5 BPU (using `hobot_dnn` / `pyeasy_dnn`).
+
+### Compilation & Deployment Pipeline
 
 ```mermaid
 graph TD
@@ -124,21 +161,20 @@ graph TD
         Train -->|best.pt weights| Export["Export ONNX Model (best.onnx)"]
     end
 
-    subgraph Compilation ["3. Local PC Compilation (Docker)"]
+    subgraph Compilation ["3. PC Compilation (Docker)"]
         Export -->|Resize Patching| Patch["patch_onnx_resize.py"]
         Patch -->|risabot_bpu_config.yaml| Mapper["Horizon BPU Compiler (hb_mapper)"]
         CalibData["Calibration Data (50 bin images)"] --> Mapper
-        Mapper -->|Quantization to INT8| Bin["BPU Model (risabot_signs_640x640_nv12.bin)"]
+        Mapper -->|INT8 Quantization| Bin["BPU Model (risabot_signs_640x640_nv12.bin)"]
     end
 
     subgraph Deployment ["4. RDK X5 BPU Node (Robot)"]
-        Bin -->|SCP Transfer| BPU_Runtime["BPU Hardware Acceleration (hobot_dnn)"]
-        BPU_Runtime -->|signage_detector.py| ROS2["ROS 2 Humble Node"]
+        Bin -->|Portal Upload / SCP| BPU_Runtime["BPU Hardware Acceleration (hobot_dnn)"]
+        BPU_Runtime -->|signage_detector.py| ROS2["ROS 2 Humble Perception Node"]
     end
 ```
 
-### 2. Real-Time Inference Pipeline
-This graph details how image frames from the camera are processed in real-time on the robot's hardware:
+### Real-Time Inference Pipeline
 
 ```mermaid
 graph TD
@@ -157,67 +193,71 @@ graph TD
 
     subgraph Postprocessing ["Perception Postprocessing"]
         Post --> Squeeze["Squeeze Output to 2D (25200, 11)"]
-        Squeeze --> Filter["Confidence Filtering (Threshold = 0.10)"]
+        Squeeze --> Filter["Per-Class Confidence Filtering"]
         Filter --> NMS["Vectorized NMS (IoU Threshold = 0.45)"]
-        NMS --> Latch["Consecutive Frames Gating (Hysteresis)"]
+        NMS --> Latch["Consecutive Frame Hysteresis Gating"]
     end
 
     Latch -->|Detections| Pubs["5. State Publishers"]
 
     subgraph Output ["ROS 2 Topics"]
-        Pubs -->|"/parking_signboard_detected (Bool)"| AD_Park["auto_driver (Brain)"]
-        Pubs -->|"/hill_sign_detected (Bool)"| AD_Hill["auto_driver (Brain)"]
-        Pubs -->|"/traffic_light_state (String)"| AD_TL["auto_driver (Brain)"]
-        Pubs -->|"/camera/debug/signage (Image)"| DASH["dashboard (Web UI)"]
+        Pubs -->|"/parking_signboard_detected (Bool)"| AD_Park["auto_driver"]
+        Pubs -->|"/hill_sign_detected (Bool)"| AD_Hill["auto_driver"]
+        Pubs -->|"/traffic_light_state (String)"| AD_TL["auto_driver"]
+        Pubs -->|"/camera/debug/signage (Image)"| DASH["dashboard / bridge"]
     end
 ```
 
-## State Machine (auto_driver)
+### BPU Class Mapping
 
-| Priority | State            | Trigger                                         | Action                                        |
-| -------- | ---------------- | ----------------------------------------------- | --------------------------------------------- |
-| 1        | MANUAL           | `auto_mode=false`                               | No cmd_vel published                          |
-| 2        | FINISHED         | Lap 2 + perpendicular park done                 | Full stop                                     |
-| 3        | EMERGENCY_STOP   | `/cmd_safety_status` estop active               | Full stop                                     |
-| 4        | OBSTRUCTION      | LiDAR lateral avoid active                      | Use `/obstruction_cmd_vel`                    |
-| 4.5      | REVERSE_ADJUST   | Too close to front obstacle                     | Reverse slowly                                |
-| 5        | ROUNDABOUT       | Lap 1 + after obstruction clears                | Lane follow for `t_roundabout_sec`            |
-| 6        | PARKING_IDLE     | Lap 2 + signboard detected                     | Full stop for `parking_idle_duration`         |
-| 6.5      | PARKING_PLAYBACK | Parking idle complete                          | Trigger preset movement playback              |
-| 7        | TUNNEL           | Walls on both sides detected                    | Use `/tunnel_cmd_vel`                         |
-| 8        | BOOM_GATE        | Gate closed (armed after roundabout)            | Full stop (disabled/commented out for test)   |
-| 9        | TRAFFIC_LIGHT    | Red/yellow detected (armed after tunnel)       | Full stop (disabled/commented out for test)   |
-| 9.5      | HILL             | IMU pitch exceeds threshold                     | Drive up slowly, scaled steering              |
-| 10       | LANE_RECOVERY    | Lane lost                                       | Stop in place                                 |
-| 11       | LANE_FOLLOW      | Default                                         | Steering from `/lane_error`                   |
+| Index | Class Name | Usage / Action in Autonomous Stack |
+|---|---|---|
+| **0** | `Bumper_signboard` | Disabled (`thresh=0.99`) — handled by physical compliance |
+| **1** | `Hill_signboard` | Primes IMU pitch trigger window for Challenge 5 (Hill Climb) |
+| **2** | `Obstacle_signboard`| Disabled (`thresh=0.99`) — handled by LiDAR obstacle avoidance |
+| **3** | `ParallelP_signboard` | Triggers Parallel Parking sequence on Lap 2 |
+| **4** | `PerpendP_signboard`  | Triggers Perpendicular Parking sequence on Lap 2 |
+| **5** | `Roundabout_signboard`| Gated (`thresh=0.50`) — suppresses false triggers |
+| **6** | `Traffic_Green` | Releases traffic light stop latch → resumes driving |
+| **7** | `Traffic_Red`   | Triggers Priority 2.5 emergency stop |
+| **8** | `Trafficlight_signboard` | Generic traffic light box; re-classified via CV ROI |
+| **9** | `null` | Background null class (ignored) |
 
-## Competition Flow
+---
 
-```
-Lap 1: START → Lane Follow → Obstruction → Roundabout →
-        BoomGate1 → Tunnel → BoomGate2 →
-        Hill → Bumper → TrafficLight → START
+## 5. SLAM & Mapping Pipeline
 
-Lap 2: Lane Follow → Obstruction → Roundabout →
-        Parallel Park → Drive → Perpendicular Park → FINISH
-```
+1. **LiDAR Physical Mounting Correction**: The YDLiDAR Tmini Plus is mounted with its cable forward and optical 0° facing rearward.
+   - `tf2_ros static_transform_publisher` broadcasts `base_link -> laser_frame` with `yaw = 3.14159265` ($\pi$ rad).
+   - Driver `range_min` is set to `0.15 m` to filter out chassis frame self-hits.
+2. **Odometry Transform (`odom_tf_publisher`)**:
+   - Subscribes to `/odom/path_length` (calibrated encoder distance at 6249 ticks/meter) and `/imu/rpy` (IMU yaw).
+   - Broadcasts `odom -> base_link` at **25 Hz**.
+3. **Scan Matcher & Occupancy Grid (`slam_toolbox`)**:
+   - Runs `async_slam_toolbox_node` using `mapper_params_online_async.yaml`.
+   - Publishes `/map` (`nav_msgs/msg/OccupancyGrid`).
+4. **Dashboard & App Transport**:
+   - `dashboard.py` encodes the occupancy grid to a greyscale PNG using native `zlib` and `struct` (reducing a ~250 KB JSON payload to ~5–20 KB).
+   - The Companion App polls `/api/slam/status` every second and fetches `/api/slam/map.png` only when `map_seq` increments.
+   - **Restart Mapping**: Handled via process PID search, `SIGINT`, and launch file `respawn=True` (~2 s reset).
 
-## Key Files
+---
 
-| File                        | Purpose                                 |
-| --------------------------- | --------------------------------------- |
-| `auto_driver.py`            | Central state machine (brain)           |
-| `servo_controller.py`       | Hardware interface to Rosmaster board   |
-| `dashboard.py`              | Web dashboard server                    |
-| `dashboard_templates.py`    | HTML/CSS/JS for dashboard UI            |
-| `line_follower_camera.py`   | Lane detection via camera               |
-| `traffic_light_detector.py` | R/Y/G circle detection                  |
-| `obstruction_avoidance.py`  | LiDAR lateral steering around obstacles |
-| `tunnel_wall_follower.py`   | PD wall following in tunnel             |
-| `boom_gate_detector.py`     | LiDAR gate barrier detection            |
-| `parking_controller.py`     | Odometry-based parking maneuvers        |
-| `signage_detector.py`       | YOLO-based signage detection (parking)  |
-| `cmd_safety_controller.py`  | Safety limits and e-stop enforcement    |
-| `health_monitor.py`         | Topic freshness and runtime health      |
-| `config/params.yaml`        | Centralized tunable parameters          |
-| `verify_live.py`            | Live diagnostic tool for YOLO BPU verification |
+## 6. Key Source Files Reference
+
+| Subsystem | File Path | Purpose |
+|---|---|---|
+| **Brain** | [`auto_driver.py`](src/risabot_automode/risabot_automode/auto_driver.py) | 17-state autonomous decision engine |
+| **Hardware Bridge** | [`servo_controller.py`](src/control_servo/control_servo/servo_controller.py) | Rosmaster motor/servo serial interface & odometry |
+| **Safety** | [`cmd_safety_controller.py`](src/risabot_automode/risabot_automode/cmd_safety_controller.py) | Acceleration limits, speed clamps, and e-stop |
+| **Lane Perception** | [`line_follower_camera.py`](src/risabot_automode/risabot_automode/line_follower_camera.py) | Vectorized multi-scanline Kalman lane detector |
+| **BPU AI** | [`signage_detector.py`](src/risabot_automode/risabot_automode/signage_detector.py) | YOLOv5s hardware-accelerated inference |
+| **Barrier Perception**| [`boom_gate_detector.py`](src/risabot_automode/risabot_automode/boom_gate_detector.py) | Dual LiDAR variance + camera red bar detector |
+| **Tunnel Perception** | [`tunnel_wall_follower.py`](src/risabot_automode/risabot_automode/tunnel_wall_follower.py) | LiDAR RANSAC corridor wall tracker |
+| **Obstacle Avoidance**| [`obstruction_avoidance.py`](src/risabot_automode/risabot_automode/obstruction_avoidance.py) | Lateral steering dodge trajectory generator |
+| **Parking Control** | [`parking_controller.py`](src/risabot_automode/risabot_automode/parking_controller.py) | Odometry parking & record/playback maneuvers |
+| **SLAM Transform** | [`odom_tf_publisher.py`](src/risabot_slam/risabot_slam/odom_tf_publisher.py) | Distance + IMU yaw TF broadcaster |
+| **Web Dashboard** | [`dashboard.py`](src/risabot_automode/risabot_automode/dashboard.py) | HTTP/WebSocket telemetry & parameter server |
+| **Camera Bridge** | [`ros2go2rtc_bridge.py`](src/risabot_automode/risabot_automode/ros2go2rtc_bridge.py) | ROS image topic to MJPEG bridge on port 1985 |
+| **WiFi & Model Portal**| [`tools/wifi_provisioning/backend/app.py`](tools/wifi_provisioning/backend/app.py) | FastAPI service portal on port 8000 |
+| **Desktop Companion**| [`RisaBotApp/`](RisaBotApp/) | WPF / .NET 10 desktop application |

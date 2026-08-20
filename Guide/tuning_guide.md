@@ -1,260 +1,166 @@
-# Tuning Guide — Physical Course
+# Physical Course Parameter Tuning Guide
 
-Step-by-step parameter adjustments for on when testing on the course.
-**Rule: Tune in this order.** Lane following first — everything else depends on it.
+Step-by-step parameter calibration guide for track testing on the physical competition course.
 
----
-
-## Prerequisites
-
-```bash
-# Terminal 1: Launch everything
-ros2 launch risabot_automode competition.launch.py
-
-# Terminal 2: Keep open for tuning commands
-```
-
-Use **Start button** on controller to toggle auto/manual. Switch to manual whenever the robot misbehaves.
+> **Golden Rule of Tuning:** Always tune in this exact sequence:
+> 1. **Lane Following** (base stability)
+> 2. **Odometry & Steering Calibration**
+> 3. **Perception Thresholds** (Boom Gate, Traffic Light, BPU AI)
+> 4. **Tunnel Navigation** (RANSAC PD)
+> 5. **Hill Climb & Descent**
+> 6. **Parking Maneuvers**
 
 ---
 
-## Step 1: Lane Following
-
-Place robot on a **straight section**. Toggle to auto mode.
+## 🛠️ Prerequisites & Setup
 
 ```bash
-ros2 topic echo /lane_error      # watch live error values
+# Terminal 1: Launch full autonomous bringup
+ros2 launch risabot_automode bringup.launch.py
+
+# Terminal 2: Keep open for parameter adjustments
 ```
 
-> **Tip:** Debug visualization is ON by default (`show_debug: true`). Open the dashboard at
-> `http://<robot_ip>:8080` and select the **Lane Lines** debug overlay to see what the robot detects:
-> - **Blue dots** = left white border
-> - **Pink dots** = right white border
-> - **Green dots** = computed lane center
-> - **Red vertical line** = image center reference
-
-| Symptom | Fix |
-|---|---|
-| Oscillates on straight road | `ros2 param set /auto_driver pid_kp 0.5` (lower P gain) |
-| Still oscillating after lowering kp | `ros2 param set /auto_driver pid_kd 0.3` (increase damping) |
-| Too slow to respond to curves | `ros2 param set /auto_driver pid_kp 1.0` |
-| Drifts to one side on a straight | `ros2 param set /auto_driver pid_ki 0.02` (small integral correction) |
-| Too fast in turns | `ros2 param set /auto_driver min_turn_speed 0.3` |
-| Not detecting white lane borders | `ros2 param set /line_follower_camera white_threshold 180` (lower = more sensitive) |
-| Floor is detected as lane border | `ros2 param set /line_follower_camera white_threshold 220` (higher = stricter) |
-| Small noise dots trigger false lines | `ros2 param set /line_follower_camera morph_open_size 5` (larger noise cleanup) |
-| Gaps in lane lines (broken detection) | `ros2 param set /line_follower_camera morph_close_size 7` (bridge bigger gaps) |
-| Loses lock on sharp turns | `ros2 param set /line_follower_camera search_radius_px 100` (wider search) |
-| Reads too far ahead / cuts corners | `ros2 param set /line_follower_camera crop_ratio_base 0.3` |
-| Error signal is too jumpy | Lower `kalman_measurement_noise` to 0.05 (trust camera more) |
-| Error signal is too sluggish | Raise `kalman_process_noise` to 0.05 (faster reaction) |
-
-**Tuning order:**
-1. Set `pid_kp` = 0.5, `pid_kd` = 0.2, `forward_speed` = 0.10 → check no shaking on straight
-2. Slowly increase `pid_kp` until curves work (0.6–1.0 is typical)
-3. If still oscillating, increase `pid_kd` to 0.3
-4. Adjust `white_threshold` until debug overlay shows clean border detection
-5. Increase `forward_speed` gradually (0.12 → 0.15 → 0.20)
-6. Test curves → if cuts corners, increase `crop_ratio_base` to 0.5
-
-### Parameter Ranges
-
-| Parameter | Node | Default | Range |
-|---|---|---|---|
-| `pid_kp` | auto_driver | 0.8 | 0.3 – 1.5 |
-| `pid_ki` | auto_driver | 0.01 | 0.0 – 0.05 |
-| `pid_kd` | auto_driver | 0.20 | 0.05 – 0.5 |
-| `forward_speed` | auto_driver | 0.15 | 0.08 – 0.25 |
-| `min_turn_speed` | auto_driver | 0.4 | 0.2 – 0.8 |
-| `white_threshold` | line_follower_camera | 200 | 150 – 240 |
-| `crop_ratio_base` | line_follower_camera | 0.4 | 0.2 – 0.6 |
-| `search_radius_px` | line_follower_camera | 80 | 40 – 120 |
-| `morph_open_size` | line_follower_camera | 3 | 0 – 7 |
-| `morph_close_size` | line_follower_camera | 5 | 0 – 9 |
-| `dead_zone` | line_follower_camera | 0.05 | 0.0 – 0.1 |
-
-### Advanced: IPM (Bird's Eye View)
-
-IPM is **disabled by default** because the camera is mounted horizontally at 8.5cm height. If you tilt the camera downward (recommended: 15–30°), you can enable IPM for better curve detection:
-
-```bash
-ros2 param set /line_follower_camera ipm_enabled true
-ros2 param set /line_follower_camera ipm_top_width_ratio 0.3
-```
-
-> ⚠️ IPM requires calibration. Use the debug overlay to verify that lane lines appear **parallel** after the warp. If they curve inward or outward, adjust `ipm_top_width_ratio`.
+> **Safety:** Use the **Start button** on the controller to immediately switch to `MANUAL` if the robot deviates or oscillates.
 
 ---
 
-## Step 2: Front Obstacle Detection
+## Step 1: Lane Follower Tuning
 
-Place object **in front** at ~0.4m.
+Place the robot on a **straight section** of the track. Engage autonomous mode and observe `/lane_error`:
 
 ```bash
-ros2 topic echo /obstacle_front
+ros2 topic echo /lane_error
 ```
 
-| Symptom | Fix |
-|---|---|
-| Stops too far away | `ros2 param set /obstacle_avoidance_node min_obstacle_distance 0.35` |
-| Hits object before stopping | `ros2 param set /obstacle_avoidance_node min_obstacle_distance 0.55` |
+Open the web dashboard at `http://<ROBOT_IP>:8080` and select the **Lane Lines** debug view:
+- **Blue dots** = Left boundary / scanline hit
+- **Pink dots** = Right boundary / scanline hit
+- **Green dots** = Computed lane center
+- **Red vertical line** = Image center reference
+
+### Lane Following Symptoms & Adjustments
+
+| Symptom | Root Cause | Parameter Adjustment |
+|---|---|---|
+| Weaves / oscillates on straight road | Proportional gain too high | `ros2 param set /auto_driver pid_kp 0.6` |
+| Still oscillating after lowering $K_p$ | Damping too low | `ros2 param set /auto_driver pid_kd 0.25` |
+| Slow to turn into curves | Proportional gain too low | `ros2 param set /auto_driver pid_kp 1.0` |
+| Constant offset / drifts to one side | Steady-state bias | `ros2 param set /auto_driver pid_ki 0.02` |
+| Cuts inside on sharp corners | Lookahead window too short | `ros2 param set /line_follower_camera crop_ratio_base 0.55` |
+| False border detections on dark floor | Threshold too sensitive | `ros2 param set /line_follower_camera white_threshold 110` |
+| Misses dark track markings | Threshold too high | `ros2 param set /line_follower_camera white_threshold 85` |
+| Lane error is noisy / twitchy | Kalman measurement noise | `ros2 param set /line_follower_camera kalman_process_noise 0.005` |
+| Sluggish steering response | Slew limit too restrictive | `ros2 param set /auto_driver lane_steer_slew 4.0` |
+
+### Core Lane Following Parameters
+
+| Parameter | Node | Default | Recommended Range | Description |
+|---|---|---|---|---|
+| `forward_speed` | `auto_driver` | `0.15` | 0.10 – 0.25 m/s | Base straight-line cruising speed |
+| `pid_kp` | `auto_driver` | `0.80` | 0.50 – 1.40 | Proportional steering gain |
+| `pid_ki` | `auto_driver` | `0.01` | 0.00 – 0.03 | Integral steering gain |
+| `pid_kd` | `auto_driver` | `0.20` | 0.10 – 0.40 | Derivative steering damping |
+| `speed_error_scale` | `auto_driver` | `1.50` | 1.00 – 2.50 | Cornering speed reduction factor |
+| `min_turn_speed` | `auto_driver` | `0.40` | 0.30 – 0.60 | Min speed floor in sharp turns |
+| `white_threshold` | `line_follower_camera` | `100` | 75 – 140 | Binary gray cutoff (inverted mode) |
+| `crop_ratio_base` | `line_follower_camera` | `0.55` | 0.40 – 0.65 | Image crop lookahead ratio |
+| `invert_binary` | `line_follower_camera` | `true` | `true` / `false` | True for dark lane tracking |
 
 ---
 
-## Step 3: Camera Obstacle (Edge Detection)
+## Step 2: Odometry & Steering Asymmetry Calibration
 
-The camera obstacle node detects objects by measuring **edge density** in the center of the frame. Objects have sharp edges; a flat track does not.
-
-Place an object (any color) ~30cm in front of the camera:
+### A. Ackermann Right-Steer Boost
+Due to physical Ackermann steering linkage asymmetry, right turns require slightly more servo throw:
 
 ```bash
-ros2 topic echo /obstacle_detected_camera
+# If the robot understeers on right turns, increase boost:
+ros2 param set /servo_controller auto_right_steer_boost 1.35
 ```
 
-> **Tip:** Use the **Obstacle** debug tab on the Dashboard to see the live edge overlay and density percentage.
-
-| Symptom | Fix |
-|---|---|
-| Not detecting the object | `ros2 param set /obstacle_avoidance_camera edge_threshold 0.08` |
-| False positives on track lines | `ros2 param set /obstacle_avoidance_camera edge_threshold 0.18` |
-| Too sensitive to texture/noise | `ros2 param set /obstacle_avoidance_camera canny_low 80` |
-| Missing subtle edges | `ros2 param set /obstacle_avoidance_camera canny_low 30` |
-| Flickering on/off rapidly | Increase `hysteresis_on` to 5 and `hysteresis_off` to 7 |
-
-### Parameter Ranges
-
-| Parameter | Default | Range | Effect |
-|---|---|---|---|
-| `edge_threshold` | 0.02 | 0.01 – 0.10 | Ratio of edge pixels to trigger (2% default) |
-| `canny_low` | 50 | 20 – 100 | Lower = more edges (more sensitive) |
-| `canny_high` | 150 | 100 – 250 | Upper Canny threshold |
-| `blur_kernel` | 5 | 3 – 9 | Larger = smoother (reduces noise, fewer edges) |
-| `hysteresis_on` | 3 | 1 – 10 | Frames before STOP triggers |
-| `hysteresis_off` | 5 | 1 – 15 | Frames before CLEAR triggers |
-
-## Step 4: Obstruction Avoidance (Lateral Dodge)
-
-Place obstacle in the lane. Set state:
+### B. Encoder Distance Calibration
+1. Drive exactly **2.00 meters** straight.
+2. Read `/odom/path_length` or `/odom` distance:
+3. Update `ticks_per_meter`:
+   $$\text{new\_ticks} = \text{old\_ticks} \times \left(\frac{D_{\text{reported}}}{2.00}\right)$$
 ```bash
-ros2 topic pub --once /set_challenge std_msgs/String "data: OBSTRUCTION"
+ros2 param set /servo_controller ticks_per_meter 6249.0
 ```
-
-| Symptom | Fix |
-|---|---|
-| Doesn't dodge early enough | `ros2 param set /obstruction_avoidance detect_dist 0.65` |
-| Doesn't steer far enough | `ros2 param set /obstruction_avoidance steer_angular 0.8` |
-| Clips while passing | `ros2 param set /obstruction_avoidance pass_duration 2.5` |
-| Overshoots returning to lane | `ros2 param set /obstruction_avoidance steer_back_duration 1.0` |
 
 ---
 
-## Step 5: Traffic Light
+## Step 3: Boom Gate Dual-Modality Tuning
 
-Hold colored cards in front of camera. Set state:
+Place the robot approaching Boom Gate 2:
+
 ```bash
-ros2 topic pub --once /set_challenge std_msgs/String "data: TRAFFIC_LIGHT"
-ros2 topic echo /traffic_light_state
-```
-
-| Symptom | Fix |
-|---|---|
-| Not detecting any color | `ros2 param set /traffic_light_detector sat_min 50` then `val_min 50` |
-| Confusing red/green | Narrow the H ranges for each color |
-| False positives | `ros2 param set /traffic_light_detector min_pixel_count 100` |
-
-> ⚠️ HSV thresholds are **very sensitive to lighting**. Always tune at the competition venue.
-
----
-
-## Step 6: Boom Gate
-
-Drive toward the boom gate. Set state:
-```bash
-ros2 topic pub --once /set_challenge std_msgs/String "data: BOOM_GATE_2"
 ros2 topic echo /boom_gate_open
 ```
 
-| Symptom | Fix |
+| Symptom | Parameter Adjustment |
 |---|---|
-| Gate closed but reads OPEN | `ros2 param set /boom_gate_detector min_gate_points 3` |
-| Gate open but reads CLOSED | `ros2 param set /boom_gate_detector distance_variance_max 0.08` |
-| Detection range wrong | Adjust `min_detect_dist` and `max_detect_dist` |
+| Gate is closed but reads `open: true` | `ros2 param set /boom_gate_detector cam_red_min_width 60` |
+| Raised gate bar false-triggers closed | `ros2 param set /boom_gate_detector cam_roi_y_min 0.55` |
+| LiDAR barrier detection too sensitive | `ros2 param set /boom_gate_detector distance_variance_max 0.04` |
+| Detection state flickers | `ros2 param set /boom_gate_detector hysteresis 6` |
 
 ---
 
-## Step 7: Tunnel Wall Following
+## Step 4: Tunnel Wall Following (RANSAC PD)
 
-Drive into the tunnel. Set state:
+Drive into the tunnel corridor:
+
 ```bash
-ros2 topic pub --once /set_challenge std_msgs/String "data: TUNNEL"
 ros2 topic echo /tunnel_detected
+ros2 topic echo /tunnel_cmd_vel
 ```
 
-| Symptom | Fix |
+| Symptom | Parameter Adjustment |
 |---|---|
-| Oscillates between walls | `ros2 param set /tunnel_wall_follower kp 0.8` |
-| Still oscillating | `ros2 param set /tunnel_wall_follower kd 0.5` |
-| Drifts to one side | Adjust `target_center_dist` ±0.05 |
-| Not entering tunnel mode | `ros2 param set /tunnel_wall_follower min_wall_points 2` |
-| Too fast in tunnel | `ros2 param set /tunnel_wall_follower forward_speed 0.10` |
+| Oscillates between left and right walls | Lower $K_p$, raise $K_d$: `ros2 param set /tunnel_wall_follower kp 3.5` and `kd 0.6` |
+| Drifts into one wall on approach | Increase heading gain: `ros2 param set /tunnel_wall_follower kp_heading 1.5` |
+| Does not engage tunnel mode | `ros2 param set /tunnel_wall_follower min_wall_points 3` |
+| Speed too high in dark corridor | `ros2 param set /tunnel_wall_follower forward_speed 0.10` |
 
 ---
 
-## Step 8: Parking (tune last)
+## Step 5: Hill Climbing & Descent Tuning
 
-> ⚠️ Start with **very low speeds** (0.08) and short distances (0.15). Increase gradually.
-
-```bash
-# Parallel
-ros2 topic pub --once /set_challenge std_msgs/String "data: PARALLEL_PARK"
-ros2 topic pub --once /parking_command std_msgs/String "data: parallel"
-
-# Perpendicular
-ros2 topic pub --once /set_challenge std_msgs/String "data: PERPENDICULAR_PARK"
-ros2 topic pub --once /parking_command std_msgs/String "data: perpendicular"
-```
-
-| Symptom | Fix |
-|---|---|
-| Doesn't pull far enough past slot | increase `parallel_forward_dist` |
-| Doesn't enter slot fully | increase `parallel_reverse_dist` |
-| Turns too sharply | decrease `parallel_steer_angle` |
-| Doesn't turn enough | increase `parallel_steer_angle` |
-| Too fast | decrease `drive_speed` and `reverse_speed` |
-
-## Step 9: State Transition Distances
-
-These control when the state machine auto-advances. Run a full lap and adjust:
+Drive toward the ramp. Monitor `/imu/pitch`:
 
 ```bash
-ros2 param set /auto_driver dist_roundabout 2.0         # how far through roundabout
-ros2 param set /auto_driver dist_boom_gate_1_pass 0.5    # after boom gate 1
-ros2 param set /auto_driver dist_boom_gate_2_pass 0.5    # after boom gate 2
-ros2 param set /auto_driver dist_hill 1.0                # over the hill
-ros2 param set /auto_driver dist_bumper 0.8              # over bumpers
-ros2 param set /auto_driver dist_traffic_light_pass 0.5  # after green light
-ros2 param set /auto_driver dist_drive_to_perp 1.0       # parallel → perp parking
+ros2 topic echo /imu/pitch
 ```
 
-| Symptom | Fix |
+| Symptom | Parameter Adjustment |
 |---|---|
-| Transitions too early | Increase the relevant `dist_*` parameter |
-| Stuck in a state too long | Decrease the relevant `dist_*` parameter |
-| Doesn't move forward | `ros2 param set /auto_driver forward_speed 0.2` |
+| Stalls on ramp slope | Increase base speed: `ros2 param set /auto_driver hill_base_speed 0.22` |
+| Fishtails off ramp edge | Reduce steering throw: `ros2 param set /auto_driver hill_steer_scale 0.3` |
+| Triggers hill mode prematurely on flats | `ros2 param set /auto_driver hill_pitch_threshold 10.0` |
+| Runaway speed on descent | `ros2 param set /auto_driver descent_base_speed 0.06` |
 
 ---
 
-## Quick Cheat Sheet
+## Step 6: BPU AI Signage Confidence Thresholds
+
+Adjust per-class confidence thresholds on `/signage_detector`:
 
 ```bash
-# The 8 most common params you'll adjust:
-ros2 param set /auto_driver forward_speed 0.15
-ros2 param set /auto_driver pid_kp 0.8
-ros2 param set /auto_driver pid_kd 0.20
-ros2 param set /auto_driver min_turn_speed 0.4
-ros2 param set /line_follower_camera white_threshold 200
-ros2 param set /line_follower_camera crop_ratio_base 0.4
-ros2 param set /tunnel_wall_follower kp 1.2
-ros2 param set /parking_controller drive_speed 0.15
+# Make parking detection more sensitive:
+ros2 param set /signage_detector thresh_parallelp 0.04
+ros2 param set /signage_detector thresh_perpendp 0.04
+
+# Make traffic light detection stricter:
+ros2 param set /signage_detector thresh_tl_red 0.30
+ros2 param set /signage_detector thresh_tl_green 0.30
 ```
 
+---
+
+## 💾 Persisting Tuned Parameters
+
+Once satisfied with live parameter values, persist them permanently to disk:
+1. Open the Web Dashboard at `http://<ROBOT_IP>:8080`.
+2. Open the **Parameters Drawer**.
+3. Click **"Save as Default"** to write all active values to `src/risabot_automode/config/params.yaml`.

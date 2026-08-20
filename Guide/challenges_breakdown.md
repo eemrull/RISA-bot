@@ -1,246 +1,151 @@
-# Challenge & Code Breakdown
+# Autonomous Challenges & Engineering Breakdown
 
-This guide explains how each competition challenge is implemented in the code (`src/risabot_automode/risabot_automode`).
+Detailed technical breakdown of how each competition challenge is implemented in the RISA-bot autonomous software stack.
 
-## Competition Layout
+---
+
+## Competition Course Layout
 
 ![Competition Course Layout](competition_layout_overview.jpeg)
 
-**Course dimensions:** 6.4m × 4m. The robot starts at the bottom-right and follows the lane counter-clockwise.
+**Course Dimensions:** 6.4 m × 4.0 m track with dual lanes, inner parking area, elevated ramp (hill), rumble strips (bumpers), tunnel corridor, and automated barriers. The robot starts at the bottom-right and travels **counter-clockwise**.
 
-### Challenge Order (Lap 1)
+### Lap Sequencing
 
-| #   | Challenge     | Location                               | Sensor Used          |
-| --- | ------------- | -------------------------------------- | -------------------- |
-| 1   | Obstruction   | Bottom-center lane (0.8m × 0.4m block) | LiDAR                |
-| 2   | Roundabout    | Bottom-left circle                     | Camera (lane follow) |
-| 3   | Tunnel        | Far-left corridor                      | LiDAR (wall follow)  |
-| 4   | Boom Gate     | Top-left, after tunnel exit            | LiDAR                |
-| 5   | Hill          | Top-center ramp                        | Camera (lane follow) |
-| 6   | Bumper        | Top-right section                      | Camera (lane follow) |
-| 7   | Traffic Light | Right side, before start               | Camera (HSV)         |
-
-### Challenge Order (Lap 2 — Parking Path)
-
-| #   | Challenge             | Location                     | Sensor Used      |
-| --- | --------------------- | ---------------------------- | ---------------- |
-| 8   | Parallel Parking      | Inner top-left (0.75m slot)  | Odometry + LiDAR |
-| 9   | Perpendicular Parking | Inner top-center (0.4m slot) | Odometry + LiDAR |
-
-> On Lap 2, the boom gate at the roundabout closes, forcing the robot into the inner parking area.
+| Lap | Sequence of Challenges |
+|---|---|
+| **Lap 1** | Start → Lane Follow → Obstruction (1) → Roundabout (2) → Boom Gate 1 (4) → Tunnel (3) → Boom Gate 2 (4) → Hill (5) → Bumper (6) → Traffic Light (7) → Lap 1 Complete |
+| **Lap 2** | Lane Follow → Obstruction (1) → Roundabout (2) → Parallel Parking (8) → Drive to Perp → Perpendicular Parking (9) → **FINISHED** |
 
 ---
 
-## 1. State Machine (`auto_driver.py`)
+## 1. Central State Machine (`auto_driver.py`)
 
-**File:** [auto_driver.py](../src/risabot_automode/risabot_automode/auto_driver.py)
+**File:** [`src/risabot_automode/risabot_automode/auto_driver.py`](../src/risabot_automode/risabot_automode/auto_driver.py)
 
-The robot uses a **State Machine** with **lap tracking** to sequence through challenges. It does NOT try to detect everything at once — it only processes sensor data relevant to the current state.
-
-### Competition Flow
+The autonomous brain runs on a **50 Hz timer** (`0.02 s`). It evaluates sensory facts from perception nodes and executes a strict priority hierarchy:
 
 ```mermaid
-graph LR
-    subgraph "Lap 1"
-        S["START"] --> LF1["Lane Follow"]
-        LF1 -->|"obstruction detected"| OBS1["Obstruction"]
-        OBS1 -->|"cleared + dist"| RB1["Roundabout"]
-        RB1 -->|"exit 1"| BG1["Boom Gate 1 (open)"]
-        BG1 --> TUN["Tunnel"]
-        TUN -->|"exited"| BG2["Boom Gate 2 (random)"]
-        BG2 -->|"open"| HILL["Hill"]
-        HILL --> BUMP["Bumper"]
-        BUMP --> TL["Traffic Light"]
-        TL -->|"green + dist"| LF1
-    end
-    subgraph "Lap 2"
-        LF2["Lane Follow"] -->|"obstruction"| OBS2["Obstruction"]
-        OBS2 --> RB2["Roundabout"]
-        RB2 -->|"exit 2 (gate closed)"| PP["Parallel Park"]
-        PP -->|"complete"| DTP["Drive to Perp"]
-        DTP -->|"dist"| PERP["Perp Park"]
-        PERP --> FIN["FINISHED"]
-    end
-    TL -.->|"lap 2 starts"| LF2
+graph TD
+    SENSORS["Perception Facts (/lane_error, /scan, /traffic_light_state, /boom_gate_open, BPU Signs)"]
+    PRIORITY["50Hz Priority Evaluation (auto_driver)"]
+    SAFETY["Safety Limits & E-Stop (cmd_safety_controller)"]
+    BRIDGE["Rosmaster Hardware Bridge (servo_controller)"]
+
+    SENSORS --> PRIORITY
+    PRIORITY -->|"/cmd_vel_auto_raw"| SAFETY
+    SAFETY -->|"/cmd_vel_auto"| BRIDGE
 ```
 
-**How it works:**
-
-- `auto_driver` subscribes to **all** module topics
-- `_check_transitions()` auto-advances state based on sensor events + distance
-- `current_lap` tracks lap 1 vs lap 2 (increments after traffic light)
-- In `publish_cmd_vel()`, it checks `self.state` and selects the right velocity source:
-  - `TUNNEL` → ignores camera, uses `/tunnel_cmd_vel`
-  - `PARKING` → ignores everything, uses `/parking_cmd_vel`
-  - `LANE_FOLLOW` → uses camera `/lane_error` with `forward_speed` + `steering_gain`
-  - `TRAFFIC_LIGHT` → stops on red/yellow, goes on green
-  - `BOOM_GATE` → stops if gate closed
-  - `DRIVE_TO_PERP` → lane follow from parallel to perpendicular parking area
-- Stale data timeout (3s) prevents stuck states if a module crashes
+- **Lap Tracking**: `current_lap` tracks Lap 1 vs Lap 2. Lap 1 advances upon passing the green traffic light; Lap 2 concludes with perpendicular parking.
+- **Adaptive Speed Scaling**: Slows down proportionally during sharp curves (`speed_error_scale: 1.5`, `min_turn_speed: 0.4`).
+- **Slew Rate Steering Limiter**: Clamps angular steering acceleration to `lane_steer_slew: 3.0 rad/s²` to prevent mechanical chassis twitching.
 
 ---
 
-## 2. Obstruction Avoidance (Challenge 1)
+## 2. Challenge 1: Obstruction Avoidance
 
-**File:** [obstruction_avoidance.py](../src/risabot_automode/risabot_automode/obstruction_avoidance.py)
-
+**File:** [`src/risabot_automode/risabot_automode/obstruction_avoidance.py`](../src/risabot_automode/risabot_automode/obstruction_avoidance.py)  
+**Sensors:** YDLiDAR Tmini Plus (`/scan`)  
 **Topics:** `/obstruction_active` (Bool), `/obstruction_cmd_vel` (Twist)
 
-**Obstacle size:** 0.8m long × 0.4m wide (see layout)
-
-### How it works
-
-1. **Detection:** LiDAR sees an object in the lane closer than `detect_dist`
-2. **Decision:** Checks which side (left vs right) has more clearance
-3. **Timed maneuver:**
-   - **Phase 1 — Steer Out:** Turn away from obstacle for `steer_out_duration`
-   - **Phase 2 — Pass:** Drive straight alongside obstacle for `pass_duration`
-   - **Phase 3 — Return:** Turn back into lane for `steer_back_duration`
-4. **Completion:** Sets `active=False` so `auto_driver` resumes lane following
+### Execution Flow
+1. **Detection**: LiDAR detects a stationary obstacle in the forward corridor closer than `detect_dist` (0.50 m).
+2. **Clearance Evaluation**: Scans left (+30° to +70°) and right (-30° to -70°) sectors to identify the open passing lane.
+3. **3-Phase Timed Maneuver**:
+   - **Phase 1 (Steer Away)**: Steers outward at `steer_angular` (0.6 rad/s) for `steer_away_duration` (1.0 s).
+   - **Phase 2 (Pass)**: Drives straight alongside the obstacle for `pass_duration` (2.0 s).
+   - **Phase 3 (Steer Back)**: Steers inward to re-acquire the lane for `steer_back_duration` (1.5 s).
+4. **Handoff**: Sets `/obstruction_active = False` so `auto_driver` smoothly transitions to `ROUNDABOUT` mode.
 
 ---
 
-## 3. Roundabout (Challenge 2)
+## 3. Challenge 2: Roundabout Navigation
 
-**Handled by:** [auto_driver.py](../src/risabot_automode/risabot_automode/auto_driver.py) (ROUNDABOUT state)
+**Handled By:** [`auto_driver.py`](../src/risabot_automode/risabot_automode/auto_driver.py) (`ROUNDABOUT` state)  
+**Sensors:** Camera Line Follower + IMU
 
-### How it works
-
-- Uses the **camera line follower** — the roundabout has painted lane lines
-- The state machine enters `ROUNDABOUT` after passing Challenge 1
-- On **Lap 1**, the roundabout exits to Boom Gate 1 (open) → tunnel path
-- On **Lap 2**, Boom Gate 1 is closed, so the roundabout exits to the parking path
-- The `dist_roundabout` parameter controls how far the robot travels before taking the exit
+### Execution Flow
+- Triggered automatically after Obstruction Avoidance completes.
+- Operates under high-curvature lane following with adjusted lookahead and asymmetric Ackermann right-boost (`auto_right_steer_boost: 1.3`).
+- **Lap 1**: Continues through the circle for `t_roundabout_sec` (8.0 s) to take Exit 1 toward the Boom Gate and Tunnel.
+- **Lap 2**: Exits toward the inner parking area when the Lap 2 parking signboard is detected.
 
 ---
 
-## 4. Tunnel (Challenge 3)
+## 4. Challenge 3: Tunnel Navigation
 
-**File:** [tunnel_wall_follower.py](../src/risabot_automode/risabot_automode/tunnel_wall_follower.py)
-
+**File:** [`src/risabot_automode/risabot_automode/tunnel_wall_follower.py`](../src/risabot_automode/risabot_automode/tunnel_wall_follower.py)  
+**Sensors:** YDLiDAR Tmini Plus (`/scan`)  
 **Topics:** `/tunnel_detected` (Bool), `/tunnel_cmd_vel` (Twist)
 
-### How it works
-
-1. **Input:** LiDAR scans (`/scan`)
-2. **Wall Detection:** Splits scan points into Left side and Right side
-3. **Error:** `error = left_dist - right_dist`
-   - `error > 0` → closer to right wall → steer left
-   - `error < 0` → closer to left wall → steer right
-4. **PD Control:** `angular_vel = (kp × error) + (kd × derivative)`
-5. **Why LiDAR?** Tunnels are dark — camera can't see lane lines reliably
-
-**Tunable:** `kp`, `kd`, `target_center_dist`, `forward_speed`
+### Execution Flow
+1. **Corridor Gating**: Evaluates left (15°–120°) and right (-120° to -15°) LiDAR returns. When both sides have valid wall returns (<0.80 m), `/tunnel_detected = True`.
+2. **RANSAC Line Fitting**: Fits linear models to left and right wall point clouds (50 iterations, 3 cm threshold) to reject noisy outliers.
+3. **Dual-PD Control**:
+   - **Lateral Centering**: `error_dist = left_dist - right_dist` → $u_{dist} = K_{p} \cdot e + K_{d} \cdot \dot{e}$ ($K_p = 5.0, K_d = 0.5$).
+   - **Heading Alignment**: $\theta_{wall}$ → $u_{head} = K_{p\_head} \cdot \theta + K_{d\_head} \cdot \dot{\theta}$ ($K_{p\_head} = 1.0$).
+4. Camera lane errors are ignored in the dark tunnel, ensuring immune tracking through the enclosed passage.
 
 ---
 
-## 5. Boom Gate (Challenge 4)
+## 5. Challenge 4: Boom Gate Detection
 
-**File:** [boom_gate_detector.py](../src/risabot_automode/risabot_automode/boom_gate_detector.py)
-
+**File:** [`src/risabot_automode/risabot_automode/boom_gate_detector.py`](../src/risabot_automode/risabot_automode/boom_gate_detector.py)  
+**Sensors:** YDLiDAR + Camera Red Bar Detection  
 **Topic:** `/boom_gate_open` (Bool)
 
-### How it works
-
-1. **Input:** LiDAR scans (`/scan`)
-2. **ROI:** Looks at a narrow forward arc (±20°, 0.1m to 0.8m range)
-3. **Detection:** If a **dense cluster** of points appears at similar distances (low variance = a horizontal bar), the gate is **CLOSED**
-4. **Hysteresis:** Must see "open" for N consecutive frames before publishing `True` — prevents flickering
-
-> There are **two boom gates** on the course:
->
-> - **Boom Gate 1** (`BOOM_GATE_1`): After roundabout exit 1. Always open on Lap 1, closed on Lap 2
-> - **Boom Gate 2** (`BOOM_GATE_2`): After the tunnel. Randomly open or closed — robot stops if closed, proceeds when open
-
-**Tunable:** `min_gate_points`, `max_gate_dist`, `gate_angle_window`, `gate_dist_var_max`
+### Dual-Modality Sensing
+1. **LiDAR Distance Variance**: Evaluates forward arc (±20°, 0.15–0.80 m). A dense cluster with variance $< 0.05\text{ m}$ indicates a horizontal barrier bar.
+2. **Camera Lower-ROI Red Segmentation**:
+   - Crops lower image region (y: 0.50 to 0.95) to prevent raised gate bars from triggering false closures.
+   - Applies dual-range HSV red thresholding (`sat_min: 70`, `val_min: 70`, `cam_red_min_width: 80px`).
+3. **Failsafe Debounce**: Requires 5 consecutive clear frames (`hysteresis: 5`) before declaring `/boom_gate_open = True`.
 
 ---
 
-## 6. Hill (Challenge 5)
+## 6. Challenge 5 & 6: Hill Climbing, Descent & Bumpers
 
-**Handled by:** Lane following (no special module)
+**Handled By:** [`auto_driver.py`](../src/risabot_automode/risabot_automode/auto_driver.py)  
+**Sensors:** Horizon BPU Signage Detector + Onboard IMU (`/imu/pitch`)
 
-The hill is a physical ramp. The robot drives up and over it using normal camera lane following. No code changes needed — the camera still sees the lane lines on the ramp surface. May need slightly higher motor power (tunable via `forward_speed`).
-
----
-
-## 7. Bumper (Challenge 6)
-
-**Handled by:** Lane following (no special module)
-
-Similar to the hill — the bumper is a physical obstacle on the ground that the robot drives over. Standard lane following handles this.
-
----
-
-## 8. Traffic Light (Challenge 7)
-
-**File:** [traffic_light_detector.py](../src/risabot_automode/risabot_automode/traffic_light_detector.py)
-
-**Topic:** `/traffic_light_state` (String: "red", "yellow", "green", "unknown")
-
-### How it works
-
-1. **Input:** Color camera image (`/camera/color/image_raw`)
-2. **HSV Thresholding:** Filters image for Red, Yellow, and Green color ranges
-3. **Contour Detection:** Finds circular blobs matching traffic light colors
-4. **Output:**
-   - Red/Yellow detected → publishes `"red"` or `"yellow"` → robot stops
-   - Green detected → publishes `"green"` → robot proceeds
-
-> ⚠️ HSV thresholds are very sensitive to lighting. Always re-tune at the competition venue using `ros2 param set`.
+### Execution Flow
+1. **Signage Priming**: When `signage_detector` detects `Hill_signboard` (Class 1), it primes the hill detection window for 8.0 s (`hill_sign_prime_sec`), lowering the pitch threshold by 3°.
+2. **Hill Climb Ascent (`HILL`)**:
+   - Triggered when IMU pitch exceeds `hill_pitch_threshold` (8.0°).
+   - Increases drive speed dynamically:
+     $$v = v_{base} + (\text{pitch} - \theta_{thresh}) \cdot v_{per\_deg}$$
+   - Restricts steering throw (`hill_steer_scale: 0.4`) to prevent fishtailing off the ramp edge.
+3. **Hill Descent (`DESCENT`)**:
+   - Triggered when pitching downhill. Enforces controlled descent speed ($0.08\text{ m/s}$) to prevent runaway momentum.
+4. **Bumpers**: Handled by compliant lane following with active Kalman filtering.
 
 ---
 
-## 9. Parallel Parking (Challenge 8)
+## 7. Challenge 7: Traffic Light Detection
 
-**File:** [parking_controller.py](../src/risabot_automode/risabot_automode/parking_controller.py)
+**Files:** [`signage_detector.py`](../src/risabot_automode/risabot_automode/signage_detector.py) & [`traffic_light_detector.py`](../src/risabot_automode/risabot_automode/traffic_light_detector.py)  
+**Topic:** `/traffic_light_state` ("red", "yellow", "green", "unknown")
 
-**Topics:** `/parking_cmd_vel`, `/parking_complete`
-
-**Slot size:** 0.75m deep (see layout)
-
-### How it works
-
-1. `FORWARD` — Drive past the parking slot (distance measured via odometry)
-2. `STEER_REVERSE` — Reverse while turning into the slot
-3. `STRAIGHTEN` — Center wheels and reverse fully in
-4. `WAIT` — Stop for 3 seconds (competition requirement)
-5. `EXIT` — Drive forward and turn out to rejoin the lane
+### Execution Flow
+- **Primary Detection (BPU Neural Network)**: YOLOv5s detects `Traffic_Red` (Class 7) and `Traffic_Green` (Class 6).
+- **Secondary Fallback (HSV Color Circles)**: Multi-color contour segmentation verifies active circular lights.
+- **State Machine Integration (Priority 2.5)**:
+  - Red / Yellow light triggers an immediate full stop.
+  - Latch remains engaged until an explicit `Traffic_Green` detection is confirmed.
+  - Upon green confirmation, the robot advances, clears the gate distance, and increments `current_lap` to 2.
 
 ---
 
-## 10. Perpendicular Parking (Challenge 9)
+## 8. Challenge 8 & 9: Parallel & Perpendicular Parking
 
-**File:** [parking_controller.py](../src/risabot_automode/risabot_automode/parking_controller.py)
+**Files:** [`parking_controller.py`](../src/risabot_automode/risabot_automode/parking_controller.py) & [`signage_detector.py`](../src/risabot_automode/risabot_automode/signage_detector.py)  
+**Sensors:** BPU YOLOv5s Sign Detection + Hardware Odometry + Record & Playback
 
-**Slot size:** 0.4m wide (see layout)
-
-### How it works
-
-1. `TURN_IN` — 90° turn into the slot
-2. `FORWARD` — Drive in until LiDAR detects the back wall
-3. `WAIT` — Stop for required time
-4. `REVERSE_OUT` — Back out and turn to rejoin the lane
-
----
-
-## 11. Line Follower (Used Throughout)
-
-**File:** [line_follower_camera.py](../src/risabot_automode/risabot_automode/line_follower_camera.py)
-
-**Topic:** `/lane_error` (Float32)
-
-### How it works
-
-1. **Crop:** Takes bottom 40% of camera image (road surface)
-2. **Threshold:** Filters for white pixels (lane markings)
-3. **Histogram:** Sums white pixels per column to find lane line peaks
-4. **Midpoint:** Center between left and right lane lines
-5. **Error:** `error = image_center - lane_center`
-6. **Smoothing:**
-   - **Dead zone** (<0.03) → drive straight on straights
-   - **EMA filter** → removes camera noise jitter
-
-**Tunable:** `white_threshold`, `crop_ratio`, `smoothing_alpha`, `dead_zone`, `show_debug`
-
-> Set `show_debug:=True` to see the lane detection overlay on a desktop. Disabled by default for headless operation on the robot.
+### Execution Flow
+1. **Sign Detection**: BPU detects `ParallelP_signboard` (Class 3) or `PerpendP_signboard` (Class 4).
+2. **Idle Pause**: Robot enters `PARKING_IDLE` and stops for `park_wait_time` (3.0 s).
+3. **Trajectory Execution (`PARKING_PLAYBACK`)**:
+   - Replays precision recorded 20 Hz trajectory maneuvers (`servo_controller.py`).
+   - Reverses into slot, holds 3-second mandatory dwell, and drives out to rejoin the track.
+4. **Perpendicular Park & Finish**: Upon completing perpendicular parking on Lap 2, the state machine transitions to `FINISHED` and halts motors permanently.

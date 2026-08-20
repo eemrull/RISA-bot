@@ -1,158 +1,124 @@
-# Competition Validation Guide
+# Competition Hardware Validation Guide
 
-This guide is for field testing the current `refactor-test` stack on hardware.
+Comprehensive test plan, acceptance criteria, failsafe verification, and automated regression testing for hardware validation.
 
-## 1. Which Launch to Use
+---
 
-- `competition.launch.py`: full run stack (camera, lidar, perception, auto driver, cmd safety, joystick, servo controller, dashboard, health monitor). Use this for real runs.
-- `bringup.launch.py`: minimal debug stack (lidar, TF, auto driver, cmd safety, health monitor). Use this when you want to test nodes one-by-one or replay data.
+## 1. Primary Launch Selection
 
-Quick rule:
-- Course run: `competition.launch.py`
-- Debug/integration isolation: `bringup.launch.py`
+- **`bringup.launch.py` (Full Competition Stack)**: Camera, LiDAR, TF, Perception, YOLOv5s BPU, Brain, Safety Controller, Joystick, Servo Controller, Web Dashboard, go2rtc, and SLAM.
+- **`bringup.launch.py slam:=false`**: Full competition stack with SLAM scan matcher disabled for low CPU overhead.
+- **`lane_test.launch.py` (Isolated Lane Test)**: Camera, Line Follower, Joystick, and Auto Driver.
+- **`slam_test.launch.py` (Isolated SLAM Test)**: LiDAR, Odometry TF, and SLAM Toolbox.
+
+---
 
 ## 2. Pre-Run Checklist
 
-1. Build and source:
+1. Rebuild and source:
+   ```bash
+   cb && sos
+   ```
+2. Launch full competition stack:
+   ```bash
+   ros2 launch risabot_automode bringup.launch.py
+   ```
+3. Confirm critical topics are active:
+   ```bash
+   ros2 topic list | grep -E "cmd_vel_auto_raw|cmd_vel_auto|loop_stats|health_status|odom|dashboard_state|map"
+   ```
+4. Verify system health:
+   ```bash
+   ros2 topic echo /health_status --once
+   ```
+   - *Expected:* `"ok": true`
+
+---
+
+## 3. Gamepad Ghost Input & Safety Unlock Verification
+
+**Goal:** Verify that controller analog axis drift on startup cannot move the robot.
+
+1. Keep sticks and triggers untouched at launch.
+2. Press **A** or **Y** once.
+   - *Expected:* Controller unlocks, but robot does not move.
+3. Center sticks to neutral.
+   - *Expected:* Terminal logs `Controller neutral detected, manual drive enabled`.
+4. Monitor `/cmd_vel`:
+   ```bash
+   ros2 topic echo /cmd_vel
+   ```
+   - *Expected:* Strict zero velocity until manual joystick input is given.
+
+---
+
+## 4. Failsafe & Emergency Stop Tests
+
+### A. E-Stop Verification
 ```bash
-colcon build --symlink-install
-source install/setup.bash
+ros2 topic pub --once /e_stop std_msgs/msg/Bool "{data: true}"
 ```
-2. Launch full stack:
+- *Expected:*
+  - `/cmd_vel_auto` immediately drops to zero.
+  - `auto_driver` state displays `EMERGENCY_STOP`.
+  - Web Dashboard indicates active safety stop.
+
+Clear E-stop:
 ```bash
-ros2 launch risabot_automode competition.launch.py
-```
-3. Confirm critical topics exist:
-```bash
-ros2 topic list | grep -E "cmd_vel_auto_raw|cmd_vel_auto|loop_stats|health_status|odom|dashboard_state"
-```
-4. Confirm health is stable:
-```bash
-ros2 topic echo /health_status
-```
-- Expected in auto-ready state: `"ok": true` (or only transient stale keys during startup).
-
-## 3. Ghost Controller Input Test
-
-Goal: verify startup ghost axes do not move the robot.
-
-1. Keep sticks/triggers untouched at startup.
-2. Press `Y` once.
-- Expected: controller unlock only, no mode toggle motion command.
-3. Center sticks (if needed), then press `Y` again.
-- Expected: mode toggles, still no twitch from stale axis frame.
-4. Watch:
-```bash
-ros2 topic echo /cmd_vel
-```
-- Expected: no non-zero spike on the unlock frame.
-
-If needed, tune:
-- `/servo_controller unlock_requires_neutral` (keep `true`)
-- `/servo_controller unlock_neutral_threshold` (start `0.15`)
-- `joy_node deadzone` (currently set in `competition.launch.py`)
-
-## 4. Command Safety and Failsafe Tests
-
-### A. E-stop path
-
-```bash
-ros2 topic pub -1 /e_stop std_msgs/msg/Bool "{data: true}"
-```
-- Expected:
-  - `/cmd_vel_auto` goes to zero
-  - `auto_driver` state can show `EMERGENCY_STOP`
-  - dashboard shows safety stop reason
-
-Clear:
-```bash
-ros2 topic pub -1 /e_stop std_msgs/msg/Bool "{data: false}"
+ros2 topic pub --once /e_stop std_msgs/msg/Bool "{data: false}"
 ```
 
-### B. Auto command dropout
+### B. Command Safety Dropout Test
+1. Engage autonomous mode (`/auto_mode = true`).
+2. Simulate process crash by terminating `cmd_safety_controller`.
+3. *Expected:* Within `auto_cmd_timeout` (0.4 s), `servo_controller` halts motors.
 
-1. Put robot in auto mode.
-2. Stop `cmd_safety_controller` process (or block its input stream).
-3. Expected within `auto_cmd_timeout` (~0.4s):
-  - `servo_controller` forces manual stop
-  - motor command goes zero
+---
 
-## 5. Loop Frequency and Jitter Checks
+## 5. Control Loop Jitter & Frequency Benchmarks
 
-Watch loop stats:
+Monitor loop statistics:
 ```bash
 ros2 topic echo /loop_stats
 ```
 
-Pass targets:
-- `auto_driver:auto_driver_cmd` avg >= 45 Hz
-- `cmd_safety_controller:cmd_safety` avg >= 45 Hz
-- `servo_controller:servo_encoder` avg >= 18 Hz
-- `servo_controller:servo_hw` avg >= 9 Hz
-- overruns should stay low and not continuously increase each second
+**Target Pass Criteria:**
+- `auto_driver:auto_driver_cmd` average $\ge 45\text{ Hz}$
+- `cmd_safety_controller:cmd_safety` average $\ge 45\text{ Hz}$
+- `servo_controller:servo_encoder` average $\ge 18\text{ Hz}$
+- `servo_controller:servo_hw` average $\ge 9\text{ Hz}$
+- Overrun count remains bounded and does not steadily grow.
 
-## 6. Hardware Odometry Calibration (No IMU)
+---
 
-### A. Straight distance
+## 6. Automated Rosbag Regression Validator
 
-1. Reset odometry display.
-2. Drive exactly `1.00 m` straight (5 trials, same battery state).
-3. Use median reported distance `D_med`.
-
-Update either:
-```text
-new_ticks_per_meter = old_ticks_per_meter * (D_med / 1.00)
-```
-or:
-```text
-new_odom_distance_scale = old_odom_distance_scale * (1.00 / D_med)
-```
-
-Recommended:
-- Use `ticks_per_meter` for main correction.
-- Use `odom_distance_scale` for final fine tuning.
-
-### B. Standstill drift
-
-With robot stationary for 10 seconds:
-- `/odom` linear speed should stay near zero (target < 0.03 m/s).
-- If drifting, increase `/servo_controller odom_velocity_deadband` slightly.
-
-### C. Runtime tuning commands
-
-```bash
-ros2 param set /servo_controller ticks_per_meter 1700.0
-ros2 param set /servo_controller odom_distance_scale 0.62
-ros2 param set /servo_controller odom_yaw_scale 0.95
-ros2 param set /servo_controller odom_velocity_deadband 0.03
-```
-
-## 7. Bag Replay Regression
-
-Record:
+Record a 45-second test lap:
 ```bash
 ros2 bag record /loop_stats /health_status /cmd_safety_status /cmd_vel_auto /odom
 ```
 
-Replay + validate:
+Run automated analysis:
 ```bash
 ros2 run risabot_automode bag_regression_validator --ros-args \
   -p window_sec:=45.0 \
   -p output_file:=/tmp/risa_regression.json
 ```
 
-Validator reports PASS/FAIL using:
-- loop frequency ratios
-- loop overruns
-- max command/odom speed bounds
-- health status failures
-- cmd safety timeout/e-stop counters
+**Validation Checks Reported:**
+- Loop frequency ratios & jitter
+- Safety clamp violations & timeout counters
+- Health monitor error states
+- Maximum speed and acceleration limits
 
-## 8. Competition Acceptance Checklist
+---
 
-- No startup twitch from controller unlock
-- E-stop halts within one control cycle
-- Auto command dropout forces manual stop
-- Loop stats stay within target bands for full lap runtime
-- Straight-line odometry error within +/-0.15 m per 1 m
-- Health monitor remains `ok=true` during stable run
+## 7. Competition Acceptance Checklist
+
+- [ ] Controller unlock sequence required before motion is permitted
+- [ ] Emergency stop halts robot within one 20 ms cycle
+- [ ] Loss of heartbeat halts motors within 0.4 s
+- [ ] Control loop maintains $>45\text{ Hz}$ with low jitter
+- [ ] BPU AI reliably detects parking and hill signs at $>5\text{ Hz}$
+- [ ] 2D SLAM maps track boundaries without reflection artifacts
+- [ ] Web dashboard reflects live camera views and parameter updates

@@ -1,99 +1,97 @@
-# RISA-Bot Scripts & Tools
+# RISA-Bot Scripts & Developer Utilities
 
-This folder contains the automated scripts designed to effortlessly set up and configure the RISA-bot software stack from scratch on a new or existing robot.
+This directory contains automated deployment, environment setup, fleet management, and AI compilation tools for the RISA-bot platform.
 
-## Available Scripts
+---
+
+## 📂 Tools Directory Overview
+
+| Script / Directory | Description |
+|---|---|
+| [`install.sh`](install.sh) | Primary setup wizard for fresh robots (dependencies, SDK, udev, build, aliases) |
+| [`install_deps.sh`](install_deps.sh) | System dependencies, ROS 2 packages, and library build script |
+| [`install_bashalias.sh`](install_bashalias.sh) | Generates `~/.bash_aliases` and configures `~/.bashrc` shortcuts |
+| [`setup_autostart.sh`](setup_autostart.sh) | Installs `risabot.service` and autostart desktop launcher |
+| [`setup_mdns.sh`](setup_mdns.sh) | Configures Avahi mDNS so the robot resolves as `risabot.local` |
+| [`setup_wifi.sh`](setup_wifi.sh) | Pre-configures WiFi network connection and priority |
+| [`wifi_hotspot_setup.sh`](wifi_hotspot_setup.sh) | Creates a standalone WiFi Access Point on the robot with WPA2-AES |
+| [`bulk_setup_robots.py`](bulk_setup_robots.py) | Paramiko-driven multi-robot automated configuration and provisioning script |
+| [`deploy_to_robots_paramiko.py`](deploy_to_robots_paramiko.py) | Fleet model deployment and git pull tool over SSH |
+| [`bpu_model/`](bpu_model/) | Horizon BPU YOLOv5s training, ONNX patching, Docker quantization toolchain |
+| [`go2rtc/`](go2rtc/) | High-performance WebRTC / RTSP / MJPEG low-latency streaming server |
+| [`wifi_provisioning/`](wifi_provisioning/) | FastAPI portal backend running on port 8000 |
+| [`rosmaster_lib/`](rosmaster_lib/) | Yahboom Rosmaster motor expansion board Python driver library |
+
+---
+
+## 🛠️ Script Details & Usage
 
 ### 1. `install.sh`
-
-The primary setup wizard. Running this script will handle laying down the entire repository's architecture without needing manual copying or installation of third-party libraries.
-
-**What it does:**
-
-- Verifies workspace structure (`~/risabotcar_ws/src/RISA-bot`)
-- Auto-generates `udev` hardware binding rules
-- Installs all relevant ROS 2 `apt` dependencies and pip libraries like `Rosmaster_Lib`
-- Builds the `YDLidar-SDK` natively
-- Initiates `colcon build` to compile the monolithic robot codebase
-- Generates `~/.bash_aliases` and links your `~/.bashrc` automatically
-
-**Usage:**
+The primary setup wizard for fresh Horizon RDK X5 robot installations.
 
 ```bash
 cd ~/risabotcar_ws
 bash tools/install.sh
 ```
 
+**Actions Performed:**
+- Verifies workspace structure (`~/risabotcar_ws/src/RISA-bot`)
+- Installs udev hardware rules (`99-risabot.rules`, `56-orbbec-usb.rules`)
+- Installs ROS 2 packages and builds `YDLidar-SDK` from source
+- Executes `colcon build --symlink-install`
+- Adds `COLCON_IGNORE` on C++ dependencies to speed up subsequent Python builds
+- Generates `~/.bash_aliases`
+
 ---
 
 ### 2. `install_bashalias.sh`
-
-A modular, lightweight script to configure your terminal environment without rebuilding any C++ code. This is called automatically by `install.sh`, but can be run independently if you wish to ONLY update your aliases.
-
-**What it does:**
-
-- Completely regenerates the `~/.bash_aliases` file with quick-commands like `cb`, `astra`, `run_risabot`, etc.
-- Appends the necessary `setup.bash` sourcing definitions to your `~/.bashrc`
-- Injects the `run_risabot`, `run_trisabot`, and `fix_astra` bash functions into your profile
-
-**Usage:**
+Lightweight script to regenerate aliases and environment variables without compiling code.
 
 ```bash
-cd ~/risabotcar_ws
 bash tools/install_bashalias.sh
 ```
 
 ---
 
-### 3. `setup_autostart.sh`
-
-A utility script used to place the robot into an automatic run state upon boot.
-
-**What it does:**
-
-- Copies the `risabot_autostart.desktop` file into `~/.config/autostart/`
-- When the robot boots into its Ubuntu desktop environment, this desktop file launches a new terminal executing `run_risabot` to bring the robot fully online hands-free.
-
-**Usage:**
+### 3. `wifi_hotspot_setup.sh` & `setup_wifi.sh`
 
 ```bash
-cd ~/risabotcar_ws
-sudo bash tools/setup_autostart.sh
+# Connect robot to a local WiFi router or phone hotspot:
+sudo bash tools/setup_wifi.sh "MY_WIFI_SSID" "MY_PASSWORD"
+
+# Configure robot to broadcast its own standalone WiFi Access Point:
+sudo bash tools/wifi_hotspot_setup.sh
 ```
 
 ---
 
-### 4. `setup_mdns.sh`
-
-A one-time setup script to enable mDNS (Avahi) access to the RISA-bot.
-
-**What it does:**
-
-- Installs `avahi-daemon` if it is not already present.
-- Changes the system hostname to `risabot` so it can be resolved on the local network.
-- Restarts the daemon so that any device on the same WiFi network can access the dashboard via `http://risabot.local:8080`.
-
-**Usage:**
+### 4. `bulk_setup_robots.py` & `deploy_to_robots_paramiko.py`
+Automates simultaneous deployment across multiple robots on the competition bench:
 
 ```bash
-cd ~/risabotcar_ws
-bash tools/setup_mdns.sh
+# Deploy latest code and BPU model to all robots:
+python3 tools/deploy_to_robots_paramiko.py
 ```
 
 ---
 
-### 5. `setup_wifi.sh`
+### 5. `bpu_model/` AI Toolchain
 
-A utility to pre-configure the robot to automatically connect to a known WiFi network (like a phone hotspot) on boot, making it fully headless.
+Contains everything needed to train, patch, quantize, and verify YOLOv5s models for the Horizon RDK X5 BPU:
 
-**What it does:**
+- `colab_training_script.py`: Google Colab GPU training script with Roboflow dataset download.
+- `patch_onnx_resize.py`: Patches ONNX Resize operators to ensure compatibility with Horizon `hb_mapper`.
+- `compile_model.bat`: Windows batch script running Dockerized Horizon BPU compiler (`hb_mapper`).
+- `verify_bpu.py`: Standalone Python script testing BPU model load and execution on dummy tensors.
+- `verify_live.py`: Real-time diagnostic script running camera frames through the BPU and printing detections.
 
-- Authenticates and saves the provided SSID and Password to the robot's network manager (`nmcli` or `wpa_supplicant`).
-- Sets the connection priority so the robot auto-connects to this network whenever it is in range.
-- Also runs the mDNS setup automatically so `risabot.local` works over the new network.
+---
 
-**Usage:**
+### 6. `wifi_provisioning/` Portal (Port 8000)
 
-```bash
-sudo bash tools/setup_wifi.sh "DR_HOTSPOT_NAME" "HOTSPOT_PASSWORD"
-```
+FastAPI + uvicorn backend running at `http://<robot_ip>:8000`:
+- `GET /api/status`: Robot connectivity and IP status.
+- `GET /api/model/info`: Active BPU model metadata (name, size, SHA256).
+- `POST /api/model/upload`: Stream-uploads new BPU `.bin` model with magic-byte validation.
+- `POST /api/model/rollback`: Restores previous `.bin.bak` model.
+- `POST /api/launch_start` & `POST /api/launch_stop`: Controls `risabot.service`.

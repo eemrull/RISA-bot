@@ -1,243 +1,214 @@
-# Commands Reference
+# RISA-bot Commands & CLI Reference
 
-Quick-copy commands for operating the RISA-bot.
-
----
-
-## Robot Bash Aliases
-
-These are set up in `~/.bashrc` on the robot (user `sunrise`).
-
-### Node Shortcuts
-
-| Alias        | Runs                                             |
-| ------------ | ------------------------------------------------ |
-| `astra`      | Astra Mini camera launch                         |
-| `ydlidar`    | YDLiDAR Tmini Plus driver                        |
-| `servoc`     | Servo controller (joystick)                      |
-| `obstav`     | LiDAR obstacle avoidance                         |
-| `autod`      | Auto driver node                                 |
-| `linefollow` | Line follower camera                             |
-| `risabot`    | **Competition launch** (`competition.launch.py`) |
-| `sos`        | Source the workspace                             |
-| `s`          | Source `~/.bashrc`                               |
-
-### Build Shortcuts
-
-| Alias       | What it does                                                                                                                                                                              |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cb`        | `colcon build --symlink-install` (standard full rebuild). Use this 95% of the time after changing Python/C++ files.                                                                       |
-| `cbp <pkg>` | Build one package only (fastest)                                                                                                                                                          |
-| `cbc`       | `rm -rf build install` + `colcon build` (clean rebuild). Use this **ONLY** when `cb` throws weird `CMake` or `ament_prefix_path` errors. It deletes cache and forces a fresh compilation. |
-
-### Git Shortcuts
-
-| Alias      | What it does                       |
-| ---------- | ---------------------------------- |
-| `gs`       | `git status`                       |
-| `gp`       | `git pull`                         |
-| `gc "msg"` | `git add . && git commit -m "msg"` |
-| `gpu`      | `git push`                         |
-
-### Multi-Node Launchers
-
-**`run_risabot`** — Opens each node in a separate **xfce4-terminal** tab:
-
-1. Astra Camera
-2. YDLiDAR (2s delay after camera)
-3. Servo Controller
-4. Obstacle Avoidance
-5. Auto Driver
-6. Line Follower
-
-**`run_trisabot`** — Same as above but in **tmux** windows (for SSH sessions):
-
-```bash
-run_trisabot    # starts all nodes in tmux session "risabot"
-tmux attach -t risabot   # reattach if disconnected
-tmux kill-session -t risabot   # kill everything
-```
-
-### Utility
-
-| Alias       | What it does                                     |
-| ----------- | ------------------------------------------------ |
-| `fix_astra` | Restores `openni2_redist` from backup if missing |
+Comprehensive quick-copy reference for commands, bash aliases, launch scripts, topic monitors, and runtime parameter tuning.
 
 ---
 
-## Build & Deploy
+## 1. Robot Bash Aliases
+
+Configured on the robot in `~/.bash_aliases` (generated via `bash tools/install_bashalias.sh`):
+
+### Workspace & Build Shortcuts
+
+| Alias | Command | Purpose |
+|---|---|---|
+| `cb` | `cd ~/risabotcar_ws && colcon build --symlink-install` | Standard build after code changes |
+| `cbp <pkg>` | `cd ~/risabotcar_ws && colcon build --symlink-install --packages-select <pkg>` | Fastest build for a single package (e.g. `cbp risabot_automode`) |
+| `cbc` | `cd ~/risabotcar_ws && rm -rf build/risabot_automode install/risabot_automode build/control_servo install/control_servo && colcon build --symlink-install && source install/setup.bash` | Clean rebuild of the Python packages |
+| `cbd` | `rm -rf build/ install/ log/ && unset AMENT_PREFIX_PATH && unset CMAKE_PREFIX_PATH && source /opt/ros/humble/setup.bash && colcon build --symlink-install` | Full workspace purge & recompile |
+| `sos` | `source ~/risabotcar_ws/install/setup.bash` | Re-source workspace overlay |
+| `s` | `source ~/.bashrc` | Reload bash profile |
+
+### Node & Launch Shortcuts
+
+| Alias | What it Launches |
+|---|---|
+| `risabot` | `ros2 launch risabot_automode competition.launch.py` |
+| `astra` | Orbbec Astra Mini camera driver |
+| `ydlidar` | YDLiDAR Tmini Plus driver on `/dev/serial/by-id/` |
+| `servoc` | Servo controller hardware bridge |
+| `obstav` | LiDAR obstacle avoidance node |
+| `autod` | Auto driver state machine node |
+| `linefollow` | Line follower camera node |
+| `dashboard` | Web dashboard standalone Python runner |
+| `setup_wifi`| `sudo bash ~/risabotcar_ws/tools/setup_wifi.sh` |
+| `fix_astra` | Restores `openni2_redist` binaries from backup |
+| `kill_risa` | Closes all open xfce4-terminal windows |
+
+### Multi-Tab Launchers
 
 ```bash
-# On your PC — push changes
-git add . && git commit -m "message" && git push
-
-# On the robot — pull and build
-ssh risabot
-cd ~/risabotcar_ws/src/RISA-bot
-git checkout test && gp     # or: main
-cb && sos
+run_risabot    # Launches 6 terminal tabs in X11 GUI
+run_trisabot   # Launches 6 tmux windows over SSH
+tmux attach -t risabot        # Reattach to running tmux session
+tmux kill-session -t risabot  # Terminate session
 ```
 
 ---
 
-## Launch
+## 2. Launch Commands
 
 ```bash
-# --- TEST BRANCH ---
-ros2 launch risabot_automode competition.launch.py
+# 1. Full Competition Bringup (Sensors + Perception + Brain + SLAM + Dashboard + go2rtc)
+ros2 launch risabot_automode bringup.launch.py
 
-# --- MAIN BRANCH ---
-run_risabot                                    # LiDAR + auto_driver
-ros2 launch control_servo robot_rc.launch.py   # joystick controller
-ros2 launch astra_camera astra_mini.launch.py  # camera (separate)
-```
+# 2. Competition Bringup Without SLAM (Reduces CPU load)
+ros2 launch risabot_automode bringup.launch.py slam:=false
 
-### Run Individual Nodes
+# 3. Isolated Lane Follower Testing (Camera + Line Follower + Auto Driver)
+ros2 launch risabot_automode lane_test.launch.py
 
-```bash
-ros2 run risabot_automode auto_driver
-ros2 run risabot_automode line_follower_camera
-ros2 run risabot_automode traffic_light_detector
-ros2 run risabot_automode boom_gate_detector
-ros2 run risabot_automode tunnel_wall_follower
-ros2 run risabot_automode obstruction_avoidance
-ros2 run risabot_automode parking_controller
-ros2 run obstacle_avoidance obstacle_avoidance
-ros2 run obstacle_avoidance_camera obstacle_avoidance_camera
+# 4. Isolated SLAM Mapping (LiDAR + Odom TF + SLAM Toolbox)
+ros2 launch risabot_slam slam_test.launch.py
+
+# 5. Manual RC Driving (Joystick + Servo Controller Bridge)
+ros2 launch control_servo robot_rc.launch.py
 ```
 
 ---
 
-## Monitor Topics
+## 3. Testing & Verification Commands
+
+### BPU AI Hardware Diagnostics
 
 ```bash
-# See all active topics
+# 1. Verify BPU model load & basic inference on dummy tensor:
+python3 tools/bpu_model/verify_bpu.py
+
+# 2. Live camera feed detection verification (displays detection confidence):
+python3 tools/bpu_model/verify_live.py
+```
+
+### Automated Rosbag Regression Validator
+
+```bash
+# Record telemetry bag during a run:
+ros2 bag record /loop_stats /health_status /cmd_safety_status /cmd_vel_auto /odom
+
+# Execute regression analysis:
+ros2 run risabot_automode bag_regression_validator --ros-args \
+  -p window_sec:=45.0 \
+  -p output_file:=/tmp/risa_regression.json
+```
+
+### Companion Desktop App (`RisaBotApp`)
+
+```powershell
+# On Windows developer PC:
+cd RisaBotApp
+dotnet build RisaBotApp.csproj
+.\bin\Debug\net10.0-windows\RisaBotApp.exe
+```
+
+---
+
+## 4. Topic Monitoring & Diagnostics
+
+```bash
+# List all active topics
 ros2 topic list
 
-# Watch a topic (live values)
-ros2 topic echo /lane_error
-ros2 topic echo /traffic_light_state
-ros2 topic echo /boom_gate_open
-ros2 topic echo /tunnel_detected
-ros2 topic echo /obstruction_active
-ros2 topic echo /parking_complete
-ros2 topic echo /obstacle_front
-ros2 topic echo /auto_mode
-ros2 topic echo /cmd_vel
+# Control & State Telemetry
+ros2 topic echo /dashboard_state          # Current state machine state
+ros2 topic echo /health_status            # Global system health JSON
+ros2 topic echo /loop_stats               # Loop frequencies and jitter
+ros2 topic echo /cmd_safety_status        # Safety controller clamp status
+ros2 topic echo /odom                     # Odometry position & speed
+ros2 topic echo /imu/pitch                # IMU pitch angle for hill mode
 
-# Topic frequency (check if node is publishing)
-ros2 topic hz /scan
-ros2 topic hz /camera/color/image_raw
-ros2 topic hz /lane_error
+# Perception Topics
+ros2 topic echo /lane_error               # Lane center offset [-1.0 to 1.0]
+ros2 topic echo /traffic_light_state      # "red", "yellow", "green", "unknown"
+ros2 topic echo /boom_gate_open           # True when gate is raised
+ros2 topic echo /tunnel_detected          # True when corridor walls present
+ros2 topic echo /obstruction_active       # True when obstacle dodge active
+ros2 topic echo /parking_signboard_detected # True when parking sign detected
+ros2 topic echo /hill_sign_detected       # True when hill sign detected
+
+# Sensor Frequencies
+ros2 topic hz /camera/color/image_raw     # Expected: ~30 Hz
+ros2 topic hz /scan                       # Expected: ~10 Hz
+ros2 topic hz /lane_error                 # Expected: ~31 Hz
+ros2 topic hz /odom                       # Expected: 50 Hz
 ```
 
 ---
 
-## Control the Robot (CLI)
+## 5. Manual CLI Robot Control
 
 ```bash
-# Toggle auto mode
+# Toggle Auto / Manual Mode
 ros2 topic pub --once /auto_mode std_msgs/Bool "data: true"
 ros2 topic pub --once /auto_mode std_msgs/Bool "data: false"
 
-# Set challenge state (test branch)
+# Override State Machine State
 ros2 topic pub --once /set_challenge std_msgs/String "data: LANE_FOLLOW"
 ros2 topic pub --once /set_challenge std_msgs/String "data: TUNNEL"
-ros2 topic pub --once /set_challenge std_msgs/String "data: TRAFFIC_LIGHT"
+ros2 topic pub --once /set_challenge std_msgs/String "data: OBSTRUCTION"
+ros2 topic pub --once /set_challenge std_msgs/String "data: HILL"
 ros2 topic pub --once /set_challenge std_msgs/String "data: PARALLEL_PARK"
 ros2 topic pub --once /set_challenge std_msgs/String "data: PERPENDICULAR_PARK"
 
-# Trigger parking
+# Trigger Emergency Stop
+ros2 topic pub --once /e_stop std_msgs/Bool "data: true"
+ros2 topic pub --once /e_stop std_msgs/Bool "data: false"
+
+# Trigger Parking Maneuver
 ros2 topic pub --once /parking_command std_msgs/String "data: parallel"
 ros2 topic pub --once /parking_command std_msgs/String "data: perpendicular"
 
-# Manual drive from CLI (test only)
+# Manual Drive from CLI (Testing Only)
 ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.15}, angular: {z: 0.0}}" --rate 10
-# Ctrl+C to stop (will send zero automatically)
 ```
 
 ---
 
-## Set Parameters (Live Tuning)
+## 6. Live Parameter Tuning (`ros2 param set`)
+
+Parameters take effect immediately without recompilation:
 
 ```bash
-# List all parameters for a node
-ros2 param list /auto_driver
-ros2 param list /line_follower_camera
+# Auto Driver / Lane Follower
+ros2 param set /auto_driver forward_speed 0.15
+ros2 param set /auto_driver pid_kp 0.8
+ros2 param set /auto_driver pid_kd 0.20
+ros2 param set /auto_driver min_turn_speed 0.4
+ros2 param set /auto_driver lane_steer_slew 3.0
 
-# Get current value
-ros2 param get /auto_driver steering_gain
-ros2 param get /line_follower_camera smoothing_alpha
+# Line Follower Camera
+ros2 param set /line_follower_camera white_threshold 100
+ros2 param set /line_follower_camera crop_ratio_base 0.55
+ros2 param set /line_follower_camera invert_binary true
+ros2 param set /line_follower_camera kalman_process_noise 0.01
+ros2 param set /line_follower_camera kalman_measurement_noise 0.1
 
-# Set new value (takes effect immediately)
-ros2 param set /auto_driver steering_gain 0.5
-ros2 param set /line_follower_camera smoothing_alpha 0.3
-ros2 param set /line_follower_camera dead_zone 0.03
-ros2 param set /line_follower_camera white_threshold 150
+# Boom Gate Detector
+ros2 param set /boom_gate_detector cam_red_min_width 80
+ros2 param set /boom_gate_detector min_detect_dist 0.15
+ros2 param set /boom_gate_detector max_detect_dist 0.80
+ros2 param set /boom_gate_detector hysteresis 5
 
-# Traffic light HSV
-ros2 param set /traffic_light_detector sat_min 80
-ros2 param set /traffic_light_detector val_min 80
+# Tunnel Wall Follower
+ros2 param set /tunnel_wall_follower forward_speed 0.12
+ros2 param set /tunnel_wall_follower kp 5.0
+ros2 param set /tunnel_wall_follower kd 0.5
+ros2 param set /tunnel_wall_follower kp_heading 1.0
 
-# Tunnel PD
-ros2 param set /tunnel_wall_follower kp 1.2
-ros2 param set /tunnel_wall_follower kd 0.3
+# Hill Climb & Descent
+ros2 param set /auto_driver hill_pitch_threshold 8.0
+ros2 param set /auto_driver hill_base_speed 0.18
+ros2 param set /auto_driver hill_speed_per_degree 0.006
+ros2 param set /auto_driver descent_pitch_threshold 5.0
 
-# Obstruction dodge
-ros2 param set /obstruction_avoidance detect_dist 0.50
-ros2 param set /obstruction_avoidance steer_angular 0.6
+# Servo Controller Hardware & Odometry
+ros2 param set /servo_controller ticks_per_meter 6249.0
+ros2 param set /servo_controller auto_right_steer_boost 1.3
+ros2 param set /servo_controller odom_reverse_polarity true
 
-# Parking
-ros2 param set /parking_controller drive_speed 0.15
-ros2 param set /parking_controller parallel_steer_angle 0.6
-
-# Controller speed limits
-ros2 param set /servo_controller max_linear_speed 0.20
-ros2 param set /servo_controller max_angular_speed 0.80
-```
-
----
-
-## Debugging
-
-```bash
-# Check which nodes are running
-ros2 node list
-
-# Check node details (subscriptions, publishers, params)
-ros2 node info /auto_driver
-ros2 node info /line_follower_camera
-
-# Check if camera is Publishing
-ros2 topic hz /camera/color/image_raw    # Should be ~30 Hz
-
-# Check LiDAR
-ros2 topic hz /scan                      # Should be ~8-12 Hz
-
-# View camera feed (if X11 forwarding is set up)
-ros2 run rqt_image_view rqt_image_view
-
-# Kill a single node
-ros2 lifecycle set /auto_driver shutdown
-# Or just Ctrl+C the launch terminal
-
-# Check serial ports
-ls -la /dev/serial/by-id/
-```
-
----
-
-## Useful Shortcuts
-
-```bash
-# Emergency stop — send zero velocity
-ros2 topic pub --once /cmd_vel geometry_msgs/Twist "{}"
-
-# Quick check if robot is responsive — spin in place
-ros2 topic pub --once /cmd_vel geometry_msgs/Twist "{angular: {z: 0.5}}"
-
-# Verify joystick is connected
-ls /dev/input/js*
-jstest /dev/input/js0    # See live button/axis values
+# BPU Signage Detector Confidence
+ros2 param set /signage_detector thresh_hill 0.06
+ros2 param set /signage_detector thresh_parallelp 0.05
+ros2 param set /signage_detector thresh_perpendp 0.05
+ros2 param set /signage_detector thresh_tl_green 0.25
+ros2 param set /signage_detector thresh_tl_red 0.25
 ```
