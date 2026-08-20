@@ -34,16 +34,19 @@
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 
+		<!-- Windows Executable Icon (embedded into PE header of RisaBotApp.exe for Windows Explorer) -->
+		<ApplicationIcon Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">Platforms\Windows\appicon.ico</ApplicationIcon>
+
 		<!-- Suppress NETSDK1138 — expected when building single-target on Windows -->
 		<NoWarn>$(NoWarn);NETSDK1138</NoWarn>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<!-- App Icon (will be replaced with RISA-Bot logo) -->
-		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0B1F3A" />
+		<!-- App Icon (RISABOT official logo) -->
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#91102F" />
 
 		<!-- Native MAUI splash screen (shown by OS before app renders) -->
-		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#0B1F3A" BaseSize="128,128" />
+		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#91102F" BaseSize="128,128" />
 
 		<!-- Images — WiFi signal icons, robot illustrations -->
 		<MauiImage Include="Resources\Images\*" />

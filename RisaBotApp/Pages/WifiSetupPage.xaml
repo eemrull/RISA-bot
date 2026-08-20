@@ -11,71 +11,119 @@
     <Grid RowDefinitions="Auto, *, Auto">
 
         <!-- ── Header ─────────────────────────────────────────────────────── -->
-        <VerticalStackLayout Grid.Row="0" Padding="24,56,24,16" Spacing="4">
-            <Label Text="WiFi Setup" FontFamily="InterBold" FontSize="28" TextColor="{StaticResource TextPrimary}" />
-            <Label Text="Connect robot to your network" FontFamily="InterRegular" FontSize="14" TextColor="{StaticResource TextMuted}" />
-        </VerticalStackLayout>
+        <Grid Grid.Row="0" ColumnDefinitions="Auto, *" ColumnSpacing="14" Padding="24,36,24,18" VerticalOptions="Center">
+            <Border
+                Grid.Column="0"
+                Stroke="{StaticResource AccentCyan}"
+                StrokeThickness="1"
+                StrokeShape="RoundRectangle 14"
+                BackgroundColor="{StaticResource SurfaceElevated}"
+                WidthRequest="46"
+                HeightRequest="46"
+                Padding="6"
+                VerticalOptions="Center">
+                <Label Text="📡" FontSize="22" HorizontalOptions="Center" VerticalOptions="Center" />
+            </Border>
+            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                <Label Text="WIFI PROVISIONING" FontFamily="InterBold" FontSize="20" TextColor="{StaticResource TextPrimary}" CharacterSpacing="1" />
+                <Label Text="Pair RISA-Bot to target wireless infrastructure" FontFamily="InterRegular" FontSize="12" TextColor="{StaticResource TextMuted}" />
+            </VerticalStackLayout>
+        </Grid>
 
+        <!-- ── Main Content ──────────────────────────────────────────────── -->
         <ScrollView Grid.Row="1">
-            <VerticalStackLayout Padding="24,0" Spacing="20">
+            <VerticalStackLayout Padding="24,4,24,20" Spacing="16">
 
-                <!-- ── Connection progress (shown while connecting) ──────── -->
+                <!-- ── Connection Progress Timeline ──────────────────────── -->
                 <Border
+                    Stroke="{StaticResource BorderHighlight}"
+                    StrokeThickness="1"
                     StrokeShape="RoundRectangle 16"
                     BackgroundColor="{StaticResource CardBackground}"
                     Padding="20"
                     IsVisible="{Binding IsConnecting}">
-                    <VerticalStackLayout Spacing="0">
-                        <Label
-                            Text="Connecting…"
-                            FontFamily="InterSemiBold"
-                            FontSize="16"
-                            TextColor="{StaticResource TextPrimary}"
-                            Margin="0,0,0,16" />
+                    <VerticalStackLayout Spacing="14">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label
+                                Grid.Column="0"
+                                Text="PROVISIONING IN PROGRESS"
+                                FontFamily="InterBold"
+                                FontSize="13"
+                                TextColor="{StaticResource AccentCyan}"
+                                CharacterSpacing="1" />
+                            <ActivityIndicator
+                                Grid.Column="1"
+                                IsRunning="True"
+                                Color="{StaticResource AccentCyan}"
+                                WidthRequest="18"
+                                HeightRequest="18" />
+                        </Grid>
+
+                        <BoxView HeightRequest="1" BackgroundColor="{StaticResource Divider}" />
+
                         <CollectionView ItemsSource="{Binding Steps}" SelectionMode="None">
                             <CollectionView.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ConnectionStep">
-                                    <Grid ColumnDefinitions="32, *" ColumnSpacing="12" Padding="0,10">
+                                    <Grid ColumnDefinitions="28, *" ColumnSpacing="12" Padding="0,8">
                                         <!-- Step status indicator -->
                                         <ActivityIndicator
                                             Grid.Column="0"
                                             IsRunning="True"
-                                            Color="{StaticResource AccentBlue}"
-                                            WidthRequest="20"
-                                            HeightRequest="20"
+                                            Color="{StaticResource AccentCyan}"
+                                            WidthRequest="18"
+                                            HeightRequest="18"
                                             VerticalOptions="Center"
                                             IsVisible="{Binding IsActive}" />
-                                        <Label
+                                        <Border
                                             Grid.Column="0"
-                                            Text="✓"
-                                            FontSize="18"
-                                            TextColor="{StaticResource AccentGreen}"
+                                            StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{StaticResource SuccessBackground}"
+                                            WidthRequest="22"
+                                            HeightRequest="22"
                                             VerticalOptions="Center"
                                             HorizontalOptions="Center"
-                                            IsVisible="{Binding IsDone}" />
-                                        <Label
+                                            IsVisible="{Binding IsDone}">
+                                            <Label
+                                                Text="✓"
+                                                FontSize="12"
+                                                TextColor="{StaticResource SuccessText}"
+                                                FontFamily="InterBold"
+                                                VerticalOptions="Center"
+                                                HorizontalOptions="Center" />
+                                        </Border>
+                                        <Border
                                             Grid.Column="0"
-                                            Text="✗"
-                                            FontSize="18"
-                                            TextColor="{StaticResource ErrorText}"
+                                            StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{StaticResource ErrorBackground}"
+                                            WidthRequest="22"
+                                            HeightRequest="22"
                                             VerticalOptions="Center"
                                             HorizontalOptions="Center"
-                                            IsVisible="{Binding IsFailed}" />
+                                            IsVisible="{Binding IsFailed}">
+                                            <Label
+                                                Text="✕"
+                                                FontSize="12"
+                                                TextColor="{StaticResource ErrorText}"
+                                                FontFamily="InterBold"
+                                                VerticalOptions="Center"
+                                                HorizontalOptions="Center" />
+                                        </Border>
                                         <Label
                                             Grid.Column="0"
                                             Text="○"
-                                            FontSize="18"
-                                            TextColor="{StaticResource TextMuted}"
+                                            FontSize="14"
+                                            TextColor="{StaticResource TextDim}"
                                             VerticalOptions="Center"
                                             HorizontalOptions="Center"
                                             IsVisible="{Binding IsPending}" />
+
                                         <!-- Step label -->
                                         <Label
                                             Grid.Column="1"
                                             Text="{Binding Label}"
-                                            FontFamily="InterRegular"
-                                            FontSize="14"
-                                            TextColor="{Binding IsActive, Converter={StaticResource BoolToColorConverter}, ConverterParameter='#E8F0FF,#888899'}"
+                                            FontFamily="InterMedium"
+                                            FontSize="13"
+                                            TextColor="{Binding IsActive, Converter={StaticResource BoolToColorConverter}, ConverterParameter='#F8FAFC,#72849E'}"
                                             VerticalOptions="Center" />
                                     </Grid>
                                 </DataTemplate>
@@ -84,44 +132,55 @@
                     </VerticalStackLayout>
                 </Border>
 
-                <!-- ── Error state ───────────────────────────────────────── -->
+                <!-- ── Error State Banner ────────────────────────────────── -->
                 <Border
+                    Stroke="{StaticResource ErrorBorder}"
+                    StrokeThickness="1"
                     StrokeShape="RoundRectangle 16"
                     BackgroundColor="{StaticResource ErrorBackground}"
                     Padding="20"
                     IsVisible="{Binding HasError}">
-                    <VerticalStackLayout Spacing="12">
-                        <Label Text="Connection Failed" FontFamily="InterSemiBold" FontSize="16" TextColor="{StaticResource ErrorText}" />
-                        <Label Text="{Binding ErrorMessage}" FontFamily="InterRegular" FontSize="13" TextColor="{StaticResource ErrorText}" LineBreakMode="WordWrap" />
+                    <VerticalStackLayout Spacing="14">
+                        <Grid ColumnDefinitions="Auto, *" ColumnSpacing="10" VerticalOptions="Center">
+                            <Label Grid.Column="0" Text="⚠" FontSize="20" TextColor="{StaticResource ErrorText}" VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="Connection Sequence Interrupted" FontFamily="InterBold" FontSize="14" TextColor="{StaticResource ErrorText}" VerticalOptions="Center" />
+                        </Grid>
+                        <Label Text="{Binding ErrorMessage}" FontFamily="InterRegular" FontSize="12" TextColor="{StaticResource TextSecondary}" LineBreakMode="WordWrap" />
                         <Button
-                            Text="Try Again"
+                            Text="RETRY PROVISIONING"
                             Command="{Binding RetryConnectionCommand}"
-                            BackgroundColor="{StaticResource ErrorText}"
-                            TextColor="White"
-                            FontFamily="InterSemiBold"
+                            BackgroundColor="{StaticResource ErrorBorder}"
+                            TextColor="{StaticResource White}"
+                            FontFamily="InterBold"
+                            FontSize="13"
+                            CharacterSpacing="1"
                             CornerRadius="10"
-                            HeightRequest="44" />
+                            HeightRequest="42" />
                     </VerticalStackLayout>
                 </Border>
 
-                <!-- ── Network list (shown when not connecting) ──────────── -->
+                <!-- ── Network List ──────────────────────────────────────── -->
                 <VerticalStackLayout
                     Spacing="12"
                     IsVisible="{Binding IsConnecting, Converter={StaticResource InvertBoolConverter}}">
 
-                    <Label
-                        Text="Available Networks"
-                        FontFamily="InterSemiBold"
-                        FontSize="14"
-                        TextColor="{StaticResource TextMuted}" />
-
-                    <!-- Scan loading indicator -->
-                    <ActivityIndicator
-                        IsRunning="{Binding IsScanning}"
-                        IsVisible="{Binding IsScanning}"
-                        Color="{StaticResource AccentBlue}"
-                        HorizontalOptions="Center"
-                        HeightRequest="36" />
+                    <Grid ColumnDefinitions="*, Auto">
+                        <Label
+                            Grid.Column="0"
+                            Text="AVAILABLE WIRELESS ACCESS POINTS"
+                            FontFamily="InterBold"
+                            FontSize="11"
+                            TextColor="{StaticResource TextMuted}"
+                            CharacterSpacing="1"
+                            VerticalOptions="Center" />
+                        <ActivityIndicator
+                            Grid.Column="1"
+                            IsRunning="{Binding IsScanning}"
+                            IsVisible="{Binding IsScanning}"
+                            Color="{StaticResource AccentCyan}"
+                            WidthRequest="18"
+                            HeightRequest="18" />
+                    </Grid>
 
                     <CollectionView
                         ItemsSource="{Binding Networks}"
@@ -130,20 +189,34 @@
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="vm:WifiNetworkItem">
                                 <Border
+                                    Stroke="{StaticResource CardBorder}"
+                                    StrokeThickness="1"
                                     StrokeShape="RoundRectangle 14"
                                     BackgroundColor="{StaticResource CardBackground}"
                                     Padding="16,14"
-                                    Margin="0,0,0,8">
-                                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                                    Margin="0,0,0,10">
+                                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="14">
                                         <!-- Signal icon -->
-                                        <Label Grid.Column="0" Text="{Binding SignalEmoji}" FontSize="22" VerticalOptions="Center" />
-                                        <!-- SSID + security -->
-                                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                                            <Label Text="{Binding Network.Ssid}" FontFamily="InterSemiBold" FontSize="14" TextColor="{StaticResource TextPrimary}" />
+                                        <Border
+                                            Grid.Column="0"
+                                            Stroke="{StaticResource Divider}"
+                                            StrokeThickness="1"
+                                            StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{StaticResource CardInner}"
+                                            WidthRequest="40"
+                                            HeightRequest="40"
+                                            VerticalOptions="Center">
+                                            <Label Text="{Binding SignalEmoji}" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
+                                        </Border>
+
+                                        <!-- SSID + Security -->
+                                        <VerticalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
+                                            <Label Text="{Binding Network.Ssid}" FontFamily="InterBold" FontSize="14" TextColor="{StaticResource TextPrimary}" />
                                             <Label Text="{Binding Network.Security}" FontFamily="InterRegular" FontSize="11" TextColor="{StaticResource TextMuted}" />
                                         </VerticalStackLayout>
+
                                         <!-- Connect chevron -->
-                                        <Label Grid.Column="2" Text="›" FontSize="22" TextColor="{StaticResource TextMuted}" VerticalOptions="Center" />
+                                        <Label Grid.Column="2" Text="›" FontFamily="InterBold" FontSize="22" TextColor="{StaticResource AccentCyan}" VerticalOptions="Center" />
                                     </Grid>
                                     <Border.GestureRecognizers>
                                         <TapGestureRecognizer Tapped="OnNetworkTapped" CommandParameter="{Binding Network}" />
@@ -158,19 +231,20 @@
             </VerticalStackLayout>
         </ScrollView>
 
-        <!-- ── Scan button ────────────────────────────────────────────────── -->
-        <Button
-            Grid.Row="2"
-            Text="Scan for Networks"
-            Command="{Binding ScanCommand}"
-            BackgroundColor="{StaticResource AccentBlue}"
-            TextColor="White"
-            FontFamily="InterSemiBold"
-            FontSize="15"
-            CornerRadius="14"
-            HeightRequest="52"
-            Margin="24,12,24,40"
-            IsVisible="{Binding IsConnecting, Converter={StaticResource InvertBoolConverter}}" />
+        <!-- ── Scan Trigger Button ────────────────────────────────────────── -->
+        <Border Grid.Row="2" BackgroundColor="{StaticResource SurfaceElevated}" Padding="24,14,24,28" StrokeThickness="0">
+            <Button
+                Text="SCAN WIRELESS SPECTRUM"
+                Command="{Binding ScanCommand}"
+                BackgroundColor="{StaticResource AccentCyan}"
+                TextColor="{StaticResource PrimaryDarkText}"
+                FontFamily="InterBold"
+                FontSize="14"
+                CharacterSpacing="1"
+                CornerRadius="12"
+                HeightRequest="48"
+                IsVisible="{Binding IsConnecting, Converter={StaticResource InvertBoolConverter}}" />
+        </Border>
 
     </Grid>
 

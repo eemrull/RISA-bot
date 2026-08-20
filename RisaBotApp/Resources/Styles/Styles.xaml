@@ -432,4 +432,72 @@
         <Setter Property="SelectedTabColor" Value="{AppThemeBinding Light={StaticResource Gray950}, Dark={StaticResource Gray200}}" />
     </Style>
 
+    <!-- ── Custom Aerospace Robotics Control Styles ────────────────────── -->
+    <Style x:Key="CyberCard" TargetType="Border">
+        <Setter Property="Stroke" Value="{StaticResource CardBorder}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 16" />
+        <Setter Property="BackgroundColor" Value="{StaticResource CardBackground}" />
+        <Setter Property="Padding" Value="18" />
+    </Style>
+
+    <Style x:Key="CyberCardInner" TargetType="Border">
+        <Setter Property="Stroke" Value="{StaticResource Divider}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 12" />
+        <Setter Property="BackgroundColor" Value="{StaticResource CardInner}" />
+        <Setter Property="Padding" Value="14" />
+    </Style>
+
+    <Style x:Key="PrimaryActionBtn" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="{StaticResource AccentCyan}" />
+        <Setter Property="TextColor" Value="{StaticResource PrimaryDarkText}" />
+        <Setter Property="FontFamily" Value="InterBold" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="HeightRequest" Value="46" />
+    </Style>
+
+    <Style x:Key="BrandActionBtn" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="{StaticResource RisaCrimson}" />
+        <Setter Property="TextColor" Value="{StaticResource White}" />
+        <Setter Property="FontFamily" Value="InterBold" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="HeightRequest" Value="46" />
+    </Style>
+
+    <Style x:Key="SecondaryActionBtn" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="{StaticResource SurfaceElevated}" />
+        <Setter Property="BorderColor" Value="{StaticResource CardBorder}" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
+        <Setter Property="FontFamily" Value="InterSemiBold" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="HeightRequest" Value="44" />
+    </Style>
+
+    <Style x:Key="SuccessActionBtn" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="{StaticResource SuccessBackground}" />
+        <Setter Property="BorderColor" Value="{StaticResource SuccessBorder}" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="TextColor" Value="{StaticResource SuccessText}" />
+        <Setter Property="FontFamily" Value="InterSemiBold" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="HeightRequest" Value="44" />
+    </Style>
+
+    <Style x:Key="DangerActionBtn" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="{StaticResource ErrorBackground}" />
+        <Setter Property="BorderColor" Value="{StaticResource ErrorBorder}" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="TextColor" Value="{StaticResource ErrorText}" />
+        <Setter Property="FontFamily" Value="InterSemiBold" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="HeightRequest" Value="44" />
+    </Style>
+
 </ResourceDictionary>

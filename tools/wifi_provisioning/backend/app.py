@@ -419,6 +419,49 @@ async def _do_connect(ssid: str, password: str):
         await _broadcast("failed", f"Connection failed: {result}")
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+@app.get("/favicon.png", include_in_schema=False)
+async def favicon():
+    import base64
+    from fastapi import Response
+    FAVICON_B64 = (
+        "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"
+        "l1hEMvYQAAAABJRU5ErkJggg=="
+    )
+    return Response(content=base64.b64decode(FAVICON_B64), media_type="image/png")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=PORTAL_PORT, reload=False)

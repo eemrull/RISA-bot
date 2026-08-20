@@ -1,8 +1,23 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/flair/risabot_flair_dark.png">
+    <img src="assets/flair/risabot_flair.png" width="380" alt="RISA BOT Logo" />
+  </picture>
+</p>
+
 # RISA-bot
 
 **ROS 2 Intelligent System Autonomy — Competition Robot Platform**
 
 RISA-bot is a competition-grade autonomous vehicle built on **ROS 2 Humble** and hosted on the **Horizon Sunrise RDK X5** (ARM64 Ubuntu 22.04). It integrates hardware-accelerated computer vision (BPU), 2D LiDAR SLAM, multi-scanline lane following, dual-modal perception, a 17-state priority-governed autonomous state machine, and a multi-service web & desktop companion suite.
+
+---
+
+## ⚡ Quick Start: Companion App (No Build Required)
+
+For end users who just want to run the companion app without compiling or installing .NET:
+- **Direct Executable**: Double-click [`dist/RisaBotApp/RisaBotApp.exe`](file:///c:/Users/eemrull/RISA-bot/dist/RisaBotApp/RisaBotApp.exe) or run [`Launch-RisaBotApp.bat`](file:///c:/Users/eemrull/RISA-bot/Launch-RisaBotApp.bat) from the root folder.
+- **Features**: Automatic robot mDNS discovery, live camera streams, real-time telemetry HUD, virtual joystick control, 2D SLAM mapping, and BPU model manager.
 
 ---
 
@@ -22,7 +37,7 @@ RISA-bot is a competition-grade autonomous vehicle built on **ROS 2 Humble** and
   - **Port 8080**: Built-in ROS 2 Web Dashboard for camera views, sensor HUD, live parameter tuning/saving, SLAM, data logger, and record/playback.
   - **Port 1984**: `go2rtc` low-latency WebRTC/MJPEG streaming server.
   - **Port 1985**: `ros2go2rtc_bridge` camera MJPEG source with dynamic debug view routing.
-- **Companion App (`RisaBotApp`)**: Windows desktop companion app (WPF / .NET 10) with robot discovery, live camera, telemetry HUD, virtual RC controls, SLAM map visualization, and BPU model card manager.
+- **Companion App (`RisaBotApp`)**: Windows desktop companion app (.NET MAUI / WinUI 3) with robot discovery, live camera, telemetry HUD, virtual RC controls, SLAM map visualization, and BPU model card manager.
 - **Fleet & Diagnostic Tooling**: Paramiko multi-robot deployment (`bulk_setup_robots.py`), automated rosbag regression validator (`bag_regression_validator.py`), and live BPU testing (`verify_live.py`).
 
 ---

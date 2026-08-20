@@ -8,64 +8,102 @@
 
     <Grid RowDefinitions="*, Auto, *">
 
+        <!-- Ambient Background Grid / Accents -->
+        <BoxView Grid.RowSpan="3" BackgroundColor="{StaticResource SplashBackground}" />
+
         <!-- Logo + Branding centred in the middle row -->
         <VerticalStackLayout
             Grid.Row="1"
-            Spacing="20"
+            Spacing="24"
             HorizontalOptions="Center"
             VerticalOptions="Center">
 
-            <!-- Robot icon placeholder (replaced with actual SVG logo in Resources) -->
+            <!-- Engineered Logo Frame with subtle glow -->
             <Border
-                WidthRequest="100"
-                HeightRequest="100"
-                StrokeShape="RoundRectangle 24"
-                BackgroundColor="{StaticResource AccentBlue}"
-                Padding="16">
-                <Label
-                    Text="🤖"
-                    FontSize="48"
+                Stroke="{StaticResource RisaCrimson}"
+                StrokeThickness="1.5"
+                StrokeShape="RoundRectangle 28"
+                BackgroundColor="{StaticResource SurfaceElevated}"
+                WidthRequest="124"
+                HeightRequest="124"
+                Padding="16"
+                HorizontalOptions="Center">
+                <Image
+                    Source="risabot_logo.png"
+                    WidthRequest="88"
+                    HeightRequest="88"
+                    Aspect="AspectFit"
                     HorizontalOptions="Center"
                     VerticalOptions="Center" />
             </Border>
 
-            <Label
-                Text="RISA-Bot"
-                FontFamily="InterBold"
-                FontSize="36"
-                TextColor="White"
-                HorizontalOptions="Center" />
+            <!-- Brand Typography -->
+            <VerticalStackLayout Spacing="6" HorizontalOptions="Center">
+                <Label
+                    Text="RISA-BOT"
+                    FontFamily="InterBold"
+                    FontSize="34"
+                    TextColor="{StaticResource TextPrimary}"
+                    CharacterSpacing="3"
+                    HorizontalOptions="Center" />
 
-            <Label
-                Text="Robot Intelligent System Assistant"
-                FontFamily="InterRegular"
-                FontSize="14"
-                TextColor="{StaticResource TextMuted}"
-                HorizontalOptions="Center" />
+                <Label
+                    Text="AUTONOMOUS ROBOTICS TELEMETRY &amp; CONTROL"
+                    FontFamily="InterSemiBold"
+                    FontSize="11"
+                    TextColor="{StaticResource AccentCyan}"
+                    CharacterSpacing="1.5"
+                    HorizontalOptions="Center" />
+
+                <Label
+                    Text="Robot Intelligent System Assistant · Competition Edition"
+                    FontFamily="InterRegular"
+                    FontSize="13"
+                    TextColor="{StaticResource TextMuted}"
+                    HorizontalOptions="Center"
+                    Margin="0,4,0,0" />
+            </VerticalStackLayout>
 
         </VerticalStackLayout>
 
         <!-- Loading indicator at bottom -->
         <VerticalStackLayout
             Grid.Row="2"
-            Spacing="12"
+            Spacing="14"
             HorizontalOptions="Center"
             VerticalOptions="End"
-            Margin="0,0,0,48">
+            Margin="0,0,0,52">
 
-            <ActivityIndicator
-                x:Name="LoadingIndicator"
-                IsRunning="True"
-                Color="{StaticResource AccentBlue}"
-                WidthRequest="32"
-                HeightRequest="32"
-                HorizontalOptions="Center" />
+            <Border
+                Stroke="{StaticResource CardBorder}"
+                StrokeThickness="1"
+                StrokeShape="RoundRectangle 20"
+                BackgroundColor="{StaticResource SurfaceElevated}"
+                Padding="16,8">
+                <HorizontalStackLayout Spacing="10" VerticalOptions="Center">
+                    <ActivityIndicator
+                        x:Name="LoadingIndicator"
+                        IsRunning="True"
+                        Color="{StaticResource AccentCyan}"
+                        WidthRequest="18"
+                        HeightRequest="18"
+                        VerticalOptions="Center" />
+
+                    <Label
+                        Text="INITIALIZING SUBSYSTEMS…"
+                        FontFamily="InterSemiBold"
+                        FontSize="11"
+                        TextColor="{StaticResource TextSecondary}"
+                        CharacterSpacing="1"
+                        VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </Border>
 
             <Label
-                Text="Starting up…"
+                Text="v1.0 · ROS 2 Humble · Horizon Sunrise X5"
                 FontFamily="InterRegular"
-                FontSize="12"
-                TextColor="{StaticResource TextMuted}"
+                FontSize="11"
+                TextColor="{StaticResource TextDim}"
                 HorizontalOptions="Center" />
 
         </VerticalStackLayout>

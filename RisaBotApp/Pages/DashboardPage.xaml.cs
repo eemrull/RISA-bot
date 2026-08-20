@@ -57,8 +57,12 @@ public partial class DashboardPage : ContentPage
             _vm.LoadLogsCommand.ExecuteAsync(null);
     }
 
-    private static void SetTabActive(View tabItem, bool active)
+    private static void SetTabActive(Border tabBorder, bool active)
     {
-        tabItem.Opacity = active ? 1.0 : 0.5;
+        tabBorder.Opacity = active ? 1.0 : 0.55;
+        if (Application.Current?.Resources.TryGetValue(active ? "CardInner" : "PageBackground", out var bg) == true && bg is Color color)
+        {
+            tabBorder.BackgroundColor = active ? color : Colors.Transparent;
+        }
     }
 }
